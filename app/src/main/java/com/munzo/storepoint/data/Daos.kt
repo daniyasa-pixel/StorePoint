@@ -1,4 +1,4 @@
-﻿package com.munzo.storepoint.data
+package com.munzo.storepoint.data
 
 import androidx.room.*
 import androidx.room.Transaction as RoomTransaction
@@ -404,4 +404,121 @@ interface PurchaseOrderDao {
 
     @Query("DELETE FROM purchase_order_items WHERE purchaseOrderId = :poId")
     suspend fun deletePurchaseOrderItems(poId: Int)
+}
+
+@Dao
+interface StaffFaceCredentialDao {
+    @Query("SELECT * FROM staff_face_credentials WHERE username = :username AND isActive = 1 LIMIT 1")
+    suspend fun getCredentialForUser(username: String): StaffFaceCredential?
+
+    @Query("SELECT * FROM staff_face_credentials WHERE isActive = 1")
+    fun getAllActiveCredentials(): Flow<List<StaffFaceCredential>>
+
+    @Query("SELECT * FROM staff_face_credentials WHERE isActive = 1")
+    suspend fun getAllActiveCredentialsSync(): List<StaffFaceCredential>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCredential(credential: StaffFaceCredential): Long
+
+    @Query("UPDATE staff_face_credentials SET isActive = 0 WHERE username = :username")
+    suspend fun deactivateCredentialForUser(username: String)
+
+    @Query("DELETE FROM staff_face_credentials WHERE username = :username")
+    suspend fun deleteCredentialForUser(username: String)
+}
+
+@Dao
+interface TimeAttendanceDao {
+    @Query("SELECT * FROM time_attendance_records ORDER BY timeIn DESC")
+    fun getAllAttendanceRecords(): Flow<List<TimeAttendanceRecord>>
+
+    @Query("SELECT * FROM time_attendance_records ORDER BY timeIn DESC")
+    suspend fun getAllAttendanceRecordsSync(): List<TimeAttendanceRecord>
+
+    @Query("SELECT * FROM time_attendance_records WHERE username = :username ORDER BY timeIn DESC")
+    fun getAttendanceForUser(username: String): Flow<List<TimeAttendanceRecord>>
+
+    @Query("SELECT * FROM time_attendance_records WHERE username = :username AND status = 'ACTIVE' ORDER BY timeIn DESC LIMIT 1")
+    suspend fun getActiveAttendanceForUser(username: String): TimeAttendanceRecord?
+
+    @Query("SELECT * FROM time_attendance_records WHERE timeIn BETWEEN :from AND :to ORDER BY timeIn DESC")
+    suspend fun getRecordsBetweenSync(from: Long, to: Long): List<TimeAttendanceRecord>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAttendanceRecord(record: TimeAttendanceRecord): Long
+
+    @Update
+    suspend fun updateAttendanceRecord(record: TimeAttendanceRecord)
+}
+
+@Dao
+interface ShiftReconciliationDao {
+    @Query("SELECT * FROM shift_reconciliations ORDER BY timestamp DESC")
+    fun getAllReconciliations(): Flow<List<ShiftReconciliation>>
+
+    @Query("SELECT * FROM shift_reconciliations ORDER BY timestamp DESC")
+    suspend fun getAllReconciliationsSync(): List<ShiftReconciliation>
+
+    @Query("SELECT * FROM shift_reconciliations WHERE sessionId = :sessionId LIMIT 1")
+    suspend fun getReconciliationBySessionId(sessionId: Int): ShiftReconciliation?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReconciliation(reconciliation: ShiftReconciliation): Long
+}
+
+@Dao
+interface ProductionDao {
+    @Query("SELECT * FROM production_runs ORDER BY timestamp DESC")
+    fun getAllProductionRuns(): Flow<List<ProductionLogEntity>>
+
+    @Query("SELECT * FROM production_runs ORDER BY timestamp DESC")
+    suspend fun getAllProductionRunsSync(): List<ProductionLogEntity>
+
+    @Query("SELECT * FROM production_runs WHERE timestamp BETWEEN :from AND :to ORDER BY timestamp DESC")
+    suspend fun getProductionRunsBetweenSync(from: Long, to: Long): List<ProductionLogEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProductionRun(run: ProductionLogEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertProductionRunBlocking(run: ProductionLogEntity): Long
+
+    @Query("SELECT * FROM bill_of_materials ORDER BY id DESC")
+    fun getAllBOMs(): Flow<List<BillOfMaterials>>
+
+    @Query("SELECT * FROM bill_of_materials ORDER BY id DESC")
+    suspend fun getAllBOMsSync(): List<BillOfMaterials>
+
+    @Query("SELECT * FROM bill_of_materials WHERE rawMaterialProductId = :rawId")
+    suspend fun getBOMsForRawProduct(rawId: Int): List<BillOfMaterials>
+
+    @Query("SELECT * FROM bill_of_materials WHERE rawMaterialProductId = :rawId AND targetRetailProductId = :targetId LIMIT 1")
+    suspend fun getBOMForPair(rawId: Int, targetId: Int): BillOfMaterials?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBOM(bom: BillOfMaterials): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertBOMBlocking(bom: BillOfMaterials): Long
+
+    @Query("DELETE FROM bill_of_materials WHERE id = :id")
+    suspend fun deleteBOM(id: Int)
+}
+
+@Dao
+interface InventoryMovementDao {
+    @Query("SELECT * FROM inventory_movements ORDER BY timestamp DESC")
+    fun getAllMovements(): Flow<List<InventoryMovementEntity>>
+
+    @Query("SELECT * FROM inventory_movements WHERE productId = :productId ORDER BY timestamp DESC")
+    fun getMovementsForProduct(productId: Int): Flow<List<InventoryMovementEntity>>
+
+    @Query("SELECT * FROM inventory_movements WHERE productId = :productId ORDER BY timestamp DESC")
+    suspend fun getMovementsForProductSync(productId: Int): List<InventoryMovementEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMovement(movement: InventoryMovementEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertMovementBlocking(movement: InventoryMovementEntity): Long
 }

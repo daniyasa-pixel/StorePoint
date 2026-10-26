@@ -24,7 +24,8 @@ fun UsersTab(
     onDelete: (String) -> Unit,
     onAddClick: () -> Unit,
     onEdit: (User) -> Unit,
-    onPrintBadge: (User) -> Unit
+    onPrintBadge: (User) -> Unit,
+    onEnrollFace: ((User) -> Unit)? = null
 ) {
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -99,6 +100,25 @@ fun UsersTab(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (usr.barcodeId.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                             )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = if (usr.faceEnrolled) "✓ Face Enrolled" else "Face Not Enrolled",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (usr.faceEnrolled) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (usr.faceEnrolled) androidx.compose.ui.graphics.Color(0xFF10B981) else MaterialTheme.colorScheme.outline
+                                )
+                                if (usr.baseRate > 0.0) {
+                                    Text("•", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    Text(
+                                        text = "${usr.rateTier}: ₱${String.format(java.util.Locale.getDefault(), "%.2f", usr.baseRate)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -119,6 +139,19 @@ fun UsersTab(
                                 contentDescription = "Export & Print Cashier ID Badge", 
                                 modifier = Modifier.size(18.dp)
                             )
+                        }
+
+                        onEnrollFace?.let { enrollAction ->
+                            FilledTonalIconButton(
+                                onClick = { enrollAction(usr) },
+                                modifier = Modifier.size(36.dp).testTag("face_user_${usr.username}"),
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = if (usr.faceEnrolled) androidx.compose.ui.graphics.Color(0xFF10B981).copy(alpha = 0.2f) else MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                                    contentColor = if (usr.faceEnrolled) androidx.compose.ui.graphics.Color(0xFF10B981) else MaterialTheme.colorScheme.tertiary
+                                )
+                            ) {
+                                Icon(Icons.Default.Face, contentDescription = "Enroll Face Biometrics", modifier = Modifier.size(18.dp))
+                            }
                         }
 
                         FilledTonalIconButton(

@@ -26,9 +26,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Supplier::class,
         PurchaseOrder::class,
         PurchaseOrderItem::class,
-        WalletLedgerEntry::class
+        WalletLedgerEntry::class,
+        StaffFaceCredential::class,
+        TimeAttendanceRecord::class,
+        ShiftReconciliation::class,
+        BillOfMaterials::class,
+        ProductionLogEntity::class,
+        InventoryMovementEntity::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -46,6 +52,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val supplierDao: SupplierDao
     abstract val purchaseOrderDao: PurchaseOrderDao
     abstract val walletLedgerDao: WalletLedgerDao
+    abstract val staffFaceCredentialDao: StaffFaceCredentialDao
+    abstract val timeAttendanceDao: TimeAttendanceDao
+    abstract val shiftReconciliationDao: ShiftReconciliationDao
+    abstract val productionDao: ProductionDao
+    abstract val inventoryMovementDao: InventoryMovementDao
 
     companion object {
         @Volatile
@@ -612,6 +623,168 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. staff_face_credentials
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `staff_face_credentials` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `username` TEXT NOT NULL,
+                        `faceTemplateHash` TEXT NOT NULL,
+                        `registeredAt` INTEGER NOT NULL,
+                        `modelFingerprint` TEXT NOT NULL DEFAULT 'MLKit-Face-v1',
+                        `isActive` INTEGER NOT NULL DEFAULT 1,
+                        `antiSpoofingProfile` TEXT NOT NULL DEFAULT 'BLINK_AND_HEAD_POSE',
+                        `faceLandmarkPoints` TEXT NOT NULL DEFAULT '',
+                        FOREIGN KEY(`username`) REFERENCES `user_accounts`(`username`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_staff_face_credentials_username` ON `staff_face_credentials` (`username`)")
+
+                // 2. time_attendance_records
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `time_attendance_records` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `username` TEXT NOT NULL,
+                        `timeIn` INTEGER NOT NULL,
+                        `timeOut` INTEGER,
+                        `breakStart` INTEGER,
+                        `breakEnd` INTEGER,
+                        `totalBreakMinutes` INTEGER NOT NULL DEFAULT 0,
+                        `authMethod` TEXT NOT NULL DEFAULT 'FACE',
+                        `status` TEXT NOT NULL DEFAULT 'ACTIVE',
+                        `scheduledShiftHours` REAL NOT NULL DEFAULT 8.0,
+                        `tardinessMinutes` INTEGER NOT NULL DEFAULT 0,
+                        `overtimeMinutes` INTEGER NOT NULL DEFAULT 0,
+                        `rateTier` TEXT NOT NULL DEFAULT 'HOURLY',
+                        `baseRate` REAL NOT NULL DEFAULT 0.0,
+                        `grossPay` REAL NOT NULL DEFAULT 0.0,
+                        `deductions` REAL NOT NULL DEFAULT 0.0,
+                        `netPay` REAL NOT NULL DEFAULT 0.0,
+                        `notes` TEXT NOT NULL DEFAULT '',
+                        FOREIGN KEY(`username`) REFERENCES `user_accounts`(`username`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_time_attendance_records_username` ON `time_attendance_records` (`username`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_time_attendance_records_timeIn` ON `time_attendance_records` (`timeIn`)")
+
+                // 3. shift_reconciliations
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `shift_reconciliations` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `sessionId` INTEGER NOT NULL,
+                        `cashierUsername` TEXT NOT NULL,
+                        `timestamp` INTEGER NOT NULL,
+                        `count1000` INTEGER NOT NULL DEFAULT 0,
+                        `count500` INTEGER NOT NULL DEFAULT 0,
+                        `count200` INTEGER NOT NULL DEFAULT 0,
+                        `count100` INTEGER NOT NULL DEFAULT 0,
+                        `count50` INTEGER NOT NULL DEFAULT 0,
+                        `count20` INTEGER NOT NULL DEFAULT 0,
+                        `countCoins` REAL NOT NULL DEFAULT 0.0,
+                        `totalCountedCash` REAL NOT NULL DEFAULT 0.0,
+                        `expectedCash` REAL NOT NULL DEFAULT 0.0,
+                        `cashVariance` REAL NOT NULL DEFAULT 0.0,
+                        `countedGCash` REAL NOT NULL DEFAULT 0.0,
+                        `expectedGCash` REAL NOT NULL DEFAULT 0.0,
+                        `gcashVariance` REAL NOT NULL DEFAULT 0.0,
+                        `countedSmartLoad` REAL NOT NULL DEFAULT 0.0,
+                        `expectedSmartLoad` REAL NOT NULL DEFAULT 0.0,
+                        `smartLoadVariance` REAL NOT NULL DEFAULT 0.0,
+                        `countedGlobeLoad` REAL NOT NULL DEFAULT 0.0,
+                        `expectedGlobeLoad` REAL NOT NULL DEFAULT 0.0,
+                        `globeLoadVariance` REAL NOT NULL DEFAULT 0.0,
+                        `hasDiscrepancy` INTEGER NOT NULL DEFAULT 0,
+                        `managerOverrideApproved` INTEGER NOT NULL DEFAULT 0,
+                        `managerUsername` TEXT NOT NULL DEFAULT '',
+                        `discrepancyReason` TEXT NOT NULL DEFAULT '',
+                        `receiptPrinted` INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(`sessionId`) REFERENCES `cashier_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_shift_reconciliations_sessionId` ON `shift_reconciliations` (`sessionId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_shift_reconciliations_timestamp` ON `shift_reconciliations` (`timestamp`)")
+
+                // 4. bill_of_materials
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `bill_of_materials` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `rawMaterialProductId` INTEGER NOT NULL,
+                        `targetRetailProductId` INTEGER NOT NULL,
+                        `rawQuantityNeeded` REAL NOT NULL,
+                        `producedRetailYield` REAL NOT NULL,
+                        `wasteLossPercentage` REAL NOT NULL DEFAULT 0.0,
+                        `notes` TEXT NOT NULL DEFAULT '',
+                        FOREIGN KEY(`rawMaterialProductId`) REFERENCES `products`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(`targetRetailProductId`) REFERENCES `products`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_bill_of_materials_rawMaterialProductId` ON `bill_of_materials` (`rawMaterialProductId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_bill_of_materials_targetRetailProductId` ON `bill_of_materials` (`targetRetailProductId`)")
+
+                // 5. production_runs
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `production_runs` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productionCode` TEXT NOT NULL,
+                        `rawMaterialProductId` INTEGER NOT NULL,
+                        `rawMaterialName` TEXT NOT NULL,
+                        `rawMaterialQtyUsed` REAL NOT NULL,
+                        `rawMaterialUnitCost` REAL NOT NULL,
+                        `targetRetailProductId` INTEGER NOT NULL,
+                        `targetRetailProductName` TEXT NOT NULL,
+                        `targetRetailQtyProduced` REAL NOT NULL,
+                        `derivedRetailUnitCost` REAL NOT NULL,
+                        `retailSellingPrice` REAL NOT NULL,
+                        `wasteLossQty` REAL NOT NULL DEFAULT 0.0,
+                        `operatorUsername` TEXT NOT NULL,
+                        `timestamp` INTEGER NOT NULL,
+                        `notes` TEXT NOT NULL DEFAULT ''
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_production_runs_productionCode` ON `production_runs` (`productionCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_production_runs_rawMaterialProductId` ON `production_runs` (`rawMaterialProductId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_production_runs_targetRetailProductId` ON `production_runs` (`targetRetailProductId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_production_runs_timestamp` ON `production_runs` (`timestamp`)")
+
+                // 6. inventory_movements
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `inventory_movements` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productId` INTEGER NOT NULL,
+                        `productName` TEXT NOT NULL,
+                        `timestamp` INTEGER NOT NULL,
+                        `actorUsername` TEXT NOT NULL,
+                        `movementType` TEXT NOT NULL,
+                        `quantityDelta` REAL NOT NULL,
+                        `stockBefore` INTEGER NOT NULL,
+                        `stockAfter` INTEGER NOT NULL,
+                        `reference` TEXT NOT NULL DEFAULT '',
+                        `notes` TEXT NOT NULL DEFAULT ''
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_inventory_movements_productId` ON `inventory_movements` (`productId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_inventory_movements_timestamp` ON `inventory_movements` (`timestamp`)")
+
+                // 7. Non-destructive column additions to user_accounts
+                if (!db.columnExists("user_accounts", "rateTier")) {
+                    db.execSQL("ALTER TABLE user_accounts ADD COLUMN rateTier TEXT NOT NULL DEFAULT 'HOURLY'")
+                }
+                if (!db.columnExists("user_accounts", "baseRate")) {
+                    db.execSQL("ALTER TABLE user_accounts ADD COLUMN baseRate REAL NOT NULL DEFAULT 0.0")
+                }
+                if (!db.columnExists("user_accounts", "shiftStartHour")) {
+                    db.execSQL("ALTER TABLE user_accounts ADD COLUMN shiftStartHour INTEGER NOT NULL DEFAULT 8")
+                }
+                if (!db.columnExists("user_accounts", "shiftStartMinute")) {
+                    db.execSQL("ALTER TABLE user_accounts ADD COLUMN shiftStartMinute INTEGER NOT NULL DEFAULT 0")
+                }
+                if (!db.columnExists("user_accounts", "faceEnrolled")) {
+                    db.execSQL("ALTER TABLE user_accounts ADD COLUMN faceEnrolled INTEGER NOT NULL DEFAULT 0")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -634,7 +807,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_12_13,
                     MIGRATION_13_14,
                     MIGRATION_14_15,
-                    MIGRATION_15_16
+                    MIGRATION_15_16,
+                    MIGRATION_16_17
                 )
                 .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                                  // Room 2.7 deprecates the no-arg overload; the boolean overload's

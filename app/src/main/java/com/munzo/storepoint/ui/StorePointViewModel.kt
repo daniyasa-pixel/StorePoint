@@ -79,6 +79,24 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
     val allPurchaseOrders: StateFlow<List<PurchaseOrder>> = repository.allPurchaseOrders
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allActiveFaceCredentials: StateFlow<List<StaffFaceCredential>> = repository.allActiveFaceCredentials
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allAttendanceRecords: StateFlow<List<TimeAttendanceRecord>> = repository.allAttendanceRecords
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allShiftReconciliations: StateFlow<List<ShiftReconciliation>> = repository.allShiftReconciliations
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allProductionRuns: StateFlow<List<ProductionLogEntity>> = repository.allProductionRuns
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allBOMs: StateFlow<List<BillOfMaterials>> = repository.allBOMs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allInventoryMovements: StateFlow<List<InventoryMovementEntity>> = repository.allInventoryMovements
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // --- Relational StateFlows (@Relation) ---
     val allCategoriesWithProducts: StateFlow<List<CategoryWithProducts>> = repository.allCategoriesWithProducts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

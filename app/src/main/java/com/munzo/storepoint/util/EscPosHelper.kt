@@ -347,6 +347,132 @@ object EscPosHelper {
     }
 
     /**
+     * Builds a detailed Shift Handover & Dual Drawer/Wallet Reconciliation thermal receipt.
+     */
+    fun buildShiftReconciliationReceipt(
+        storeConfig: StoreConfig,
+        reconciliation: com.munzo.storepoint.data.ShiftReconciliation,
+        startTime: Long,
+        is80mm: Boolean = false,
+        hasAutoCutter: Boolean = is80mm
+    ): ByteArray {
+        val totalCols = if (is80mm) 48 else 32
+        val out = ByteArrayOutputStream()
+        val curr = safeCurrencySymbol(storeConfig.currencySymbol)
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+
+        out.write(CMD_INIT)
+        out.write(CMD_CODEPAGE_CP437)
+        out.write(CMD_ALIGN_CENTER)
+        out.write(CMD_BOLD_ON)
+        val title = if (storeConfig.storeName.isNotBlank()) sanitizeForEscPos(storeConfig.storeName, curr) else "STOREPOINT POS"
+        out.write("$title\n".toByteArray(Charsets.US_ASCII))
+        out.write("SHIFT HANDOVER RECONCILIATION\n".toByteArray(Charsets.US_ASCII))
+        out.write("DUAL DRAWER & WALLET BALANCING\n".toByteArray(Charsets.US_ASCII))
+        out.write(CMD_BOLD_OFF)
+
+        val divider = dividerLine(totalCols)
+        out.write(divider.toByteArray(Charsets.US_ASCII))
+
+        out.write(CMD_ALIGN_LEFT)
+        out.write("Cashier:     ${sanitizeForEscPos(reconciliation.cashierUsername, curr)}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Session ID:  #SES-${reconciliation.sessionId}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Shift Start: ${dateFormat.format(Date(startTime))}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Reconciled:  ${dateFormat.format(Date(reconciliation.timestamp))}\n".toByteArray(Charsets.US_ASCII))
+        out.write(divider.toByteArray(Charsets.US_ASCII))
+
+        // Physical Cash Denominations
+        out.write(CMD_BOLD_ON)
+        out.write("CASH DRAWER COUNT BREAKDOWN\n".toByteArray(Charsets.US_ASCII))
+        out.write(CMD_BOLD_OFF)
+        out.write(padColumns(" 1,000 x ${reconciliation.count1000}:", "$curr${String.format(Locale.US, "%.2f", reconciliation.count1000 * 1000.0)}", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(padColumns("   500 x ${reconciliation.count500}:", "$curr${String.format(Locale.US, "%.2f", reconciliation.count500 * 500.0)}", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(padColumns("   200 x ${reconciliation.count200}:", "$curr${String.format(Locale.US, "%.2f", reconciliation.count200 * 200.0)}", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(padColumns("   100 x ${reconciliation.count100}:", "$curr${String.format(Locale.US, "%.2f", reconciliation.count100 * 100.0)}", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(padColumns("    50 x ${reconciliation.count50}:", "$curr${String.format(Locale.US, "%.2f", reconciliation.count50 * 50.0)}", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(padColumns("    20 x ${reconciliation.count20}:", "$curr${String.format(Locale.US, "%.2f", reconciliation.count20 * 20.0)}", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(padColumns(" Coins & Loose:", "$curr${String.format(Locale.US, "%.2f", reconciliation.countCoins)}", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(divider.toByteArray(Charsets.US_ASCII))
+
+        // Cash Balancing Summary
+        out.write(padColumns("Total Counted Cash:", "$curr${String.format(Locale.US, "%.2f", reconciliation.totalCountedCash)}", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(padColumns("Expected Cash Ledger:", "$curr${String.format(Locale.US, "%.2f", reconciliation.expectedCash)}", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        val cashVarStr = if (Math.abs(reconciliation.cashVariance) < 0.01) "BALANCED"
+        else if (reconciliation.cashVariance < 0) "SHORT -$curr${String.format(Locale.US, "%.2f", -reconciliation.cashVariance)}"
+        else "OVER +$curr${String.format(Locale.US, "%.2f", reconciliation.cashVariance)}"
+        out.write(CMD_BOLD_ON)
+        out.write(padColumns("Cash Variance:", cashVarStr, totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(CMD_BOLD_OFF)
+        out.write(divider.toByteArray(Charsets.US_ASCII))
+
+        // GCash Reconciliation
+        if (storeConfig.hasGCash) {
+            out.write(CMD_BOLD_ON)
+            out.write("GCASH DIGITAL WALLET\n".toByteArray(Charsets.US_ASCII))
+            out.write(CMD_BOLD_OFF)
+            out.write(padColumns(" Counted App Balance:", "$curr${String.format(Locale.US, "%.2f", reconciliation.countedGCash)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(padColumns(" POS Ledger Balance:", "$curr${String.format(Locale.US, "%.2f", reconciliation.expectedGCash)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            val gcashVarStr = if (Math.abs(reconciliation.gcashVariance) < 0.01) "BALANCED"
+            else if (reconciliation.gcashVariance < 0) "SHORT -$curr${String.format(Locale.US, "%.2f", -reconciliation.gcashVariance)}"
+            else "OVER +$curr${String.format(Locale.US, "%.2f", reconciliation.gcashVariance)}"
+            out.write(padColumns(" GCash Variance:", gcashVarStr, totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(divider.toByteArray(Charsets.US_ASCII))
+        }
+
+        // Prepaid Load Reconciliation
+        if (storeConfig.hasLoad) {
+            out.write(CMD_BOLD_ON)
+            out.write("PREPAID MOBILE LOAD\n".toByteArray(Charsets.US_ASCII))
+            out.write(CMD_BOLD_OFF)
+            out.write(padColumns(" Smart Counted/Expected:", "${String.format(Locale.US, "%.0f", reconciliation.countedSmartLoad)} / ${String.format(Locale.US, "%.0f", reconciliation.expectedSmartLoad)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(padColumns(" Globe Counted/Expected:", "${String.format(Locale.US, "%.0f", reconciliation.countedGlobeLoad)} / ${String.format(Locale.US, "%.0f", reconciliation.expectedGlobeLoad)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(divider.toByteArray(Charsets.US_ASCII))
+        }
+
+        // Audit & Override
+        if (reconciliation.hasDiscrepancy || reconciliation.managerOverrideApproved) {
+            out.write(CMD_BOLD_ON)
+            out.write("DISCREPANCY OVERRIDE AUDIT\n".toByteArray(Charsets.US_ASCII))
+            out.write(CMD_BOLD_OFF)
+            out.write("Approved by: ${sanitizeForEscPos(reconciliation.managerUsername, curr)}\n".toByteArray(Charsets.US_ASCII))
+            val cleanReason = sanitizeForEscPos(reconciliation.discrepancyReason.take(60), curr)
+            out.write("Reason: $cleanReason\n".toByteArray(Charsets.US_ASCII))
+            out.write(divider.toByteArray(Charsets.US_ASCII))
+        }
+
+        // Signatures
+        out.write(LF)
+        out.write(padColumns("Cashier Signature", "Manager Signature", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(padColumns("_________________", "_________________", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+
+        if (hasAutoCutter) {
+            out.write("\n\n".toByteArray(Charsets.US_ASCII))
+            out.write(CMD_PAPER_CUT)
+        } else {
+            out.write(CMD_FEED_LINES)
+            out.write("\n\n".toByteArray(Charsets.US_ASCII))
+        }
+        return out.toByteArray()
+    }
+
+    /**
      * Enumerates paired Bluetooth devices and filters/highlights likely thermal POS printers.
      */
     fun getPairedBluetoothPrinters(context: Context): List<DiscoveredBluetoothPrinter> {

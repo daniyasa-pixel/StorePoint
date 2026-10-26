@@ -124,6 +124,7 @@ fun CashierPOSScreen(
     // Dialog flags
     var showShiftStartDialog by remember { mutableStateOf(false) }
     var showShiftCloseDialog by remember { mutableStateOf(false) }
+    var showAttendanceDialog by remember { mutableStateOf(false) }
     var showPaymentDialog by remember { mutableStateOf(false) }
     var showParkDialog by remember { mutableStateOf(false) }
     var showParkedTxDialog by remember { mutableStateOf(false) }
@@ -587,6 +588,18 @@ fun CashierPOSScreen(
                             showReturnRefundDialog = true
                         },
                         modifier = Modifier.testTag("drawer_returns_refunds")
+                    )
+
+                    // Staff Attendance Clock Launcher
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.AccessTime, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        label = { Text("Staff Attendance Clock", fontWeight = FontWeight.SemiBold) },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showAttendanceDialog = true
+                        },
+                        modifier = Modifier.testTag("drawer_staff_attendance")
                     )
 
                     // Call Admin / Supervisor Assistance Request (Cashiers only, strictly hidden on admin accounts)
@@ -2028,26 +2041,14 @@ fun CashierPOSScreen(
             )
         }
 
-        // 2) Shift closure dialog
+        // 2) Shift closure & reconciliation dialog (Mandatory End-of-Shift Guard)
         if (showShiftCloseDialog) {
             val transactionsList by viewModel.allTransactions.collectAsState()
             val sessionTransactions = remember(transactionsList, activeSession) {
                 transactionsList.filter { it.timestamp >= (activeSession?.startTime ?: 0L) }
             }
-            val totalSalesInSession = remember(sessionTransactions) {
-                sessionTransactions.sumOf { it.totalAmount }
-            }
             val cashSalesInSession = remember(sessionTransactions) {
                 sessionTransactions.filter { it.paymentMethod == "CASH" }.sumOf { it.totalAmount }
-            }
-            val nonCashSalesInSession = remember(sessionTransactions) {
-                sessionTransactions.filter { it.paymentMethod != "CASH" }.sumOf { it.totalAmount }
-            }
-            val sessionVatableSales = remember(totalSalesInSession, doubleTaxRate) {
-                StorePointRepository.calculateVatableSalesFromInclusive(totalSalesInSession, doubleTaxRate)
-            }
-            val sessionVatAmount = remember(totalSalesInSession, doubleTaxRate) {
-                StorePointRepository.calculateVatFromInclusive(totalSalesInSession, doubleTaxRate)
             }
             val drawerPayoutsList by viewModel.allDrawerTransactions.collectAsState()
             val sessionPayouts = remember(drawerPayoutsList, activeSession) {
@@ -2060,345 +2061,30 @@ fun CashierPOSScreen(
             val expectedSmartLoad = storeConfig?.smartLoadBalance ?: 0.0
             val expectedGlobeLoad = storeConfig?.globeLoadBalance ?: 0.0
 
-            val enteredCash = closeCashInput.toDoubleOrNull() ?: 0.0
-            val enteredGCash = closeGCashInput.toDoubleOrNull() ?: 0.0
-            val enteredSmartLoad = closeSmartLoadInput.toDoubleOrNull() ?: 0.0
-            val enteredGlobeLoad = closeGlobeLoadInput.toDoubleOrNull() ?: 0.0
-
-            val cashShortage = (expectedCash - enteredCash).coerceAtLeast(0.0)
-            val gcashShortage = (expectedGCash - enteredGCash).coerceAtLeast(0.0)
-            val smartLoadShortage = (expectedSmartLoad - enteredSmartLoad).coerceAtLeast(0.0)
-            val globeLoadShortage = (expectedGlobeLoad - enteredGlobeLoad).coerceAtLeast(0.0)
-
-            // Auto-fill inputs if default
-            LaunchedEffect(showShiftCloseDialog) {
-                closeCashInput = String.format(Locale.getDefault(), "%.2f", expectedCash)
-                closeGCashInput = String.format(Locale.getDefault(), "%.2f", expectedGCash)
-                closeSmartLoadInput = String.format(Locale.getDefault(), "%.2f", expectedSmartLoad)
-                closeGlobeLoadInput = String.format(Locale.getDefault(), "%.2f", expectedGlobeLoad)
+            if (activeSession != null) {
+                ShiftReconciliationDialog(
+                    session = activeSession!!,
+                    viewModel = viewModel,
+                    expectedCash = expectedCash,
+                    expectedGCash = expectedGCash,
+                    expectedSmartLoad = expectedSmartLoad,
+                    expectedGlobeLoad = expectedGlobeLoad,
+                    onDismiss = { showShiftCloseDialog = false },
+                    onShiftClosed = {
+                        showShiftCloseDialog = false
+                        Toast.makeText(context, "Shift closed and reconciled successfully.", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            } else {
+                showShiftCloseDialog = false
             }
+        }
 
-            AlertDialog(
-                onDismissRequest = { showShiftCloseDialog = false },
-                confirmButton = {
-                    ExpressiveButton(
-                        onClick = {
-                            viewModel.closeCashierShift(
-                                endingCash = enteredCash,
-                                endingGCash = if (storeConfig?.hasGCash == true) enteredGCash else null,
-                                endingSmartLoad = if (storeConfig?.hasLoad == true) enteredSmartLoad else null,
-                                endingGlobeLoad = if (storeConfig?.hasLoad == true) enteredGlobeLoad else null
-                            )
-                            showShiftCloseDialog = false
-                        },
-                        modifier = Modifier.testTag("shift_close_confirm"),
-                        label = "Confirm & Close Shift",
-                        variant = ExpressiveButtonVariant.FILLED,
-                        size = ExpressiveButtonSize.M,
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    )
-                },
-                dismissButton = {
-                    TextButton(onClick = { showShiftCloseDialog = false }) {
-                        Text("Cancel")
-                    }
-                },
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(Icons.Default.Assessment, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Text("End of Day Close Shift (Z-Reading)", fontWeight = FontWeight.Bold)
-                    }
-                },
-                text = {
-                    Column(
-                        modifier = Modifier.imePadding().verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text("Verify cash drawer contents and digital balances to complete the cashier shift closure.", style = MaterialTheme.typography.bodyMedium)
-
-                        // Shift Performance Summary Card
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Cashier:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                    Text(activeSession?.cashierUsername ?: "Cashier", style = MaterialTheme.typography.bodySmall)
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Shift Started:", style = MaterialTheme.typography.bodySmall)
-                                    Text(
-                                        SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(activeSession?.startTime ?: System.currentTimeMillis())),
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Transactions:", style = MaterialTheme.typography.bodySmall)
-                                    Text("${sessionTransactions.size}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                }
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Gross Sales (VAT Inc.):", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                    Text("$curr${String.format(Locale.getDefault(), "%.2f", totalSalesInSession)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("VATable Sales (Net):", style = MaterialTheme.typography.bodySmall)
-                                    Text("$curr${String.format(Locale.getDefault(), "%.2f", sessionVatableSales)}", style = MaterialTheme.typography.bodySmall)
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("12% VAT Collected:", style = MaterialTheme.typography.bodySmall)
-                                    Text("$curr${String.format(Locale.getDefault(), "%.2f", sessionVatAmount)}", style = MaterialTheme.typography.bodySmall)
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Cash Sales in Drawer:", style = MaterialTheme.typography.bodySmall)
-                                    Text("$curr${String.format(Locale.getDefault(), "%.2f", cashSalesInSession)}", style = MaterialTheme.typography.bodySmall)
-                                }
-                                if (nonCashSalesInSession > 0.0) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("Non-Cash Sales:", style = MaterialTheme.typography.bodySmall)
-                                        Text("$curr${String.format(Locale.getDefault(), "%.2f", nonCashSalesInSession)}", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Print Z-Reading Shift Report button
-                        OutlinedButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    try {
-                                        val is80 = viewModel.is80mmThermal.value
-                                        val hasCutter = viewModel.printerHasAutoCutter.value
-                                        val zTicket = com.munzo.storepoint.util.EscPosHelper.buildShiftZReadingTicket(
-                                            storeConfig = storeConfig ?: StoreConfig(storeName = "StorePoint POS", currencySymbol = curr, taxPercentage = 12.0),
-                                            cashierUsername = activeSession?.cashierUsername ?: "Cashier",
-                                            startTime = activeSession?.startTime ?: System.currentTimeMillis(),
-                                            endTime = System.currentTimeMillis(),
-                                            startingCash = activeSession?.startingCash ?: 0.0,
-                                            endingCash = enteredCash,
-                                            expectedCash = expectedCash,
-                                            totalSales = totalSalesInSession,
-                                            cashSales = cashSalesInSession,
-                                            nonCashSales = nonCashSalesInSession,
-                                            vatableSales = sessionVatableSales,
-                                            vatAmount = sessionVatAmount,
-                                            payouts = sessionPayouts,
-                                            transactionCount = sessionTransactions.size,
-                                            is80mm = is80,
-                                            hasAutoCutter = hasCutter
-                                        )
-                                        viewModel.printShiftZReading(zTicket) { success, msg ->
-                                            Toast.makeText(context, msg, if (success) Toast.LENGTH_SHORT else Toast.LENGTH_LONG).show()
-                                        }
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Print error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Print Z-Reading Shift Report")
-                        }
-
-                        HorizontalDivider()
-
-                        // Drawer Cash Accounting
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                if (sessionPayouts != 0.0) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("Supplier Payouts (Deducted):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                                        Text("$curr${String.format(Locale.getDefault(), "%.2f", -sessionPayouts)}", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                                    }
-                                }
-                                Text("Expected Cash in Drawer:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                                Text("$curr${String.format(Locale.getDefault(), "%.2f", expectedCash)}", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                            }
-                            OutlinedTextField(
-                                value = closeCashInput,
-                                onValueChange = { closeCashInput = it },
-                                label = { Text("Actual Cash in Drawer ($curr)") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth().testTag("ending_cash_input")
-                            )
-                            if (cashShortage > 0.01) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = "Shortage Warning: Your Cash Drawer is short by $curr${String.format(Locale.getDefault(), "%.2f", cashShortage)}!",
-                                        color = MaterialTheme.colorScheme.error,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                }
-                            }
-                        }
-
-                        // GCash Accounting (Only if enabled)
-                        if (storeConfig?.hasGCash == true) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Expected GCash Balance:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                                    Text("$curr${String.format(Locale.getDefault(), "%.2f", expectedGCash)}", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                                }
-                                OutlinedTextField(
-                                    value = closeGCashInput,
-                                    onValueChange = { closeGCashInput = it },
-                                    label = { Text("Actual GCash Terminal Balance ($curr)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth().testTag("ending_gcash_input")
-                                )
-                                if (gcashShortage > 0.01) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Warning,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "Shortage Warning: Your GCash account is short by $curr${String.format(Locale.getDefault(), "%.2f", gcashShortage)}!",
-                                            color = MaterialTheme.colorScheme.error,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Prepaid Load Accounting (Smart and Globe)
-                        if (storeConfig?.hasLoad == true) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Expected Smart/TNT Load:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                                    Text("$curr${String.format(Locale.getDefault(), "%.2f", expectedSmartLoad)}", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                                }
-                                OutlinedTextField(
-                                    value = closeSmartLoadInput,
-                                    onValueChange = { closeSmartLoadInput = it },
-                                    label = { Text("Actual Smart/TNT Load Wallet ($curr)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth().testTag("ending_smart_load_input")
-                                )
-                                if (smartLoadShortage > 0.01) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Warning,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "Shortage Warning: Smart/TNT load wallet is short by $curr${String.format(Locale.getDefault(), "%.2f", smartLoadShortage)}!",
-                                            color = MaterialTheme.colorScheme.error,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Expected Globe/TM Load:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                                    Text("$curr${String.format(Locale.getDefault(), "%.2f", expectedGlobeLoad)}", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                                }
-                                OutlinedTextField(
-                                    value = closeGlobeLoadInput,
-                                    onValueChange = { closeGlobeLoadInput = it },
-                                    label = { Text("Actual Globe/TM Load Wallet ($curr)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth().testTag("ending_globe_load_input")
-                                )
-                                if (globeLoadShortage > 0.01) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Warning,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "Shortage Warning: Globe/TM load wallet is short by $curr${String.format(Locale.getDefault(), "%.2f", globeLoadShortage)}!",
-                                            color = MaterialTheme.colorScheme.error,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        // Staff Attendance Clock Dialog
+        if (showAttendanceDialog) {
+            StaffAttendanceDialog(
+                viewModel = viewModel,
+                onDismiss = { showAttendanceDialog = false }
             )
         }
 

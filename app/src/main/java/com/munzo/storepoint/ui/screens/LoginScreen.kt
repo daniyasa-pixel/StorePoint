@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.LockReset
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -66,6 +67,7 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var isAuthenticating by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
+    var showAttendanceClock by remember { mutableStateOf(false) }
 
     // Tap counter on the SP logo
     var logoTapCount by remember { mutableStateOf(0) }
@@ -577,6 +579,17 @@ fun LoginScreen(
 
                     add(
                         ExpressiveAction(
+                            label = "Staff Attendance",
+                            icon = Icons.Default.AccessTime,
+                            variant = ExpressiveButtonVariant.TONAL,
+                            size = ExpressiveButtonSize.M,
+                            testTag = "staff_attendance_clock_button",
+                            onClick = { showAttendanceClock = true }
+                        )
+                    )
+
+                    add(
+                        ExpressiveAction(
                             label = "About & Privacy",
                             icon = Icons.Default.Info,
                             variant = ExpressiveButtonVariant.OUTLINED,
@@ -593,5 +606,12 @@ fun LoginScreen(
                 )
             }
         }
+    }
+
+    if (showAttendanceClock) {
+        StaffAttendanceDialog(
+            viewModel = viewModel,
+            onDismiss = { showAttendanceClock = false }
+        )
     }
 }

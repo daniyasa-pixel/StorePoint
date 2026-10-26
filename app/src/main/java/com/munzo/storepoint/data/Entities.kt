@@ -43,7 +43,12 @@ data class User(
      * choose a 4-digit PIN before it can be used for a normal sign-in. The flag is
      * set during the 13->14 migration and cleared once the user resets.
      */
-    val pinResetRequired: Boolean = false
+    val pinResetRequired: Boolean = false,
+    val rateTier: String = "HOURLY", // "HOURLY", "DAILY", "MONTHLY"
+    val baseRate: Double = 0.0,
+    val shiftStartHour: Int = 8,
+    val shiftStartMinute: Int = 0,
+    val faceEnrolled: Boolean = false
 ) {
     val passwordHash: String get() = pinHash
 }
@@ -525,4 +530,201 @@ data class ParkedTransactionWithItems(
         entityColumn = "parkedTransactionId"
     )
     val items: List<ParkedTransactionItem>
+)
+
+// =========================================================================
+// Phase 1, 2, 3 Subsystem Entities (v17 Evolution)
+// =========================================================================
+
+@Entity(
+    tableName = "staff_face_credentials",
+    foreignKeys = [
+        ForeignKey(
+            entity = User::class,
+            parentColumns = ["username"],
+            childColumns = ["username"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["username"])
+    ]
+)
+data class StaffFaceCredential(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val username: String,
+    val faceTemplateHash: String,
+    val registeredAt: Long,
+    val modelFingerprint: String = "MLKit-Face-v1",
+    val isActive: Boolean = true,
+    val antiSpoofingProfile: String = "BLINK_AND_HEAD_POSE",
+    val faceLandmarkPoints: String = "" // Quantized vector / normalized metrics
+)
+
+@Entity(
+    tableName = "time_attendance_records",
+    foreignKeys = [
+        ForeignKey(
+            entity = User::class,
+            parentColumns = ["username"],
+            childColumns = ["username"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["username"]),
+        Index(value = ["timeIn"])
+    ]
+)
+data class TimeAttendanceRecord(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val username: String,
+    val timeIn: Long,
+    val timeOut: Long? = null,
+    val breakStart: Long? = null,
+    val breakEnd: Long? = null,
+    val totalBreakMinutes: Long = 0L,
+    val authMethod: String = "FACE", // "FACE", "PIN", "FALLBACK_PIN"
+    val status: String = "ACTIVE", // "ACTIVE", "COMPLETED"
+    val scheduledShiftHours: Double = 8.0,
+    val tardinessMinutes: Long = 0L,
+    val overtimeMinutes: Long = 0L,
+    val rateTier: String = "HOURLY", // "HOURLY", "DAILY", "MONTHLY"
+    val baseRate: Double = 0.0,
+    val grossPay: Double = 0.0,
+    val deductions: Double = 0.0,
+    val netPay: Double = 0.0,
+    val notes: String = ""
+)
+
+typealias StaffShiftLogEntity = TimeAttendanceRecord
+
+@Entity(
+    tableName = "shift_reconciliations",
+    foreignKeys = [
+        ForeignKey(
+            entity = CashierSession::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["sessionId"]),
+        Index(value = ["timestamp"])
+    ]
+)
+data class ShiftReconciliation(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val sessionId: Int,
+    val cashierUsername: String,
+    val timestamp: Long,
+    // Denominations Breakdown
+    val count1000: Int = 0,
+    val count500: Int = 0,
+    val count200: Int = 0,
+    val count100: Int = 0,
+    val count50: Int = 0,
+    val count20: Int = 0,
+    val countCoins: Double = 0.0,
+    // Cash Reconciliation
+    val totalCountedCash: Double = 0.0,
+    val expectedCash: Double = 0.0,
+    val cashVariance: Double = 0.0,
+    // GCash Digital Wallet Reconciliation
+    val countedGCash: Double = 0.0,
+    val expectedGCash: Double = 0.0,
+    val gcashVariance: Double = 0.0,
+    // Prepaid Load (Smart & Globe) Reconciliation
+    val countedSmartLoad: Double = 0.0,
+    val expectedSmartLoad: Double = 0.0,
+    val smartLoadVariance: Double = 0.0,
+    val countedGlobeLoad: Double = 0.0,
+    val expectedGlobeLoad: Double = 0.0,
+    val globeLoadVariance: Double = 0.0,
+    // Audit & Override
+    val hasDiscrepancy: Boolean = false,
+    val managerOverrideApproved: Boolean = false,
+    val managerUsername: String = "",
+    val discrepancyReason: String = "",
+    val receiptPrinted: Boolean = false
+)
+
+@Entity(
+    tableName = "bill_of_materials",
+    foreignKeys = [
+        ForeignKey(
+            entity = Product::class,
+            parentColumns = ["id"],
+            childColumns = ["rawMaterialProductId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = Product::class,
+            parentColumns = ["id"],
+            childColumns = ["targetRetailProductId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["rawMaterialProductId"]),
+        Index(value = ["targetRetailProductId"])
+    ]
+)
+data class BillOfMaterials(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val rawMaterialProductId: Int,
+    val targetRetailProductId: Int,
+    val rawQuantityNeeded: Double,
+    val producedRetailYield: Double,
+    val wasteLossPercentage: Double = 0.0,
+    val notes: String = ""
+)
+
+@Entity(
+    tableName = "production_runs",
+    indices = [
+        Index(value = ["productionCode"]),
+        Index(value = ["rawMaterialProductId"]),
+        Index(value = ["targetRetailProductId"]),
+        Index(value = ["timestamp"])
+    ]
+)
+data class ProductionLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val productionCode: String,
+    val rawMaterialProductId: Int,
+    val rawMaterialName: String,
+    val rawMaterialQtyUsed: Double,
+    val rawMaterialUnitCost: Double,
+    val targetRetailProductId: Int,
+    val targetRetailProductName: String,
+    val targetRetailQtyProduced: Double,
+    val derivedRetailUnitCost: Double,
+    val retailSellingPrice: Double,
+    val wasteLossQty: Double = 0.0,
+    val operatorUsername: String,
+    val timestamp: Long,
+    val notes: String = ""
+)
+
+@Entity(
+    tableName = "inventory_movements",
+    indices = [
+        Index(value = ["productId"]),
+        Index(value = ["timestamp"])
+    ]
+)
+data class InventoryMovementEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val productId: Int,
+    val productName: String,
+    val timestamp: Long,
+    val actorUsername: String,
+    val movementType: String, // "REPACK_RAW_DECREMENT", "REPACK_PRODUCED_INCREMENT", "RESTOCK", "SALE", "ADJUSTMENT"
+    val quantityDelta: Double,
+    val stockBefore: Int,
+    val stockAfter: Int,
+    val reference: String = "",
+    val notes: String = ""
 )

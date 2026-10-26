@@ -81,6 +81,11 @@ class StorePointRepository(private val db: AppDatabase) {
     private val productVariantDao = db.productVariantDao
     private val supplierDao = db.supplierDao
     private val purchaseOrderDao = db.purchaseOrderDao
+    private val staffFaceCredentialDao = db.staffFaceCredentialDao
+    private val timeAttendanceDao = db.timeAttendanceDao
+    private val shiftReconciliationDao = db.shiftReconciliationDao
+    private val productionDao = db.productionDao
+    private val inventoryMovementDao = db.inventoryMovementDao
 
     // --- Store Config Operations ---
     val storeConfig: Flow<StoreConfig?> = storeConfigDao.getStoreConfig()
@@ -1146,4 +1151,420 @@ class StorePointRepository(private val db: AppDatabase) {
     val allSuppliersWithOrders: Flow<List<SupplierWithPurchaseOrders>> = supplierDao.getAllSuppliersWithOrders()
     val allPurchaseOrdersWithItems: Flow<List<PurchaseOrderWithItems>> = purchaseOrderDao.getAllPurchaseOrdersWithItems()
     suspend fun getPurchaseOrderWithItems(id: Int): PurchaseOrderWithItems? = purchaseOrderDao.getPurchaseOrderWithItems(id)
+
+    // =========================================================================
+    // Phase 1: Biometric Face Attendance & Time-Tracking (Payroll Engine)
+    // =========================================================================
+
+    val allActiveFaceCredentials: Flow<List<StaffFaceCredential>> = staffFaceCredentialDao.getAllActiveCredentials()
+
+    suspend fun getStaffFaceCredential(username: String): StaffFaceCredential? = withContext(Dispatchers.IO) {
+        staffFaceCredentialDao.getCredentialForUser(username)
+    }
+
+    suspend fun registerFaceCredential(
+        username: String,
+        vector: FloatArray,
+        templateHash: String,
+        antiSpoofingProfile: String = "BLINK_AND_HEAD_POSE"
+    ) = withContext(Dispatchers.IO) {
+        val serializedPoints = com.munzo.storepoint.util.FaceBiometricHelper.serializeVector(vector)
+        val cred = StaffFaceCredential(
+            username = username,
+            faceTemplateHash = templateHash,
+            registeredAt = System.currentTimeMillis(),
+            modelFingerprint = "MLKit-Face-v1",
+            isActive = true,
+            antiSpoofingProfile = antiSpoofingProfile,
+            faceLandmarkPoints = serializedPoints
+        )
+        db.withTransaction {
+            staffFaceCredentialDao.insertCredential(cred)
+            val user = userDao.getUserSync(username)
+            if (user != null) {
+                userDao.insertUser(user.copy(faceEnrolled = true))
+            }
+        }
+    }
+
+    suspend fun deleteFaceCredential(username: String) = withContext(Dispatchers.IO) {
+        db.withTransaction {
+            staffFaceCredentialDao.deleteCredentialForUser(username)
+            val user = userDao.getUserSync(username)
+            if (user != null) {
+                userDao.insertUser(user.copy(faceEnrolled = false))
+            }
+        }
+    }
+
+    val allAttendanceRecords: Flow<List<TimeAttendanceRecord>> = timeAttendanceDao.getAllAttendanceRecords()
+
+    suspend fun getAllAttendanceRecordsSync(): List<TimeAttendanceRecord> = withContext(Dispatchers.IO) {
+        timeAttendanceDao.getAllAttendanceRecordsSync()
+    }
+
+    fun getAttendanceForUser(username: String): Flow<List<TimeAttendanceRecord>> =
+        timeAttendanceDao.getAttendanceForUser(username)
+
+    suspend fun getActiveAttendanceForUser(username: String): TimeAttendanceRecord? = withContext(Dispatchers.IO) {
+        timeAttendanceDao.getActiveAttendanceForUser(username)
+    }
+
+    suspend fun recordTimeIn(
+        username: String,
+        authMethod: String = "FACE",
+        notes: String = ""
+    ): TimeAttendanceRecord = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val user = userDao.getUserSync(username)
+        val shiftHour = user?.shiftStartHour ?: 8
+        val shiftMinute = user?.shiftStartMinute ?: 0
+        val rateTier = user?.rateTier ?: "HOURLY"
+        val baseRate = user?.baseRate ?: 0.0
+
+        val tardinessMinutes = com.munzo.storepoint.util.TimeTrackingAndPayrollHelper.computeTardinessMinutes(
+            timeIn = now,
+            shiftStartHour = shiftHour,
+            shiftStartMinute = shiftMinute,
+            gracePeriodMinutes = 10
+        )
+
+        val record = TimeAttendanceRecord(
+            username = username,
+            timeIn = now,
+            timeOut = null,
+            breakStart = null,
+            breakEnd = null,
+            totalBreakMinutes = 0L,
+            authMethod = authMethod,
+            status = "ACTIVE",
+            scheduledShiftHours = 8.0,
+            tardinessMinutes = tardinessMinutes,
+            overtimeMinutes = 0L,
+            rateTier = rateTier,
+            baseRate = baseRate,
+            grossPay = 0.0,
+            deductions = 0.0,
+            netPay = 0.0,
+            notes = notes
+        )
+        val insertedId = timeAttendanceDao.insertAttendanceRecord(record)
+        record.copy(id = insertedId.toInt())
+    }
+
+    suspend fun recordTimeOut(
+        recordId: Int,
+        notes: String = ""
+    ): TimeAttendanceRecord? = withContext(Dispatchers.IO) {
+        val allSync = timeAttendanceDao.getAllAttendanceRecordsSync()
+        val existing = allSync.firstOrNull { it.id == recordId } ?: return@withContext null
+        val now = System.currentTimeMillis()
+
+        val duration = com.munzo.storepoint.util.TimeTrackingAndPayrollHelper.computePayableAndOvertimeHours(
+            timeIn = existing.timeIn,
+            timeOut = now,
+            breakMinutes = existing.totalBreakMinutes,
+            standardShiftHours = existing.scheduledShiftHours
+        )
+
+        val payroll = com.munzo.storepoint.util.TimeTrackingAndPayrollHelper.calculatePayrollForShift(
+            rateTier = existing.rateTier,
+            baseRate = existing.baseRate,
+            regularHours = duration.regularHours,
+            overtimeHours = duration.overtimeHours,
+            tardinessMinutes = existing.tardinessMinutes
+        )
+
+        val updated = existing.copy(
+            timeOut = now,
+            status = "COMPLETED",
+            overtimeMinutes = (duration.overtimeHours * 60).toLong(),
+            grossPay = payroll.grossPay,
+            deductions = payroll.tardinessDeduction,
+            netPay = payroll.netPay,
+            notes = if (notes.isNotBlank()) "${existing.notes} | $notes".trim() else existing.notes
+        )
+        timeAttendanceDao.updateAttendanceRecord(updated)
+        updated
+    }
+
+    suspend fun recordBreakStart(recordId: Int) = withContext(Dispatchers.IO) {
+        val allSync = timeAttendanceDao.getAllAttendanceRecordsSync()
+        val existing = allSync.firstOrNull { it.id == recordId } ?: return@withContext
+        val now = System.currentTimeMillis()
+        timeAttendanceDao.updateAttendanceRecord(existing.copy(breakStart = now))
+    }
+
+    suspend fun recordBreakEnd(recordId: Int) = withContext(Dispatchers.IO) {
+        val allSync = timeAttendanceDao.getAllAttendanceRecordsSync()
+        val existing = allSync.firstOrNull { it.id == recordId } ?: return@withContext
+        val now = System.currentTimeMillis()
+        val breakStart = existing.breakStart ?: now
+        val addedMinutes = ((now - breakStart) / 60000L).coerceAtLeast(1L)
+        val updated = existing.copy(
+            breakStart = null,
+            breakEnd = now,
+            totalBreakMinutes = existing.totalBreakMinutes + addedMinutes
+        )
+        timeAttendanceDao.updateAttendanceRecord(updated)
+    }
+
+    suspend fun updateStaffPayrollConfig(
+        username: String,
+        rateTier: String,
+        baseRate: Double,
+        shiftStartHour: Int,
+        shiftStartMinute: Int
+    ) = withContext(Dispatchers.IO) {
+        val user = userDao.getUserSync(username)
+        if (user != null) {
+            userDao.insertUser(
+                user.copy(
+                    rateTier = rateTier,
+                    baseRate = roundMoney(baseRate),
+                    shiftStartHour = shiftStartHour,
+                    shiftStartMinute = shiftStartMinute
+                )
+            )
+        }
+    }
+
+    // =========================================================================
+    // Phase 2: Shift Handover & Dual Drawer/Wallet Reconciliation
+    // =========================================================================
+
+    val allShiftReconciliations: Flow<List<ShiftReconciliation>> = shiftReconciliationDao.getAllReconciliations()
+
+    suspend fun getShiftReconciliation(sessionId: Int): ShiftReconciliation? = withContext(Dispatchers.IO) {
+        shiftReconciliationDao.getReconciliationBySessionId(sessionId)
+    }
+
+    suspend fun reconcileAndCloseShift(
+        reconciliation: ShiftReconciliation,
+        endingCash: Double,
+        endingGCash: Double? = null,
+        endingSmartLoad: Double? = null,
+        endingGlobeLoad: Double? = null
+    ) = withContext(Dispatchers.IO) {
+        db.withTransaction {
+            shiftReconciliationDao.insertReconciliation(reconciliation)
+
+            val normEndingCash = roundMoney(endingCash)
+            val activeSession = cashierSessionDao.getActiveSessionSync()
+            if (activeSession != null) {
+                cashierSessionDao.updateSession(
+                    activeSession.copy(
+                        endTime = reconciliation.timestamp,
+                        endingCash = normEndingCash,
+                        status = "CLOSED"
+                    )
+                )
+            }
+
+            val currentConfig = storeConfigDao.getStoreConfigSync()
+            if (currentConfig != null) {
+                var updated = currentConfig
+
+                if (endingGCash != null) {
+                    val normGCash = roundMoney(endingGCash)
+                    val delta = roundMoney(normGCash - currentConfig.gcashBalance)
+                    if (Math.abs(delta) >= 0.01) {
+                        walletLedgerDao.insertWalletEntryBlocking(
+                            WalletLedgerEntry(
+                                walletType = WalletType.GCASH,
+                                timestamp = reconciliation.timestamp,
+                                actorUsername = reconciliation.cashierUsername,
+                                type = WalletEntryType.RECONCILE,
+                                delta = delta,
+                                balanceAfter = normGCash,
+                                reference = "Shift-Close-SES-${reconciliation.sessionId}",
+                                notes = reconciliation.discrepancyReason.ifBlank { "Shift Handover GCash Reconciliation" }
+                            )
+                        )
+                    }
+                    updated = updated.copy(gcashBalance = normGCash)
+                }
+
+                if (endingSmartLoad != null) {
+                    val normSmart = roundMoney(endingSmartLoad)
+                    val delta = roundMoney(normSmart - currentConfig.smartLoadBalance)
+                    if (Math.abs(delta) >= 0.01) {
+                        walletLedgerDao.insertWalletEntryBlocking(
+                            WalletLedgerEntry(
+                                walletType = WalletType.SMART,
+                                timestamp = reconciliation.timestamp,
+                                actorUsername = reconciliation.cashierUsername,
+                                type = WalletEntryType.RECONCILE,
+                                delta = delta,
+                                balanceAfter = normSmart,
+                                reference = "Shift-Close-SES-${reconciliation.sessionId}",
+                                notes = reconciliation.discrepancyReason.ifBlank { "Shift Handover Smart Load Reconciliation" }
+                            )
+                        )
+                    }
+                    updated = updated.copy(smartLoadBalance = normSmart)
+                }
+
+                if (endingGlobeLoad != null) {
+                    val normGlobe = roundMoney(endingGlobeLoad)
+                    val delta = roundMoney(normGlobe - currentConfig.globeLoadBalance)
+                    if (Math.abs(delta) >= 0.01) {
+                        walletLedgerDao.insertWalletEntryBlocking(
+                            WalletLedgerEntry(
+                                walletType = WalletType.GLOBE,
+                                timestamp = reconciliation.timestamp,
+                                actorUsername = reconciliation.cashierUsername,
+                                type = WalletEntryType.RECONCILE,
+                                delta = delta,
+                                balanceAfter = normGlobe,
+                                reference = "Shift-Close-SES-${reconciliation.sessionId}",
+                                notes = reconciliation.discrepancyReason.ifBlank { "Shift Handover Globe Load Reconciliation" }
+                            )
+                        )
+                    }
+                    updated = updated.copy(globeLoadBalance = normGlobe)
+                }
+
+                if (updated != currentConfig) {
+                    storeConfigDao.insertStoreConfigBlocking(updated)
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Phase 3: Bulk-to-Retail Repackaging & Production (BOM Engine)
+    // =========================================================================
+
+    val allProductionRuns: Flow<List<ProductionLogEntity>> = productionDao.getAllProductionRuns()
+
+    suspend fun getAllProductionRunsSync(): List<ProductionLogEntity> = withContext(Dispatchers.IO) {
+        productionDao.getAllProductionRunsSync()
+    }
+
+    val allBOMs: Flow<List<BillOfMaterials>> = productionDao.getAllBOMs()
+
+    suspend fun getBOMsForRawProduct(rawId: Int): List<BillOfMaterials> = withContext(Dispatchers.IO) {
+        productionDao.getBOMsForRawProduct(rawId)
+    }
+
+    suspend fun saveBOM(bom: BillOfMaterials): Long = withContext(Dispatchers.IO) {
+        productionDao.insertBOM(bom)
+    }
+
+    suspend fun deleteBOM(id: Int) = withContext(Dispatchers.IO) {
+        productionDao.deleteBOM(id)
+    }
+
+    val allInventoryMovements: Flow<List<InventoryMovementEntity>> = inventoryMovementDao.getAllMovements()
+
+    suspend fun getInventoryMovementsForProduct(productId: Int): List<InventoryMovementEntity> = withContext(Dispatchers.IO) {
+        inventoryMovementDao.getMovementsForProductSync(productId)
+    }
+
+    /**
+     * Executes atomic Bulk-to-Retail stock transformation / repackaging within an isolated Room transaction:
+     * 1. Validates available raw material stock.
+     * 2. Decrements raw stock and writes immutable InventoryMovementEntity.
+     * 3. Increments retail target SKU stock, updates derived unit cost, and writes InventoryMovementEntity.
+     * 4. Updates target retail selling price if customized.
+     * 5. Records ProductionLogEntity.
+     * 6. Optionally saves/updates BillOfMaterials recipe.
+     */
+    suspend fun executeProductionRunAtomic(
+        productionRun: ProductionLogEntity,
+        saveAsBom: Boolean = false
+    ): ProductionLogEntity = withContext(Dispatchers.IO) {
+        var savedRunId = 0L
+        db.withTransaction {
+            val rawStockCurrent = queryStock(productionRun.rawMaterialProductId)
+            val rawQtyInt = productionRun.rawMaterialQtyUsed.toInt()
+
+            if (rawStockCurrent < rawQtyInt) {
+                throw IllegalStateException("Insufficient raw material stock: Available $rawStockCurrent, required $rawQtyInt.")
+            }
+
+            val rawStockAfter = rawStockCurrent - rawQtyInt
+            db.openHelper.writableDatabase.execSQL(
+                "UPDATE products SET stockCount = ? WHERE id = ?",
+                arrayOf<Any?>(rawStockAfter, productionRun.rawMaterialProductId)
+            )
+
+            // Audit movement: raw decrement
+            inventoryMovementDao.insertMovementBlocking(
+                InventoryMovementEntity(
+                    productId = productionRun.rawMaterialProductId,
+                    productName = productionRun.rawMaterialName,
+                    timestamp = productionRun.timestamp,
+                    actorUsername = productionRun.operatorUsername,
+                    movementType = "REPACK_RAW_DECREMENT",
+                    quantityDelta = -productionRun.rawMaterialQtyUsed,
+                    stockBefore = rawStockCurrent,
+                    stockAfter = rawStockAfter,
+                    reference = productionRun.productionCode,
+                    notes = "Consumed in repackaging run ${productionRun.productionCode}"
+                )
+            )
+
+            val targetStockCurrent = queryStock(productionRun.targetRetailProductId)
+            val producedQtyInt = productionRun.targetRetailQtyProduced.toInt()
+            val targetStockAfter = targetStockCurrent + producedQtyInt
+
+            db.openHelper.writableDatabase.execSQL(
+                "UPDATE products SET stockCount = ?, cost = ? WHERE id = ?",
+                arrayOf<Any?>(targetStockAfter, productionRun.derivedRetailUnitCost, productionRun.targetRetailProductId)
+            )
+
+            if (productionRun.retailSellingPrice > 0.0) {
+                db.openHelper.writableDatabase.execSQL(
+                    "UPDATE products SET price = ? WHERE id = ?",
+                    arrayOf<Any?>(productionRun.retailSellingPrice, productionRun.targetRetailProductId)
+                )
+            }
+
+            // Audit movement: produced increment
+            inventoryMovementDao.insertMovementBlocking(
+                InventoryMovementEntity(
+                    productId = productionRun.targetRetailProductId,
+                    productName = productionRun.targetRetailProductName,
+                    timestamp = productionRun.timestamp,
+                    actorUsername = productionRun.operatorUsername,
+                    movementType = "REPACK_PRODUCED_INCREMENT",
+                    quantityDelta = productionRun.targetRetailQtyProduced,
+                    stockBefore = targetStockCurrent,
+                    stockAfter = targetStockAfter,
+                    reference = productionRun.productionCode,
+                    notes = "Produced from ${productionRun.rawMaterialName} (waste loss: ${productionRun.wasteLossQty})"
+                )
+            )
+
+            savedRunId = productionDao.insertProductionRunBlocking(productionRun)
+
+            if (saveAsBom) {
+                val existingBom = productionDao.getBOMForPair(
+                    productionRun.rawMaterialProductId,
+                    productionRun.targetRetailProductId
+                )
+                val wastePct = if (productionRun.targetRetailQtyProduced > 0) {
+                    (productionRun.wasteLossQty / (productionRun.targetRetailQtyProduced + productionRun.wasteLossQty)) * 100.0
+                } else 0.0
+
+                val bomToSave = existingBom?.copy(
+                    rawQuantityNeeded = productionRun.rawMaterialQtyUsed,
+                    producedRetailYield = productionRun.targetRetailQtyProduced,
+                    wasteLossPercentage = wastePct,
+                    notes = "Saved from production run ${productionRun.productionCode}"
+                ) ?: BillOfMaterials(
+                    rawMaterialProductId = productionRun.rawMaterialProductId,
+                    targetRetailProductId = productionRun.targetRetailProductId,
+                    rawQuantityNeeded = productionRun.rawMaterialQtyUsed,
+                    producedRetailYield = productionRun.targetRetailQtyProduced,
+                    wasteLossPercentage = wastePct,
+                    notes = "Saved from production run ${productionRun.productionCode}"
+                )
+                productionDao.insertBOMBlocking(bomToSave)
+            }
+        }
+        productionRun.copy(id = savedRunId.toInt())
+    }
 }

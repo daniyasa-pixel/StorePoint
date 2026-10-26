@@ -52,6 +52,7 @@ fun InventoryPortalScreen(
 
     val curr = storeConfig?.currencySymbol ?: "₱"
     var selectedPortalTab by remember { mutableStateOf(0) } // 0: Price Checker, 1: Stocktake Audit, 2: Quick Share
+    var showBulkProductionDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -102,6 +103,22 @@ fun InventoryPortalScreen(
                     val showLabels = widthClass != ExpressiveWidthClass.COMPACT
 
                     if (showLabels) {
+                        // Bulk Repackaging / BOM Production Dialog
+                        FilledTonalButton(
+                            onClick = { showBulkProductionDialog = true },
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.testTag("portal_bulk_production_btn")
+                        ) {
+                            Icon(Icons.Default.PrecisionManufacturing, contentDescription = "Repackage / BOM", modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Repackage / BOM", style = MaterialTheme.typography.labelLarge)
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
                         // Quick Share Action Button in TopBar (wide layouts)
                         FilledTonalButton(
                             onClick = { viewModel.shareInventoryViaQuickShare(context) },
@@ -117,6 +134,15 @@ fun InventoryPortalScreen(
                         }
                     } else {
                         // Compact layouts: icon-only to avoid a cramped/clipped app bar
+                        FilledTonalIconButton(
+                            onClick = { showBulkProductionDialog = true },
+                            modifier = Modifier.size(40.dp).testTag("portal_bulk_production_btn")
+                        ) {
+                            Icon(Icons.Default.PrecisionManufacturing, contentDescription = "Repackage / BOM", modifier = Modifier.size(18.dp))
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
                         FilledTonalIconButton(
                             onClick = { viewModel.shareInventoryViaQuickShare(context) },
                             modifier = Modifier.size(40.dp).testTag("portal_quick_share_btn")
@@ -262,6 +288,13 @@ fun InventoryPortalScreen(
             }
         }
         }
+    }
+
+    if (showBulkProductionDialog) {
+        BulkProductionDialog(
+            viewModel = viewModel,
+            onDismiss = { showBulkProductionDialog = false }
+        )
     }
 }
 

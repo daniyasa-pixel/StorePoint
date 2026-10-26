@@ -562,4 +562,138 @@ object PdfExportUtil {
             }
         }
     }
+
+    /**
+     * Generates a printable Staff Attendance & Payroll Ledger PDF report.
+     */
+    fun exportPayrollLedgerPdf(
+        context: Context,
+        storeConfig: StoreConfig,
+        records: List<com.munzo.storepoint.data.TimeAttendanceRecord>,
+        periodTitle: String = "All Records"
+    ) {
+        val document = PdfDocument()
+        try {
+            val width = 595 // Standard A4 portrait width in points
+            val height = 842 // Standard A4 portrait height in points
+            val pageInfo = PdfDocument.PageInfo.Builder(width, height, 1).create()
+            val page = document.startPage(pageInfo)
+            val canvas: Canvas = page.canvas
+
+            val paintTitle = Paint().apply {
+                color = Color.BLACK
+                textSize = 16f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+            }
+            val paintSub = Paint().apply {
+                color = Color.DKGRAY
+                textSize = 10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                textAlign = Paint.Align.CENTER
+            }
+            val paintHeader = Paint().apply {
+                color = Color.BLACK
+                textSize = 9f
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            }
+            val paintRow = Paint().apply {
+                color = Color.rgb(30, 41, 59)
+                textSize = 8.5f
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+            }
+            val paintLine = Paint().apply {
+                color = Color.LTGRAY
+                strokeWidth = 1f
+            }
+
+            var y = 40f
+            val centerX = width / 2f
+            canvas.drawText(storeConfig.storeName.uppercase(), centerX, y, paintTitle)
+            y += 18f
+            canvas.drawText("STAFF TIME ATTENDANCE & PAYROLL SUMMARY", centerX, y, paintHeader)
+            y += 14f
+            canvas.drawText("Reporting Period: $periodTitle | Generated: ${formatDate(Date())}", centerX, y, paintSub)
+            y += 20f
+
+            // Table Header Bar
+            val headerBg = Paint().apply { color = Color.rgb(241, 245, 249) }
+            canvas.drawRect(20f, y, (width - 20).toFloat(), y + 22f, headerBg)
+            y += 15f
+
+            val curr = storeConfig.currencySymbol
+            canvas.drawText("STAFF", 25f, y, paintHeader)
+            canvas.drawText("TIER / RATE", 110f, y, paintHeader)
+            canvas.drawText("HOURS (REG/OT)", 220f, y, paintHeader)
+            canvas.drawText("LATE", 330f, y, paintHeader)
+            canvas.drawText("GROSS ($curr)", 380f, y, paintHeader)
+            canvas.drawText("DEDUCT ($curr)", 450f, y, paintHeader)
+            canvas.drawText("NET PAY ($curr)", 515f, y, paintHeader)
+            y += 12f
+
+            var totalGross = 0.0
+            var totalDeductions = 0.0
+            var totalNet = 0.0
+
+            for (rec in records) {
+                if (y > height - 100f) break // Bound to single summary page
+
+                val duration = TimeTrackingAndPayrollHelper.computePayableAndOvertimeHours(
+                    timeIn = rec.timeIn,
+                    timeOut = rec.timeOut ?: rec.timeIn,
+                    breakMinutes = rec.totalBreakMinutes,
+                    standardShiftHours = rec.scheduledShiftHours
+                )
+
+                canvas.drawText(rec.username.take(12), 25f, y, paintRow)
+                canvas.drawText("${rec.rateTier.take(4)} @ ${String.format(Locale.US, "%.0f", rec.baseRate)}", 110f, y, paintRow)
+                canvas.drawText("${String.format(Locale.US, "%.1f", duration.regularHours)}h / ${String.format(Locale.US, "%.1f", duration.overtimeHours)}h", 220f, y, paintRow)
+                canvas.drawText("${rec.tardinessMinutes}m", 330f, y, paintRow)
+                canvas.drawText(String.format(Locale.US, "%.2f", rec.grossPay), 380f, y, paintRow)
+                canvas.drawText(String.format(Locale.US, "%.2f", rec.deductions), 450f, y, paintRow)
+                canvas.drawText(String.format(Locale.US, "%.2f", rec.netPay), 515f, y, paintRow)
+
+                totalGross += rec.grossPay
+                totalDeductions += rec.deductions
+                totalNet += rec.netPay
+
+                y += 6f
+                canvas.drawLine(20f, y, (width - 20).toFloat(), y, paintLine)
+                y += 12f
+            }
+
+            // Summary Totals
+            y += 8f
+            canvas.drawLine(20f, y, (width - 20).toFloat(), y, paintHeader)
+            y += 15f
+            canvas.drawText("TOTAL PAYROLL ACCUMULATION:", 200f, y, paintHeader)
+            canvas.drawText(String.format(Locale.US, "%.2f", totalGross), 380f, y, paintHeader)
+            canvas.drawText(String.format(Locale.US, "%.2f", totalDeductions), 450f, y, paintHeader)
+            canvas.drawText(String.format(Locale.US, "%.2f", totalNet), 515f, y, paintHeader)
+
+            // Signatures block
+            y = height - 60f
+            canvas.drawLine(30f, y, 180f, y, paintLine)
+            canvas.drawLine(width - 180f, y, width - 30f, y, paintLine)
+            y += 12f
+            canvas.drawText("Prepared by (Admin / Supervisor)", 30f, y, paintSub)
+            canvas.drawText("Approved by (Store Owner)", width - 180f, y, paintSub)
+
+            document.finishPage(page)
+
+            val file = File(context.cacheDir, "storepoint_payroll_ledger_${System.currentTimeMillis()}.pdf")
+            FileOutputStream(file).use { fos ->
+                document.writeTo(fos)
+            }
+            shareFile(context, file)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to export Payroll PDF: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        } finally {
+            try {
+                document.close()
+            } catch (e: Exception) {
+                android.util.Log.e("PdfExportUtil", "Error closing PdfDocument", e)
+            }
+        }
+    }
 }
