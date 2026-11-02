@@ -43,12 +43,7 @@ data class User(
      * choose a 4-digit PIN before it can be used for a normal sign-in. The flag is
      * set during the 13->14 migration and cleared once the user resets.
      */
-    val pinResetRequired: Boolean = false,
-    val rateTier: String = "HOURLY", // "HOURLY", "DAILY", "MONTHLY"
-    val baseRate: Double = 0.0,
-    val shiftStartHour: Int = 8,
-    val shiftStartMinute: Int = 0,
-    val faceEnrolled: Boolean = false
+    val pinResetRequired: Boolean = false
 ) {
     val passwordHash: String get() = pinHash
 }
@@ -533,71 +528,8 @@ data class ParkedTransactionWithItems(
 )
 
 // =========================================================================
-// Phase 1, 2, 3 Subsystem Entities (v17 Evolution)
+// Shift Reconciliation & Production BOM Subsystems (v17 Evolution)
 // =========================================================================
-
-@Entity(
-    tableName = "staff_face_credentials",
-    foreignKeys = [
-        ForeignKey(
-            entity = User::class,
-            parentColumns = ["username"],
-            childColumns = ["username"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [
-        Index(value = ["username"])
-    ]
-)
-data class StaffFaceCredential(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val username: String,
-    val faceTemplateHash: String,
-    val registeredAt: Long,
-    val modelFingerprint: String = "MLKit-Face-v1",
-    val isActive: Boolean = true,
-    val antiSpoofingProfile: String = "BLINK_AND_HEAD_POSE",
-    val faceLandmarkPoints: String = "" // Quantized vector / normalized metrics
-)
-
-@Entity(
-    tableName = "time_attendance_records",
-    foreignKeys = [
-        ForeignKey(
-            entity = User::class,
-            parentColumns = ["username"],
-            childColumns = ["username"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [
-        Index(value = ["username"]),
-        Index(value = ["timeIn"])
-    ]
-)
-data class TimeAttendanceRecord(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val username: String,
-    val timeIn: Long,
-    val timeOut: Long? = null,
-    val breakStart: Long? = null,
-    val breakEnd: Long? = null,
-    val totalBreakMinutes: Long = 0L,
-    val authMethod: String = "FACE", // "FACE", "PIN", "FALLBACK_PIN"
-    val status: String = "ACTIVE", // "ACTIVE", "COMPLETED"
-    val scheduledShiftHours: Double = 8.0,
-    val tardinessMinutes: Long = 0L,
-    val overtimeMinutes: Long = 0L,
-    val rateTier: String = "HOURLY", // "HOURLY", "DAILY", "MONTHLY"
-    val baseRate: Double = 0.0,
-    val grossPay: Double = 0.0,
-    val deductions: Double = 0.0,
-    val netPay: Double = 0.0,
-    val notes: String = ""
-)
-
-typealias StaffShiftLogEntity = TimeAttendanceRecord
 
 @Entity(
     tableName = "shift_reconciliations",

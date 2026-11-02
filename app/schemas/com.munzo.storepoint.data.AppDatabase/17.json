@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 17,
-    "identityHash": "72c845b77e0264f3ccce88fe28bd4e08",
+    "identityHash": "3ab23f007b1c6c8dd544cacc932fcf73",
     "entities": [
       {
         "tableName": "store_config",
@@ -108,7 +108,7 @@
       },
       {
         "tableName": "user_accounts",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`username` TEXT NOT NULL, `pinHash` TEXT NOT NULL, `role` TEXT NOT NULL, `barcodeId` TEXT NOT NULL, `biometricEnrolled` INTEGER NOT NULL, `pinResetRequired` INTEGER NOT NULL, `rateTier` TEXT NOT NULL, `baseRate` REAL NOT NULL, `shiftStartHour` INTEGER NOT NULL, `shiftStartMinute` INTEGER NOT NULL, `faceEnrolled` INTEGER NOT NULL, PRIMARY KEY(`username`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`username` TEXT NOT NULL, `pinHash` TEXT NOT NULL, `role` TEXT NOT NULL, `barcodeId` TEXT NOT NULL, `biometricEnrolled` INTEGER NOT NULL, `pinResetRequired` INTEGER NOT NULL, PRIMARY KEY(`username`))",
         "fields": [
           {
             "fieldPath": "username",
@@ -143,36 +143,6 @@
           {
             "fieldPath": "pinResetRequired",
             "columnName": "pinResetRequired",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "rateTier",
-            "columnName": "rateTier",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "baseRate",
-            "columnName": "baseRate",
-            "affinity": "REAL",
-            "notNull": true
-          },
-          {
-            "fieldPath": "shiftStartHour",
-            "columnName": "shiftStartHour",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "shiftStartMinute",
-            "columnName": "shiftStartMinute",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "faceEnrolled",
-            "columnName": "faceEnrolled",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -1565,240 +1535,6 @@
         ]
       },
       {
-        "tableName": "staff_face_credentials",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `username` TEXT NOT NULL, `faceTemplateHash` TEXT NOT NULL, `registeredAt` INTEGER NOT NULL, `modelFingerprint` TEXT NOT NULL, `isActive` INTEGER NOT NULL, `antiSpoofingProfile` TEXT NOT NULL, `faceLandmarkPoints` TEXT NOT NULL, FOREIGN KEY(`username`) REFERENCES `user_accounts`(`username`) ON UPDATE NO ACTION ON DELETE CASCADE )",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "username",
-            "columnName": "username",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "faceTemplateHash",
-            "columnName": "faceTemplateHash",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "registeredAt",
-            "columnName": "registeredAt",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "modelFingerprint",
-            "columnName": "modelFingerprint",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "isActive",
-            "columnName": "isActive",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "antiSpoofingProfile",
-            "columnName": "antiSpoofingProfile",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "faceLandmarkPoints",
-            "columnName": "faceLandmarkPoints",
-            "affinity": "TEXT",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": true,
-          "columnNames": [
-            "id"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_staff_face_credentials_username",
-            "unique": false,
-            "columnNames": [
-              "username"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_staff_face_credentials_username` ON `${TABLE_NAME}` (`username`)"
-          }
-        ],
-        "foreignKeys": [
-          {
-            "table": "user_accounts",
-            "onDelete": "CASCADE",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "username"
-            ],
-            "referencedColumns": [
-              "username"
-            ]
-          }
-        ]
-      },
-      {
-        "tableName": "time_attendance_records",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `username` TEXT NOT NULL, `timeIn` INTEGER NOT NULL, `timeOut` INTEGER, `breakStart` INTEGER, `breakEnd` INTEGER, `totalBreakMinutes` INTEGER NOT NULL, `authMethod` TEXT NOT NULL, `status` TEXT NOT NULL, `scheduledShiftHours` REAL NOT NULL, `tardinessMinutes` INTEGER NOT NULL, `overtimeMinutes` INTEGER NOT NULL, `rateTier` TEXT NOT NULL, `baseRate` REAL NOT NULL, `grossPay` REAL NOT NULL, `deductions` REAL NOT NULL, `netPay` REAL NOT NULL, `notes` TEXT NOT NULL, FOREIGN KEY(`username`) REFERENCES `user_accounts`(`username`) ON UPDATE NO ACTION ON DELETE CASCADE )",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "username",
-            "columnName": "username",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "timeIn",
-            "columnName": "timeIn",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "timeOut",
-            "columnName": "timeOut",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "breakStart",
-            "columnName": "breakStart",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "breakEnd",
-            "columnName": "breakEnd",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "totalBreakMinutes",
-            "columnName": "totalBreakMinutes",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "authMethod",
-            "columnName": "authMethod",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "status",
-            "columnName": "status",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "scheduledShiftHours",
-            "columnName": "scheduledShiftHours",
-            "affinity": "REAL",
-            "notNull": true
-          },
-          {
-            "fieldPath": "tardinessMinutes",
-            "columnName": "tardinessMinutes",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "overtimeMinutes",
-            "columnName": "overtimeMinutes",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "rateTier",
-            "columnName": "rateTier",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "baseRate",
-            "columnName": "baseRate",
-            "affinity": "REAL",
-            "notNull": true
-          },
-          {
-            "fieldPath": "grossPay",
-            "columnName": "grossPay",
-            "affinity": "REAL",
-            "notNull": true
-          },
-          {
-            "fieldPath": "deductions",
-            "columnName": "deductions",
-            "affinity": "REAL",
-            "notNull": true
-          },
-          {
-            "fieldPath": "netPay",
-            "columnName": "netPay",
-            "affinity": "REAL",
-            "notNull": true
-          },
-          {
-            "fieldPath": "notes",
-            "columnName": "notes",
-            "affinity": "TEXT",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": true,
-          "columnNames": [
-            "id"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_time_attendance_records_username",
-            "unique": false,
-            "columnNames": [
-              "username"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_time_attendance_records_username` ON `${TABLE_NAME}` (`username`)"
-          },
-          {
-            "name": "index_time_attendance_records_timeIn",
-            "unique": false,
-            "columnNames": [
-              "timeIn"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_time_attendance_records_timeIn` ON `${TABLE_NAME}` (`timeIn`)"
-          }
-        ],
-        "foreignKeys": [
-          {
-            "table": "user_accounts",
-            "onDelete": "CASCADE",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "username"
-            ],
-            "referencedColumns": [
-              "username"
-            ]
-          }
-        ]
-      },
-      {
         "tableName": "shift_reconciliations",
         "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sessionId` INTEGER NOT NULL, `cashierUsername` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `count1000` INTEGER NOT NULL, `count500` INTEGER NOT NULL, `count200` INTEGER NOT NULL, `count100` INTEGER NOT NULL, `count50` INTEGER NOT NULL, `count20` INTEGER NOT NULL, `countCoins` REAL NOT NULL, `totalCountedCash` REAL NOT NULL, `expectedCash` REAL NOT NULL, `cashVariance` REAL NOT NULL, `countedGCash` REAL NOT NULL, `expectedGCash` REAL NOT NULL, `gcashVariance` REAL NOT NULL, `countedSmartLoad` REAL NOT NULL, `expectedSmartLoad` REAL NOT NULL, `smartLoadVariance` REAL NOT NULL, `countedGlobeLoad` REAL NOT NULL, `expectedGlobeLoad` REAL NOT NULL, `globeLoadVariance` REAL NOT NULL, `hasDiscrepancy` INTEGER NOT NULL, `managerOverrideApproved` INTEGER NOT NULL, `managerUsername` TEXT NOT NULL, `discrepancyReason` TEXT NOT NULL, `receiptPrinted` INTEGER NOT NULL, FOREIGN KEY(`sessionId`) REFERENCES `cashier_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
@@ -2350,7 +2086,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '72c845b77e0264f3ccce88fe28bd4e08')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3ab23f007b1c6c8dd544cacc932fcf73')"
     ]
   }
 }

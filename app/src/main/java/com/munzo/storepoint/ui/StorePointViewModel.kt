@@ -79,12 +79,6 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
     val allPurchaseOrders: StateFlow<List<PurchaseOrder>> = repository.allPurchaseOrders
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allActiveFaceCredentials: StateFlow<List<StaffFaceCredential>> = repository.allActiveFaceCredentials
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val allAttendanceRecords: StateFlow<List<TimeAttendanceRecord>> = repository.allAttendanceRecords
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     val allShiftReconciliations: StateFlow<List<ShiftReconciliation>> = repository.allShiftReconciliations
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

@@ -407,51 +407,6 @@ interface PurchaseOrderDao {
 }
 
 @Dao
-interface StaffFaceCredentialDao {
-    @Query("SELECT * FROM staff_face_credentials WHERE username = :username AND isActive = 1 LIMIT 1")
-    suspend fun getCredentialForUser(username: String): StaffFaceCredential?
-
-    @Query("SELECT * FROM staff_face_credentials WHERE isActive = 1")
-    fun getAllActiveCredentials(): Flow<List<StaffFaceCredential>>
-
-    @Query("SELECT * FROM staff_face_credentials WHERE isActive = 1")
-    suspend fun getAllActiveCredentialsSync(): List<StaffFaceCredential>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCredential(credential: StaffFaceCredential): Long
-
-    @Query("UPDATE staff_face_credentials SET isActive = 0 WHERE username = :username")
-    suspend fun deactivateCredentialForUser(username: String)
-
-    @Query("DELETE FROM staff_face_credentials WHERE username = :username")
-    suspend fun deleteCredentialForUser(username: String)
-}
-
-@Dao
-interface TimeAttendanceDao {
-    @Query("SELECT * FROM time_attendance_records ORDER BY timeIn DESC")
-    fun getAllAttendanceRecords(): Flow<List<TimeAttendanceRecord>>
-
-    @Query("SELECT * FROM time_attendance_records ORDER BY timeIn DESC")
-    suspend fun getAllAttendanceRecordsSync(): List<TimeAttendanceRecord>
-
-    @Query("SELECT * FROM time_attendance_records WHERE username = :username ORDER BY timeIn DESC")
-    fun getAttendanceForUser(username: String): Flow<List<TimeAttendanceRecord>>
-
-    @Query("SELECT * FROM time_attendance_records WHERE username = :username AND status = 'ACTIVE' ORDER BY timeIn DESC LIMIT 1")
-    suspend fun getActiveAttendanceForUser(username: String): TimeAttendanceRecord?
-
-    @Query("SELECT * FROM time_attendance_records WHERE timeIn BETWEEN :from AND :to ORDER BY timeIn DESC")
-    suspend fun getRecordsBetweenSync(from: Long, to: Long): List<TimeAttendanceRecord>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAttendanceRecord(record: TimeAttendanceRecord): Long
-
-    @Update
-    suspend fun updateAttendanceRecord(record: TimeAttendanceRecord)
-}
-
-@Dao
 interface ShiftReconciliationDao {
     @Query("SELECT * FROM shift_reconciliations ORDER BY timestamp DESC")
     fun getAllReconciliations(): Flow<List<ShiftReconciliation>>

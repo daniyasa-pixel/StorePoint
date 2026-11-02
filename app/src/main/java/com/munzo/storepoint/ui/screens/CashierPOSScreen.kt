@@ -124,7 +124,6 @@ fun CashierPOSScreen(
     // Dialog flags
     var showShiftStartDialog by remember { mutableStateOf(false) }
     var showShiftCloseDialog by remember { mutableStateOf(false) }
-    var showAttendanceDialog by remember { mutableStateOf(false) }
     var showPaymentDialog by remember { mutableStateOf(false) }
     var showParkDialog by remember { mutableStateOf(false) }
     var showParkedTxDialog by remember { mutableStateOf(false) }
@@ -588,18 +587,6 @@ fun CashierPOSScreen(
                             showReturnRefundDialog = true
                         },
                         modifier = Modifier.testTag("drawer_returns_refunds")
-                    )
-
-                    // Staff Attendance Clock Launcher
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.AccessTime, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                        label = { Text("Staff Attendance Clock", fontWeight = FontWeight.SemiBold) },
-                        selected = false,
-                        onClick = {
-                            coroutineScope.launch { drawerState.close() }
-                            showAttendanceDialog = true
-                        },
-                        modifier = Modifier.testTag("drawer_staff_attendance")
                     )
 
                     // Call Admin / Supervisor Assistance Request (Cashiers only, strictly hidden on admin accounts)
@@ -2078,14 +2065,6 @@ fun CashierPOSScreen(
             } else {
                 showShiftCloseDialog = false
             }
-        }
-
-        // Staff Attendance Clock Dialog
-        if (showAttendanceDialog) {
-            StaffAttendanceDialog(
-                viewModel = viewModel,
-                onDismiss = { showAttendanceDialog = false }
-            )
         }
 
         // 3) Barcode scanner camera view

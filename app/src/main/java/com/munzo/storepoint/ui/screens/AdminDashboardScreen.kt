@@ -98,14 +98,12 @@ fun AdminDashboardScreen(
     var showUserDialog by remember { mutableStateOf(false) }
     var editingUser by remember { mutableStateOf<User?>(null) }
     var showBulkProductionDialog by remember { mutableStateOf(false) }
-    var userToEnrollFace by remember { mutableStateOf<User?>(null) }
 
     val curr = storeConfig?.currencySymbol ?: "$"
 
     val tabs = listOf(
         Triple("analytics", "Analytics", Icons.Default.Assessment),
         Triple("products", "Catalog Inventory", Icons.Default.Inventory),
-        Triple("attendance", "Time & Payroll", Icons.Default.AccessTime),
         Triple("suppliers", "Suppliers & POs", Icons.Default.LocalShipping),
         Triple("categories", "Categories", Icons.Default.Category),
         Triple("users", "Staff Accounts", Icons.Default.People),
@@ -301,7 +299,6 @@ fun AdminDashboardScreen(
                     }, onVariantsClick = {
                         productForVariants = it
                     }, viewModel = viewModel)
-                    "attendance" -> AdminAttendanceTab(viewModel = viewModel)
                     "suppliers" -> SuppliersAndPurchasesTab(viewModel = viewModel)
                     "categories" -> CategoriesTab(categories, onDelete = { id ->
                         val item = categories.find { it.id == id }
@@ -335,9 +332,6 @@ fun AdminDashboardScreen(
                                 role = usr.role,
                                 barcodeId = usr.barcodeId
                             )
-                        },
-                        onEnrollFace = { usr ->
-                            userToEnrollFace = usr
                         }
                     )
                     "calendar" -> CalendarTab(viewModel = viewModel)
@@ -785,15 +779,6 @@ fun AdminDashboardScreen(
             BulkProductionDialog(
                 viewModel = viewModel,
                 onDismiss = { showBulkProductionDialog = false }
-            )
-        }
-
-        userToEnrollFace?.let { usr ->
-            StaffFaceRegistrationDialog(
-                user = usr,
-                viewModel = viewModel,
-                onDismiss = { userToEnrollFace = null },
-                onEnrolled = { userToEnrollFace = null }
             )
         }
     }
