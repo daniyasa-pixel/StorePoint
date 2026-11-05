@@ -117,6 +117,55 @@ internal fun StorePointViewModel.inventoryShareViaQuickShareImpl(context: androi
     }
 }
 
+internal fun StorePointViewModel.inventoryGenerateStockSheetCsvImpl(): String {
+    val sb = StringBuilder()
+    sb.append("Product ID,Product Name,Category,Barcode,Stock Count,Base UOM,Cost Price,Retail Price,Status\n")
+    val cats = allCategories.value.associateBy { it.id }
+    for (prod in allProducts.value) {
+        val catName = cats[prod.categoryId]?.name ?: "Uncategorized"
+        val status = when {
+            prod.stockCount <= 0 -> "OUT OF STOCK"
+            prod.stockCount in 1..5 -> "LOW STOCK ALERT"
+            else -> "IN STOCK"
+        }
+        val safeName = "\"${prod.name.replace("\"", "\"\"")}\""
+        val safeCat = "\"${catName.replace("\"", "\"\"")}\""
+        val safeBarcode = "\"${prod.barcode.replace("\"", "\"\"")}\""
+        sb.append("${prod.id},$safeName,$safeCat,$safeBarcode,${prod.stockCount},${prod.baseUom},${String.format(java.util.Locale.US, "%.2f", prod.cost)},${String.format(java.util.Locale.US, "%.2f", prod.price)},$status\n")
+    }
+    return sb.toString()
+}
+
+internal fun StorePointViewModel.inventoryShareStockSheetCsvImpl(context: android.content.Context) {
+    try {
+        val csvData = inventoryGenerateStockSheetCsvImpl()
+        val fileName = "storepoint_stock_sheet_${System.currentTimeMillis()}.csv"
+        val file = java.io.File(context.cacheDir, fileName)
+        file.writeText(csvData)
+
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+
+        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            putExtra(android.content.Intent.EXTRA_SUBJECT, "StorePoint Stock Sheet")
+            putExtra(android.content.Intent.EXTRA_TEXT, "StorePoint Inventory Stocktake Sheet (CSV)")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        val chooser = android.content.Intent.createChooser(shareIntent, "Share Stock Sheet (CSV)")
+        chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooser)
+    } catch (e: Exception) {
+        android.util.Log.e("StorePointViewModel", "CSV share failed", e)
+        Toast.makeText(context, "Share Stock Sheet failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+    }
+}
+
 internal fun StorePointViewModel.inventoryImportJsonImpl(jsonStr: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
     inventoryImportPackageDetailedImpl(
         rawContent = jsonStr,
@@ -353,15 +402,60 @@ internal fun StorePointViewModel.inventoryRestockProductWithUomImpl(
             val newUnitCost = StorePointRepository.roundMoney(totalCost / baseUnitsAdded)
             repository.updateStockAndCost(product.id, newStock, newUnitCost)
             val costStr = "$currSymbol${String.format(java.util.Locale.getDefault(), "%.2f", newUnitCost)}"
+
+            repository.logInventoryMovement(
+                InventoryMovementEntity(
+                    productId = product.id,
+                    productName = product.name,
+                    timestamp = System.currentTimeMillis(),
+                    actorUsername = cashier,
+                    movementType = "RESTOCK",
+                    quantityDelta = baseUnitsAdded.toDouble(),
+                    stockBefore = product.stockCount,
+                    stockAfter = newStock,
+                    reference = "RESTOCK-${System.currentTimeMillis() % 100000}",
+                    notes = "Supplier restock payout: ${quantity}x (mult: ${multiplier}x). New COGS: $costStr"
+                )
+            )
             Toast.makeText(context, "Supplier paid from drawer! Received $baseUnitsAdded base units of ${product.name}! Updated unit cost to $costStr", Toast.LENGTH_LONG).show()
         } else {
+            val actor = activeUser.value?.username ?: "staff"
             if (totalCost != null && totalCost > 0.0) {
                 val newUnitCost = StorePointRepository.roundMoney(totalCost / baseUnitsAdded)
                 repository.updateStockAndCost(product.id, newStock, newUnitCost)
                 val costStr = "$currSymbol${String.format(java.util.Locale.getDefault(), "%.2f", newUnitCost)}"
+
+                repository.logInventoryMovement(
+                    InventoryMovementEntity(
+                        productId = product.id,
+                        productName = product.name,
+                        timestamp = System.currentTimeMillis(),
+                        actorUsername = actor,
+                        movementType = "RESTOCK",
+                        quantityDelta = baseUnitsAdded.toDouble(),
+                        stockBefore = product.stockCount,
+                        stockAfter = newStock,
+                        reference = "RESTOCK-${System.currentTimeMillis() % 100000}",
+                        notes = "Restocked ${quantity}x (mult: ${multiplier}x). New COGS: $costStr"
+                    )
+                )
                 Toast.makeText(context, "Received $baseUnitsAdded base units of ${product.name}! Updated unit cost to $costStr", Toast.LENGTH_LONG).show()
             } else {
                 repository.updateStock(product.id, newStock)
+                repository.logInventoryMovement(
+                    InventoryMovementEntity(
+                        productId = product.id,
+                        productName = product.name,
+                        timestamp = System.currentTimeMillis(),
+                        actorUsername = actor,
+                        movementType = "RESTOCK",
+                        quantityDelta = baseUnitsAdded.toDouble(),
+                        stockBefore = product.stockCount,
+                        stockAfter = newStock,
+                        reference = "RESTOCK-${System.currentTimeMillis() % 100000}",
+                        notes = "Restocked ${quantity}x (mult: ${multiplier}x)"
+                    )
+                )
                 Toast.makeText(context, "Received $baseUnitsAdded base units of ${product.name}!", Toast.LENGTH_LONG).show()
             }
         }
@@ -419,6 +513,13 @@ internal fun StorePointViewModel.inventorySaveProductVariantImpl(variant: Produc
 internal fun StorePointViewModel.inventoryDeleteProductVariantImpl(id: Int, onSuccess: () -> Unit = {}) {
     viewModelScope.launch {
         repository.deleteProductVariant(id)
+        onSuccess()
+    }
+}
+
+internal fun StorePointViewModel.inventoryUpdateVariantStockImpl(id: Int, newStock: Int, onSuccess: () -> Unit = {}) {
+    viewModelScope.launch {
+        repository.updateVariantStock(id, newStock)
         onSuccess()
     }
 }

@@ -72,11 +72,15 @@ internal fun StorePointViewModel.cartRemoveFromCartImpl(product: Product) {
     val uoms = _selectedCartUoms.value.toMutableMap()
     uoms.remove(product.id)
     _selectedCartUoms.value = uoms
+    val discounts = _cartItemDiscounts.value.toMutableMap()
+    discounts.remove(product.id)
+    _cartItemDiscounts.value = discounts
 }
 
 internal fun StorePointViewModel.cartClearCartImpl() {
     _cartMap.value = emptyMap()
     _selectedCartUoms.value = emptyMap()
+    _cartItemDiscounts.value = emptyMap()
     // An explicit clear discards the draft too, otherwise the autosave collector would
     // immediately re-persist the now-empty map as a "restorable" (but empty) basket.
     sessionCache.clearCartDraft()
@@ -262,7 +266,7 @@ internal fun StorePointViewModel.cartExecuteCheckoutImpl(
                 // Retailer load wallet cost has 2% rebate: e.g. load 20 costs retailer 19.60
                 val loadAmt = if (amt > 0.0) amt else (item.selectedPrice - parsedFee).coerceAtLeast(0.0)
                 val retailerWalletCost = StorePointRepository.roundMoney(loadAmt * 0.98)
-                val isSmart = prod.name.contains("Smart", ignoreCase = true) || prod.name.contains("TNT", ignoreCase = true)
+                val isSmart = prod.name.contains("Smart", ignoreCase = true) || prod.name.contains("TNT", ignoreCase = true) || prod.name.contains("DITO", ignoreCase = true)
                 if (isSmart) {
                     smartLoadDelta -= retailerWalletCost * qty
                 } else {

@@ -1,6 +1,10 @@
 package com.munzo.storepoint.ui
 
 import androidx.lifecycle.viewModelScope
+import com.munzo.storepoint.data.DrawerTransaction
+import com.munzo.storepoint.data.ReturnItem
+import com.munzo.storepoint.data.ReturnTransaction
+import com.munzo.storepoint.data.StorePointRepository
 import com.munzo.storepoint.data.Transaction
 import com.munzo.storepoint.data.TransactionItem
 import com.munzo.storepoint.util.EscPosHelper
@@ -170,7 +174,12 @@ internal fun StorePointViewModel.hardwarePrintReceiptImpl(
             items = items,
             is80mm = is80,
             kickDrawerOnPrint = autoKick,
-            hasAutoCutter = hasCutter
+            hasAutoCutter = hasCutter,
+            customHeader = receiptHeader.value,
+            customFooter = receiptFooter.value,
+            storeTin = storeTin.value,
+            storeAddress = storeAddress.value,
+            printBarcode = printReceiptBarcode.value
         )
 
         when (type) {
@@ -198,6 +207,184 @@ internal fun StorePointViewModel.hardwarePrintReceiptImpl(
             else -> {
                 onCompleted(false, "Printer type set to System Spooler. Use standard Print Dialog.")
             }
+        }
+    }
+}
+
+internal fun StorePointViewModel.hardwarePrintRefundReceiptImpl(
+    returnTransaction: ReturnTransaction,
+    items: List<ReturnItem>,
+    onCompleted: (Boolean, String) -> Unit
+) {
+    viewModelScope.launch {
+        val cfg = storeConfig.value ?: run {
+            onCompleted(false, "Store configuration not found.")
+            return@launch
+        }
+        val type = printerType.value
+        val autoKick = isAutoKickDrawerEnabled.value && returnTransaction.refundMethod.contains("CASH", ignoreCase = true)
+        val is80 = is80mmThermal.value
+        val hasCutter = printerHasAutoCutter.value
+        val receiptBytes = EscPosHelper.buildRefundReceiptEscPos(
+            storeConfig = cfg,
+            returnTransaction = returnTransaction,
+            items = items,
+            is80mm = is80,
+            kickDrawerOnPrint = autoKick,
+            hasAutoCutter = hasCutter,
+            customHeader = receiptHeader.value,
+            customFooter = receiptFooter.value,
+            storeTin = storeTin.value,
+            storeAddress = storeAddress.value,
+            printBarcode = printReceiptBarcode.value
+        )
+
+        when (type) {
+            EscPosHelper.PrinterType.NETWORK_ESCPOS.name -> {
+                val res = EscPosHelper.printOverNetwork(printerIpAddress.value, printerPort.value, receiptBytes)
+                res.fold(
+                    onSuccess = { onCompleted(true, "Refund receipt printed over Network ESC/POS.") },
+                    onFailure = { onCompleted(false, "Network printer error: ${it.localizedMessage}") }
+                )
+            }
+            EscPosHelper.PrinterType.BLUETOOTH_ESCPOS.name -> {
+                val res = EscPosHelper.printOverBluetooth(printerBtMac.value, receiptBytes)
+                res.fold(
+                    onSuccess = { onCompleted(true, "Refund receipt printed over Bluetooth ESC/POS.") },
+                    onFailure = { onCompleted(false, "Bluetooth printer error: ${it.localizedMessage}") }
+                )
+            }
+            EscPosHelper.PrinterType.USB_ESCPOS.name -> {
+                val res = UsbPrinterHelper.printOverUsb(context, printerUsbIdentifier.value, receiptBytes)
+                res.fold(
+                    onSuccess = { onCompleted(true, "Refund receipt printed over USB OTG ESC/POS.") },
+                    onFailure = { onCompleted(false, "USB printer error: ${it.localizedMessage}") }
+                )
+            }
+            else -> {
+                onCompleted(false, "Thermal printer not connected. Connect Bluetooth, USB or Network printer.")
+            }
+        }
+    }
+}
+
+internal fun StorePointViewModel.hardwarePrintDrawerSlipImpl(
+    drawerTransaction: DrawerTransaction,
+    balanceBefore: Double? = null,
+    balanceAfter: Double? = null,
+    onCompleted: (Boolean, String) -> Unit = { _, _ -> }
+) {
+    viewModelScope.launch {
+        val cfg = storeConfig.value ?: run {
+            onCompleted(false, "Store configuration not found.")
+            return@launch
+        }
+        val type = printerType.value
+        val is80 = is80mmThermal.value
+        val hasCutter = printerHasAutoCutter.value
+        val slipBytes = EscPosHelper.buildDrawerSlipEscPos(
+            storeConfig = cfg,
+            drawerTransaction = drawerTransaction,
+            balanceBefore = balanceBefore,
+            balanceAfter = balanceAfter,
+            is80mm = is80,
+            kickDrawerOnPrint = false,
+            hasAutoCutter = hasCutter,
+            customHeader = receiptHeader.value,
+            storeTin = storeTin.value,
+            printBarcode = printReceiptBarcode.value
+        )
+
+        when (type) {
+            EscPosHelper.PrinterType.NETWORK_ESCPOS.name -> {
+                val res = EscPosHelper.printOverNetwork(printerIpAddress.value, printerPort.value, slipBytes)
+                res.fold(
+                    onSuccess = { onCompleted(true, "Drawer slip printed over Network ESC/POS.") },
+                    onFailure = { onCompleted(false, "Network printer error: ${it.localizedMessage}") }
+                )
+            }
+            EscPosHelper.PrinterType.BLUETOOTH_ESCPOS.name -> {
+                val res = EscPosHelper.printOverBluetooth(printerBtMac.value, slipBytes)
+                res.fold(
+                    onSuccess = { onCompleted(true, "Drawer slip printed over Bluetooth ESC/POS.") },
+                    onFailure = { onCompleted(false, "Bluetooth printer error: ${it.localizedMessage}") }
+                )
+            }
+            EscPosHelper.PrinterType.USB_ESCPOS.name -> {
+                val res = UsbPrinterHelper.printOverUsb(context, printerUsbIdentifier.value, slipBytes)
+                res.fold(
+                    onSuccess = { onCompleted(true, "Drawer slip printed over USB OTG ESC/POS.") },
+                    onFailure = { onCompleted(false, "USB printer error: ${it.localizedMessage}") }
+                )
+            }
+            else -> {
+                onCompleted(false, "Thermal printer not connected. Connect Bluetooth, USB or Network printer.")
+            }
+        }
+    }
+}
+
+internal fun StorePointViewModel.hardwareLogCashInOutDrawerTransactionImpl(
+    type: String, // "CASH_IN" or "CASH_OUT"
+    amount: Double,
+    reason: String,
+    kickDrawer: Boolean = true,
+    printSlip: Boolean = true,
+    onResult: (Boolean, String) -> Unit = { _, _ -> }
+) {
+    viewModelScope.launch {
+        val session = activeSession.value
+        if (session == null) {
+            onResult(false, "No active cashier shift session. Open a session before drawer cash movements.")
+            return@launch
+        }
+        if (amount <= 0.0) {
+            onResult(false, "Amount must be greater than zero.")
+            return@launch
+        }
+        val cleanReason = reason.trim().ifBlank {
+            if (type == "CASH_IN") "Petty cash float injection" else "Operational cash disbursement"
+        }
+
+        val currentCash = getCurrentDrawerCash()
+        val isCashOut = type.equals("CASH_OUT", ignoreCase = true) || type.equals("PAYOUT", ignoreCase = true)
+        if (isCashOut && currentCash < amount) {
+            val curr = storeConfig.value?.currencySymbol ?: "₱"
+            onResult(false, "Insufficient cash in drawer (Available: $curr${String.format(java.util.Locale.US, "%.2f", currentCash)}, Required: $curr${String.format(java.util.Locale.US, "%.2f", amount)})")
+            return@launch
+        }
+
+        val signedAmount = if (isCashOut) -StorePointRepository.roundMoney(amount) else StorePointRepository.roundMoney(amount)
+        val balanceBefore = currentCash
+        val balanceAfter = StorePointRepository.roundMoney(currentCash + signedAmount)
+        val cashier = activeUser.value?.username ?: session.cashierUsername
+
+        val tx = DrawerTransaction(
+            sessionId = session.id,
+            timestamp = System.currentTimeMillis(),
+            cashierUsername = cashier,
+            amount = signedAmount,
+            type = if (isCashOut) "CASH_OUT" else "CASH_IN",
+            reason = cleanReason
+        )
+
+        try {
+            val txId = repository.logDrawerTransaction(tx)
+            val insertedTx = tx.copy(id = txId.toInt())
+
+            if (kickDrawer) {
+                hardwareKickCashDrawerImpl { _, _ -> }
+            }
+
+            if (printSlip) {
+                hardwarePrintDrawerSlipImpl(insertedTx, balanceBefore, balanceAfter) { _, _ -> }
+            }
+
+            val actionDesc = if (isCashOut) "Cash-Out disbursement" else "Cash-In injection"
+            val curr = storeConfig.value?.currencySymbol ?: "₱"
+            onResult(true, "Successfully logged $actionDesc of $curr${String.format(java.util.Locale.US, "%.2f", amount)}.")
+        } catch (e: Exception) {
+            onResult(false, "Failed to log drawer transaction: ${e.localizedMessage}")
         }
     }
 }

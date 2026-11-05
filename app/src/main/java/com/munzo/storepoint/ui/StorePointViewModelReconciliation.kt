@@ -101,6 +101,7 @@ fun StorePointViewModel.reconcileShiftAndClose(
 fun StorePointViewModel.printShiftReconciliationReceipt(
     reconciliation: ShiftReconciliation,
     startTime: Long,
+    formulaSummary: EscPosHelper.DrawerBalancingSummary? = null,
     onResult: (Boolean, String) -> Unit
 ) {
     val config = storeConfig.value ?: return
@@ -112,6 +113,7 @@ fun StorePointViewModel.printShiftReconciliationReceipt(
             storeConfig = config,
             reconciliation = reconciliation,
             startTime = startTime,
+            formulaSummary = formulaSummary,
             is80mm = is80,
             hasAutoCutter = hasCutter
         )

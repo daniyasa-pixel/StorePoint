@@ -112,3 +112,10 @@ internal fun StorePointViewModel.purchasesDeletePurchaseOrderImpl(poId: Int, onS
         onSuccess()
     }
 }
+
+internal fun StorePointViewModel.purchasesCancelPurchaseOrderImpl(poId: Int, onSuccess: () -> Unit = {}) {
+    viewModelScope.launch {
+        repository.updatePurchaseOrderStatus(poId, "CANCELED")
+        onSuccess()
+    }
+}

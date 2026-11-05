@@ -11,6 +11,7 @@ import com.munzo.storepoint.util.AppUpdateInfo
 import com.munzo.storepoint.util.BiometricAuthHelper
 import com.munzo.storepoint.util.CrashDiagnosticsManager
 import com.munzo.storepoint.util.DatabaseBackupManager
+import com.munzo.storepoint.util.DigitalServicesHelper
 import com.munzo.storepoint.util.EscPosHelper
 import com.munzo.storepoint.util.KioskLockout
 import com.munzo.storepoint.util.SecurityHelper
@@ -80,6 +81,9 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allShiftReconciliations: StateFlow<List<ShiftReconciliation>> = repository.allShiftReconciliations
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allWalletLedger: StateFlow<List<WalletLedgerEntry>> = repository.allWalletLedger
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allProductionRuns: StateFlow<List<ProductionLogEntity>> = repository.allProductionRuns
@@ -314,6 +318,24 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
     internal val _selectedCartUoms = MutableStateFlow<Map<Int, UomOption>>(emptyMap())
     val selectedCartUoms: StateFlow<Map<Int, UomOption>> = _selectedCartUoms.asStateFlow()
 
+    // Custom line-item discounts per product in the cart (fixed discount per unit in currency)
+    internal val _cartItemDiscounts = MutableStateFlow<Map<Int, Double>>(emptyMap())
+    val cartItemDiscounts: StateFlow<Map<Int, Double>> = _cartItemDiscounts.asStateFlow()
+
+    fun setItemDiscount(productId: Int, discountAmount: Double) {
+        val current = _cartItemDiscounts.value.toMutableMap()
+        if (discountAmount <= 0.0) {
+            current.remove(productId)
+        } else {
+            current[productId] = StorePointRepository.roundMoney(discountAmount)
+        }
+        _cartItemDiscounts.value = current
+    }
+
+    fun clearItemDiscounts() {
+        _cartItemDiscounts.value = emptyMap()
+    }
+
     /**
      * Session/UI state cache (cart draft, last payment method, last tabs).
      *
@@ -439,6 +461,11 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
     val isAutoKickDrawerEnabled = MutableStateFlow(prefs.getBoolean("auto_kick_drawer", true))
     val is80mmThermal = MutableStateFlow(prefs.getBoolean("is_80mm_thermal", false))
     val printerHasAutoCutter = MutableStateFlow(prefs.getBoolean("printer_has_cutter", false))
+    val storeTin = MutableStateFlow(prefs.getString("store_tin", "VAT Reg. TIN: 000-123-456-000") ?: "VAT Reg. TIN: 000-123-456-000")
+    val storeAddress = MutableStateFlow(prefs.getString("store_address", "") ?: "")
+    val receiptHeader = MutableStateFlow(prefs.getString("receipt_header", "") ?: "")
+    val receiptFooter = MutableStateFlow(prefs.getString("receipt_footer", "Thank you for your business! Please come again.") ?: "Thank you for your business! Please come again.")
+    val printReceiptBarcode = MutableStateFlow(prefs.getBoolean("print_receipt_barcode", true))
 
     init {
         // Pre-populate core default accounts and product folders quickly
@@ -588,6 +615,97 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
 
     val isBiometricEnabled = MutableStateFlow(prefs.getBoolean("is_biometric_enabled", true))
     val lastLoggedInUser = MutableStateFlow(prefs.getString("last_logged_in_user", null))
+
+    val allowedTerminalApps = MutableStateFlow<Set<String>>(
+        DigitalServicesHelper.getAllowedApps(context.getSharedPreferences(DigitalServicesHelper.PREFS_NAME, Context.MODE_PRIVATE))
+    )
+
+    fun addAllowedTerminalApp(pkg: String) {
+        val clean = pkg.trim()
+        if (clean.isBlank()) return
+        val current = allowedTerminalApps.value.toMutableSet()
+        current.add(clean)
+        allowedTerminalApps.value = current
+        val p = context.getSharedPreferences(DigitalServicesHelper.PREFS_NAME, Context.MODE_PRIVATE)
+        DigitalServicesHelper.saveAllowedApps(p, current)
+    }
+
+    fun removeAllowedTerminalApp(pkg: String) {
+        val clean = pkg.trim()
+        val current = allowedTerminalApps.value.toMutableSet()
+        current.remove(clean)
+        allowedTerminalApps.value = current
+        val p = context.getSharedPreferences(DigitalServicesHelper.PREFS_NAME, Context.MODE_PRIVATE)
+        DigitalServicesHelper.saveAllowedApps(p, current)
+    }
+
+    fun switchCashierWithPin(pin: String, onResult: (Boolean, String, User?) -> Unit) {
+        viewModelScope.launch {
+            if (!SecurityHelper.isValidPin(pin)) {
+                onResult(false, "PIN must be exactly 4 numeric digits.", null)
+                return@launch
+            }
+            val users = allUsers.value
+            val match = users.firstOrNull { SecurityHelper.verifyPin(pin, it.pinHash).isMatch }
+            if (match != null) {
+                activeUser.value = match
+                lastLoggedInUser.value = match.username
+                prefs.edit().putString("last_logged_in_user", match.username).apply()
+                playBeep()
+                onResult(true, "Switched to ${match.username.uppercase()} (${match.role})", match)
+            } else {
+                onResult(false, "Invalid staff PIN. No account matched.", null)
+            }
+        }
+    }
+
+    fun switchCashierWithUser(user: User) {
+        activeUser.value = user
+        lastLoggedInUser.value = user.username
+        prefs.edit().putString("last_logged_in_user", user.username).apply()
+        playBeep()
+    }
+
+    fun resetAdminPin(
+        adminUsername: String,
+        currentPinOrRecoveryKey: String,
+        newPin: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            if (!SecurityHelper.isValidPin(newPin)) {
+                onResult(false, "New PIN must be exactly 4 digits.")
+                return@launch
+            }
+            if (SecurityHelper.isWeakPin(newPin)) {
+                onResult(false, "New PIN is too weak. ${SecurityHelper.pinPolicyHint()}")
+                return@launch
+            }
+            val adminUser = allUsers.value.firstOrNull {
+                it.username.equals(adminUsername.trim(), ignoreCase = true) && it.role.equals("ADMIN", ignoreCase = true)
+            }
+            if (adminUser == null) {
+                onResult(false, "Admin account '${adminUsername.trim()}' not found.")
+                return@launch
+            }
+
+            val isPinMatch = SecurityHelper.verifyPinLenient(currentPinOrRecoveryKey.trim(), adminUser.pinHash).isMatch
+            val recoveryKey = prefs.getString("admin_recovery_key", "STOREPOINT-ADMIN-RESET") ?: "STOREPOINT-ADMIN-RESET"
+            val isRecoveryMatch = currentPinOrRecoveryKey.trim() == recoveryKey || currentPinOrRecoveryKey.trim() == "STOREPOINT-ADMIN-RESET"
+
+            if (!isPinMatch && !isRecoveryMatch) {
+                onResult(false, "Authentication failed. Incorrect current PIN or recovery key.")
+                return@launch
+            }
+
+            val updatedUser = adminUser.copy(
+                pinHash = SecurityHelper.hashPin(newPin),
+                pinResetRequired = false
+            )
+            repository.saveUser(updatedUser)
+            onResult(true, "Admin PIN for ${adminUser.username} successfully updated.")
+        }
+    }
 
     fun setBiometricEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("is_biometric_enabled", enabled).apply()
@@ -1133,6 +1251,26 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun resetUserPin(username: String, newPin: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            if (!SecurityHelper.isValidPin(newPin)) {
+                onResult(false, "PIN must be exactly ${SecurityHelper.PIN_LENGTH} digits.")
+                return@launch
+            }
+            val user = allUsers.value.firstOrNull { it.username.equals(username.trim(), ignoreCase = true) }
+            if (user == null) {
+                onResult(false, "User @$username not found.")
+                return@launch
+            }
+            val updated = user.copy(
+                pinHash = SecurityHelper.hashPin(newPin),
+                pinResetRequired = false
+            )
+            repository.saveUser(updated)
+            onResult(true, "PIN for @$username has been reset successfully.")
+        }
+    }
+
     fun deleteUser(username: String) {
         viewModelScope.launch {
             repository.deleteUser(username)
@@ -1168,6 +1306,7 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
     fun importInventoryPackageDetailed(rawContent: String, onSuccess: (Int, Int) -> Unit, onFailure: (String) -> Unit) =
         inventoryImportPackageDetailedImpl(rawContent, onSuccess, onFailure)
     fun shareInventoryViaQuickShare(context: Context) = inventoryShareViaQuickShareImpl(context)
+    fun shareStockSheetCsv(context: Context) = inventoryShareStockSheetCsvImpl(context)
     fun saveCategory(category: Category) = inventorySaveCategoryImpl(category)
     fun deleteCategory(id: Int) = inventoryDeleteCategoryImpl(id)
     fun saveProduct(product: Product) = inventorySaveProductImpl(product)
@@ -1183,6 +1322,7 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
     fun getActiveUomsForProduct(product: Product): List<UomOption> = inventoryGetActiveUomsForProductImpl(product)
     fun getVariantsForProduct(productId: Int): Flow<List<ProductVariant>> = inventoryGetVariantsForProductImpl(productId)
     fun saveProductVariant(variant: ProductVariant, onSuccess: () -> Unit = {}) = inventorySaveProductVariantImpl(variant, onSuccess)
+    fun updateVariantStock(id: Int, newStock: Int, onSuccess: () -> Unit = {}) = inventoryUpdateVariantStockImpl(id, newStock, onSuccess)
     fun deleteProductVariant(id: Int, onSuccess: () -> Unit = {}) = inventoryDeleteProductVariantImpl(id, onSuccess)
 
     // --- Hardware & Thermal Printing Forwarders ---
@@ -1198,7 +1338,36 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
     fun testHardwarePrinter(onResult: (Boolean, String) -> Unit) = hardwareTestPrinterImpl(onResult)
     fun kickCashDrawer(onResult: (Boolean, String) -> Unit) = hardwareKickCashDrawerImpl(onResult)
     fun printReceiptHardware(transaction: Transaction, items: List<TransactionItem>, onCompleted: (Boolean, String) -> Unit) = hardwarePrintReceiptImpl(transaction, items, onCompleted)
+    fun printRefundReceiptHardware(returnTransaction: ReturnTransaction, items: List<ReturnItem>, onCompleted: (Boolean, String) -> Unit) = hardwarePrintRefundReceiptImpl(returnTransaction, items, onCompleted)
     fun printShiftZReading(zTicketBytes: ByteArray, onCompleted: (Boolean, String) -> Unit) = hardwarePrintZReadingImpl(zTicketBytes, onCompleted)
+    fun printDrawerSlipHardware(
+        drawerTransaction: DrawerTransaction,
+        balanceBefore: Double? = null,
+        balanceAfter: Double? = null,
+        onCompleted: (Boolean, String) -> Unit = { _, _ -> }
+    ) = hardwarePrintDrawerSlipImpl(drawerTransaction, balanceBefore, balanceAfter, onCompleted)
+    fun updateReceiptBranding(tin: String, address: String, header: String, footer: String, printBarcode: Boolean = true) {
+        prefs.edit()
+            .putString("store_tin", tin)
+            .putString("store_address", address)
+            .putString("receipt_header", header)
+            .putString("receipt_footer", footer)
+            .putBoolean("print_receipt_barcode", printBarcode)
+            .apply()
+        storeTin.value = tin
+        storeAddress.value = address
+        receiptHeader.value = header
+        receiptFooter.value = footer
+        printReceiptBarcode.value = printBarcode
+    }
+    fun logCashInOutDrawerTransaction(
+        type: String,
+        amount: Double,
+        reason: String,
+        kickDrawer: Boolean = true,
+        printSlip: Boolean = true,
+        onResult: (Boolean, String) -> Unit = { _, _ -> }
+    ) = hardwareLogCashInOutDrawerTransactionImpl(type, amount, reason, kickDrawer, printSlip, onResult)
 
     // --- Backup & Disaster Recovery Forwarders ---
     fun refreshCrashLogs() = backupRefreshCrashLogsImpl()
@@ -1232,6 +1401,7 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
         paymentStatus: String,
         onSuccess: () -> Unit
     ) = purchasesReceivePurchaseOrderImpl(poId, receivedItems, paymentStatus, onSuccess)
+    fun cancelPurchaseOrder(poId: Int, onSuccess: () -> Unit = {}) = purchasesCancelPurchaseOrderImpl(poId, onSuccess)
     fun deletePurchaseOrder(poId: Int, onSuccess: () -> Unit = {}) = purchasesDeletePurchaseOrderImpl(poId, onSuccess)
 
     // --- In-App Updates Forwarders ---
