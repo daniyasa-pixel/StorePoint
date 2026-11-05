@@ -46,6 +46,9 @@ import com.munzo.storepoint.ui.theme.ExpressiveSectionHeader
 import com.munzo.storepoint.ui.theme.tactileBounce
 import com.munzo.storepoint.ui.theme.glassPanel
 
+import com.munzo.storepoint.ui.components.*
+import com.munzo.storepoint.ui.theme.HeroUITheme
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupScreen(viewModel: StorePointViewModel) {
@@ -109,16 +112,21 @@ fun SetupScreen(viewModel: StorePointViewModel) {
         }
     }
 
-    val windowLayout = rememberWindowLayout()
-    val isCompact = windowLayout == WindowLayout.Compact
+    val heroWindowSize = rememberHeroWindowSize()
+    val isExpanded = heroWindowSize == HeroWindowSize.Expanded
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("StorePoint Initial Sign-Up", fontWeight = FontWeight.Bold) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("StorePoint Initial Sign-Up", fontWeight = FontWeight.Bold, color = HeroUITheme.colors.foreground)
+                        HeroChip(text = "ONBOARDING", color = HeroColor.Primary, variant = HeroChipVariant.Flat)
+                    }
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                    containerColor = HeroUITheme.colors.surface,
+                    titleContentColor = HeroUITheme.colors.foreground
                 )
             )
         }
@@ -128,796 +136,886 @@ fun SetupScreen(viewModel: StorePointViewModel) {
                 .fillMaxSize()
                 .padding(innerPadding)
                 .imePadding()
-                .background(MaterialTheme.colorScheme.background),
+                .background(HeroUITheme.colors.background),
             contentAlignment = Alignment.TopCenter
         ) {
             Column(
                 modifier = Modifier
-                    .widthIn(max = 560.dp)
+                    .widthIn(max = if (isExpanded) 760.dp else 560.dp)
                     .fillMaxWidth()
-                    .padding(horizontal = if (isCompact) 20.dp else 24.dp, vertical = 12.dp)
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Top
             ) {
-                // Google-style geometric SP AppLogo styled with clean sans-serif typography
+                // HeroUI Brand Logo
                 Surface(
                     modifier = Modifier
                         .size(80.dp)
                         .tactileBounce(),
-                    shape = ExpressiveButtonShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    shadowElevation = 4.dp
+                    shape = HeroUITheme.radius.xl,
+                    color = HeroUITheme.colors.accent,
+                    shadowElevation = 6.dp
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = "SP",
-                            color = MaterialTheme.colorScheme.onPrimary,
+                            color = HeroUITheme.colors.accentForeground,
                             style = MaterialTheme.typography.displaySmall.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 letterSpacing = (-0.5).sp
-                            ),
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif
-                        )
-                    }
-                }
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "Welcome to StorePoint POS",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-
-            Text(
-                text = "Deploying an offline-first retail system has never been this simple. Configure your offline store register now.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 16.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-
-            // Auto-Restore Card if previous persistent internal backup was detected
-            if (existingBackupMeta != null && !showRestoreDismissed) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 20.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.SettingsBackupRestore,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(28.dp)
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Previous Installation Backup Found!",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Store: ${existingBackupMeta?.storeName ?: "StorePoint"}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Products", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("${existingBackupMeta?.productsCount ?: 0}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Transactions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("${existingBackupMeta?.transactionsCount ?: 0}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.weight(1.5f)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Backup Date", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(existingBackupMeta?.dateTime?.take(10) ?: "", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        if (isRestoringBackup) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("Restoring database from internal backup...", style = MaterialTheme.typography.bodyMedium)
-                            }
-                        } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextButton(
-                                    onClick = { showRestoreDismissed = true }
-                                ) {
-                                    Text("Start Fresh Setup")
-                                }
-                                Button(
-                                    onClick = {
-                                        val file = existingBackupFile
-                                        if (file != null) {
-                                            isRestoringBackup = true
-                                            viewModel.restoreFromPersistentBackup(file) { summary ->
-                                                isRestoringBackup = false
-                                                if (summary.success) {
-                                                    Toast.makeText(context, "Store restored successfully!", Toast.LENGTH_LONG).show()
-                                                } else {
-                                                    Toast.makeText(context, "Restore failed: ${summary.message}", Toast.LENGTH_LONG).show()
-                                                }
-                                            }
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Icon(Icons.Default.CloudDownload, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Restore Store Now", fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
+                        )
                     }
                 }
-            }
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Step Progress Indicator
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Step 1 Circle
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(
-                            if (activeStep >= 1) MaterialTheme.colorScheme.primary 
-                            else MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "1", 
-                        color = if (activeStep >= 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Divider line
-                Box(
-                    modifier = Modifier
-                        .width(60.dp)
-                        .height(2.dp)
-                        .background(
-                            if (activeStep >= 2) MaterialTheme.colorScheme.primary 
-                            else MaterialTheme.colorScheme.surfaceVariant
-                        )
+                Text(
+                    text = "Welcome to StorePoint POS",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = HeroUITheme.colors.foreground,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
 
-                // Step 2 Circle
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(
-                            if (activeStep >= 2) MaterialTheme.colorScheme.primary 
-                            else MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "2", 
-                        color = if (activeStep >= 2) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+                Text(
+                    text = "Deploying an offline-first commercial retail terminal has never been this simple.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = HeroUITheme.colors.muted,
+                    modifier = Modifier.padding(bottom = 20.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
 
-            // Step Body inside card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                ),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                shape = RoundedCornerShape(24.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    if (activeStep == 1) {
-                        Text(
-                            "Step 1: Store profile & Financials",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-
-                        OutlinedTextField(
-                            value = storeName,
-                            onValueChange = { storeName = it },
-                            label = { Text("Store/Business Name") },
-                            leadingIcon = { Icon(Icons.Default.Store, null) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("store_name_input"),
-                            singleLine = true
-                        )
-
-                        // Currency Selector dropdown
-                        ExposedDropdownMenuBox(
-                            expanded = currencyExpanded,
-                            onExpandedChange = { currencyExpanded = !currencyExpanded }
-                        ) {
-                            OutlinedTextField(
-                                readOnly = true,
-                                value = "Currency Unit:  $currencySymbol",
-                                onValueChange = {},
-                                label = { Text("Operational Currency") },
-                                leadingIcon = { Icon(Icons.Default.Paid, null) },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = currencyExpanded) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .menuAnchor()
-                                    .testTag("currency_selector_input")
-                            )
-                            ExposedDropdownMenu(
-                                expanded = currencyExpanded,
-                                onDismissRequest = { currencyExpanded = false }
-                            ) {
-                                currencies.forEach { selection ->
-                                    DropdownMenuItem(
-                                        text = { Text(selection) },
-                                        onClick = {
-                                            currencySymbol = selection
-                                            currencyExpanded = false
-                                        }
+                // Auto-Restore Card if previous persistent internal backup was detected
+                if (existingBackupMeta != null && !showRestoreDismissed) {
+                    HeroCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 20.dp),
+                        backgroundColor = HeroUITheme.colors.accent.copy(alpha = 0.08f),
+                        borderColor = HeroUITheme.colors.accent.copy(alpha = 0.4f),
+                        shape = HeroUITheme.radius.xl
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(HeroUITheme.radius.md)
+                                        .background(HeroUITheme.colors.accent.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SettingsBackupRestore,
+                                        contentDescription = null,
+                                        tint = HeroUITheme.colors.accent,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Previous Installation Backup Found!",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = HeroUITheme.colors.foreground
+                                    )
+                                    Text(
+                                        text = "Store: ${existingBackupMeta?.storeName ?: "StorePoint"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = HeroUITheme.colors.muted
                                     )
                                 }
                             }
-                        }
-
-                        // Tax rate (Philippine 12% VAT default)
-                        OutlinedTextField(
-                            value = taxPercentageStr,
-                            onValueChange = { taxPercentageStr = it },
-                            label = { Text("Value-Added Tax (%) - PH VAT") },
-                            supportingText = { Text("Standard 12% VAT is included in product retail prices (amount / 1.12 x 0.12)") },
-                            leadingIcon = { Icon(Icons.Default.Percent, null) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("tax_percentage_input"),
-                            singleLine = true
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                        ExpressiveSectionHeader(
-                            title = "Digital Services Available",
-                            icon = Icons.Default.AccountBalanceWallet
-                        )
-
-                        Text(
-                            "Enable the digital services this store offers. You'll be able to transact GCash, Maya, and Load directly from the POS.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        // Google-style Expressive Selection Tiles
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { hasGCash = !hasGCash },
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (hasGCash) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            border = if (hasGCash) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                            ) {
-                                Checkbox(
-                                    checked = hasGCash,
-                                    onCheckedChange = { hasGCash = it },
-                                    modifier = Modifier.testTag("setup_has_gcash_checkbox")
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text("GCash Retailing", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                    Text("Cash In, Cash Out transactions", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { hasMaya = !hasMaya },
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (hasMaya) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            border = if (hasMaya) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                            ) {
-                                Checkbox(
-                                    checked = hasMaya,
-                                    onCheckedChange = { hasMaya = it },
-                                    modifier = Modifier.testTag("setup_has_maya_checkbox")
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text("Maya Services", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                    Text("Digital payments with flat bank fees", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { hasLoad = !hasLoad },
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (hasLoad) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            border = if (hasLoad) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                            ) {
-                                Checkbox(
-                                    checked = hasLoad,
-                                    onCheckedChange = { hasLoad = it },
-                                    modifier = Modifier.testTag("setup_has_load_checkbox")
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text("Prepaid Mobile Load", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                    Text("Smart, TNT, Globe, TM e-loading (2% retailer rebate)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-
-                        if (hasLoad) {
+                            Spacer(modifier = Modifier.height(12.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                OutlinedTextField(
-                                    value = smartLoadBalStr,
-                                    onValueChange = { smartLoadBalStr = it },
-                                    label = { Text("Smart/TNT Wallet ($currencySymbol)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f).testTag("setup_smart_load_input"),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                OutlinedTextField(
-                                    value = globeLoadBalStr,
-                                    onValueChange = { globeLoadBalStr = it },
-                                    label = { Text("Globe/TM Wallet ($currencySymbol)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f).testTag("setup_globe_load_input"),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                            }
-                            Text(
-                                "Specify initial retailer load wallet balances for Smart/TNT and Globe/TM. A 2% retailer rebate applies to each load sale.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        if (hasLoad || hasGCash || hasMaya) {
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                            ExpressiveSectionHeader(
-                                title = "Digital Service Surcharges & Fees",
-                                icon = Icons.Default.PriceChange
-                            )
-                            Text(
-                                "Configure your store's default customer service fees. You can also fine-tune them anytime in the Admin Dashboard or per transaction on POS.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
-                            if (hasLoad) {
-                                OutlinedTextField(
-                                    value = loadFeeStr,
-                                    onValueChange = { loadFeeStr = it },
-                                    label = { Text("Prepaid Load Charge ($currencySymbol)") },
-                                    supportingText = { Text("Default customer surcharge (e.g. ₱2.00 on ₱20 load)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth().testTag("setup_load_fee_input"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
-                                )
-                            }
-
-                            if (hasGCash) {
-                                OutlinedTextField(
-                                    value = gcashFeeStr,
-                                    onValueChange = { gcashFeeStr = it },
-                                    label = { Text("GCash Service Fee ($currencySymbol)") },
-                                    supportingText = { Text("Base rate per ₱1,000 tier (e.g. ₱10.00)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth().testTag("setup_gcash_fee_input"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
-                                )
-                            }
-
-                            if (hasMaya) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                Surface(
+                                    shape = HeroUITheme.radius.md,
+                                    color = HeroUITheme.colors.surfaceSecondary,
+                                    modifier = Modifier.weight(1f)
                                 ) {
-                                    OutlinedTextField(
-                                        value = mayaFeeStr,
-                                        onValueChange = { mayaFeeStr = it },
-                                        label = { Text("Maya Fee ($currencySymbol)") },
-                                        supportingText = { Text("Store fee (e.g. ₱10.00)") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f).testTag("setup_maya_fee_input"),
-                                        shape = RoundedCornerShape(12.dp),
-                                        singleLine = true
-                                    )
-                                    OutlinedTextField(
-                                        value = mayaBankFeeStr,
-                                        onValueChange = { mayaBankFeeStr = it },
-                                        label = { Text("Bank Fee ($currencySymbol)") },
-                                        supportingText = { Text("Transfer fee (e.g. ₱15.00)") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f).testTag("setup_maya_bank_fee_input"),
-                                        shape = RoundedCornerShape(12.dp),
-                                        singleLine = true
-                                    )
+                                    Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Products", style = MaterialTheme.typography.labelSmall, color = HeroUITheme.colors.muted)
+                                        Text("${existingBackupMeta?.productsCount ?: 0}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Surface(
+                                    shape = HeroUITheme.radius.md,
+                                    color = HeroUITheme.colors.surfaceSecondary,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Transactions", style = MaterialTheme.typography.labelSmall, color = HeroUITheme.colors.muted)
+                                        Text("${existingBackupMeta?.transactionsCount ?: 0}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Surface(
+                                    shape = HeroUITheme.radius.md,
+                                    color = HeroUITheme.colors.surfaceSecondary,
+                                    modifier = Modifier.weight(1.4f)
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Backup Date", style = MaterialTheme.typography.labelSmall, color = HeroUITheme.colors.muted)
+                                        Text(existingBackupMeta?.dateTime?.take(10) ?: "", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
-                        }
-
-                    } else {
-                        // Step 2: Administrative Security
-                        Text(
-                            "Step 2: Admin accounts & terminal security",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-
-                        Text(
-                            "Create your master administrator account and activate Device Administration to lock kiosk mode and prevent unauthorized app uninstallation or data clearing.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        // Device Administrator Security Card
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isDeviceAdminActive)
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                                else
-                                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.5.dp,
-                                if (isDeviceAdminActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                            )
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            if (isRestoringBackup) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = HeroUITheme.colors.accent)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Restoring database from internal backup...", style = MaterialTheme.typography.bodyMedium)
+                                }
+                            } else {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = if (isDeviceAdminActive) Icons.Default.Shield else Icons.Default.GppMaybe,
-                                            contentDescription = null,
-                                            tint = if (isDeviceAdminActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "Device Administrator",
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                    }
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isDeviceAdminActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                                    ) {
-                                        Text(
-                                            text = if (isDeviceAdminActive) "ACTIVE" else "REQUIRED",
-                                            color = MaterialTheme.colorScheme.onPrimary,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = if (isDeviceAdminActive)
-                                        "Device Administrator is active. Anti-uninstall protection and Kiosk unpin defense are enabled."
-                                    else
-                                        "Device Administrator privilege is required to lock kiosk mode, prevent unauthorized uninstallation, and stop cashiers or users from clearing app data.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (!isDeviceAdminActive) {
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Button(
+                                    HeroButton(
+                                        onClick = { showRestoreDismissed = true },
+                                        color = HeroColor.Default,
+                                        variant = HeroButtonVariant.Light,
+                                        size = HeroSize.Sm,
+                                        text = "Start Fresh Setup"
+                                    )
+                                    HeroButton(
                                         onClick = {
-                                            try {
-                                                val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                                                    putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, StorePointDeviceAdminReceiver.getComponentName(context))
-                                                    putExtra(
-                                                        DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                                                        "StorePoint requires Device Administrator privileges to lock kiosk mode and prevent unauthorized app uninstallation or clearing data."
-                                                    )
+                                            val file = existingBackupFile
+                                            if (file != null) {
+                                                isRestoringBackup = true
+                                                viewModel.restoreFromPersistentBackup(file) { summary ->
+                                                    isRestoringBackup = false
+                                                    if (summary.success) {
+                                                        Toast.makeText(context, "Store restored successfully!", Toast.LENGTH_LONG).show()
+                                                    } else {
+                                                        Toast.makeText(context, "Restore failed: ${summary.message}", Toast.LENGTH_LONG).show()
+                                                    }
                                                 }
-                                                context.startActivity(intent)
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Could not open Device Admin screen: ${e.message}", Toast.LENGTH_SHORT).show()
                                             }
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Icon(Icons.Default.AdminPanelSettings, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Activate Device Administrator", fontWeight = FontWeight.Bold)
-                                    }
+                                        color = HeroColor.Primary,
+                                        variant = HeroButtonVariant.Solid,
+                                        size = HeroSize.Md,
+                                        icon = Icons.Default.CloudDownload,
+                                        text = "Restore Store Now"
+                                    )
                                 }
                             }
                         }
+                    }
+                }
 
-                        OutlinedTextField(
-                            value = adminName,
-                            onValueChange = { adminName = it },
-                            label = { Text("Admin / Owner Full Name") },
-                            placeholder = { Text("e.g. Juan Dela Cruz") },
-                            leadingIcon = { Icon(Icons.Default.Badge, null) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("admin_name_input"),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        OutlinedTextField(
-                            value = adminPhoneNumber,
-                            onValueChange = { input ->
-                                if (input.length <= 15 && input.all { it.isDigit() || it == '+' || it == ' ' || it == '-' }) {
-                                    adminPhoneNumber = input
-                                }
-                            },
-                            label = { Text("Admin Phone Number (for 'Call Admin')") },
-                            placeholder = { Text("e.g. 09171234567") },
-                            supportingText = { Text("Dialed automatically when cashiers trigger 'Call Admin' from the register") },
-                            leadingIcon = { Icon(Icons.Default.Phone, null) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("admin_phone_input"),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        OutlinedTextField(
-                            value = adminUsername,
-                            onValueChange = { adminUsername = it },
-                            label = { Text("Admin Username") },
-                            placeholder = { Text("e.g. admin") },
-                            leadingIcon = { Icon(Icons.Default.AccountCircle, null) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("admin_user_input"),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                text = "Admin ${SecurityHelper.PIN_LENGTH}-Digit PIN",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            val adminPinWeak = adminPassword.isNotEmpty() && SecurityHelper.isWeakPin(adminPassword)
-                            ExpressiveOtpPinInput(
-                                pin = adminPassword,
-                                onPinChange = { adminPassword = it },
-                                isMasked = true,
-                                isError = adminPinWeak,
+                // Step Progress Indicator using HeroUI Pill Navigation
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 20.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = HeroUITheme.radius.full,
+                        color = if (activeStep == 1) HeroUITheme.colors.accent else HeroUITheme.colors.surfaceSecondary,
+                        modifier = Modifier.clickable { activeStep = 1 }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("admin_password_input")
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            // The first admin PIN is the root of trust for the whole
-                            // terminal, so the weak-PIN policy is surfaced immediately.
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(if (activeStep == 1) HeroUITheme.colors.accentForeground else HeroUITheme.colors.muted),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "1",
+                                    color = if (activeStep == 1) HeroUITheme.colors.accent else HeroUITheme.colors.surface,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                             Text(
-                                text = when {
-                                    adminPinWeak -> "Too easy to guess — ${SecurityHelper.pinPolicyHint()}"
-                                    adminPassword.length == SecurityHelper.PIN_LENGTH -> "✓ PIN ready"
-                                    else -> "${adminPassword.length}/${SecurityHelper.PIN_LENGTH} digits (numeric only)"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = when {
-                                    adminPinWeak -> MaterialTheme.colorScheme.error
-                                    adminPassword.length == SecurityHelper.PIN_LENGTH -> MaterialTheme.colorScheme.primary
-                                    else -> MaterialTheme.colorScheme.outline
-                                }
+                                "Profile & Money",
+                                color = if (activeStep == 1) HeroUITheme.colors.accentForeground else HeroUITheme.colors.foreground,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Action / Navigation Footer
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (activeStep == 2) {
-                    OutlinedButton(
-                        onClick = { activeStep = 1 },
+                    Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp)
-                            .padding(end = 8.dp),
-                        shape = CircleShape
-                    ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Back", fontWeight = FontWeight.SemiBold)
-                    }
-                }
+                            .width(36.dp)
+                            .height(2.dp)
+                            .background(HeroUITheme.colors.border)
+                    )
 
-                Button(
-                    onClick = {
-                        if (activeStep == 1) {
+                    Surface(
+                        shape = HeroUITheme.radius.full,
+                        color = if (activeStep == 2) HeroUITheme.colors.accent else HeroUITheme.colors.surfaceSecondary,
+                        modifier = Modifier.clickable {
                             if (storeName.isNotBlank() && taxPercentageStr.toDoubleOrNull() != null) {
                                 activeStep = 2
                             }
-                        } else {
-                            if (!isDeviceAdminActive) {
-                                Toast.makeText(context, "Please activate Device Administrator first to secure this POS terminal.", Toast.LENGTH_LONG).show()
-                                try {
-                                    val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                                        putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, StorePointDeviceAdminReceiver.getComponentName(context))
-                                        putExtra(
-                                            DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                                            "StorePoint requires Device Administrator privileges to lock kiosk mode and prevent unauthorized app uninstallation or clearing data."
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(if (activeStep == 2) HeroUITheme.colors.accentForeground else HeroUITheme.colors.muted),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "2",
+                                    color = if (activeStep == 2) HeroUITheme.colors.accent else HeroUITheme.colors.surface,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                "Security & Admin",
+                                color = if (activeStep == 2) HeroUITheme.colors.accentForeground else HeroUITheme.colors.foreground,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                // Step Body inside HeroCard
+                HeroCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp),
+                    backgroundColor = HeroUITheme.colors.surface,
+                    borderColor = HeroUITheme.colors.border,
+                    shape = HeroUITheme.radius.xxl
+                ) {
+                    Column(
+                        modifier = Modifier.padding(22.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        if (activeStep == 1) {
+                            HeroCardHeader(
+                                title = "Step 1: Store Profile & Financials",
+                                subtitle = "Configure business branding, currency, and digital services",
+                                icon = Icons.Default.Store,
+                                iconColor = HeroUITheme.colors.accent
+                            )
+
+                            if (isExpanded) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    HeroInput(
+                                        value = storeName,
+                                        onValueChange = { storeName = it },
+                                        label = { Text("Store/Business Name") },
+                                        leadingIcon = { Icon(Icons.Default.Store, null, tint = HeroUITheme.colors.accent) },
+                                        modifier = Modifier
+                                            .weight(1.5f)
+                                            .testTag("store_name_input"),
+                                        singleLine = true,
+                                        shape = HeroUITheme.radius.md
+                                    )
+
+                                    ExposedDropdownMenuBox(
+                                        expanded = currencyExpanded,
+                                        onExpandedChange = { currencyExpanded = !currencyExpanded },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        HeroInput(
+                                            readOnly = true,
+                                            value = "Currency:  $currencySymbol",
+                                            onValueChange = {},
+                                            label = { Text("Currency Unit") },
+                                            leadingIcon = { Icon(Icons.Default.Paid, null, tint = HeroUITheme.colors.accent) },
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = currencyExpanded) },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .menuAnchor()
+                                                .testTag("currency_selector_input"),
+                                            shape = HeroUITheme.radius.md
+                                        )
+                                        ExposedDropdownMenu(
+                                            expanded = currencyExpanded,
+                                            onDismissRequest = { currencyExpanded = false }
+                                        ) {
+                                            currencies.forEach { selection ->
+                                                DropdownMenuItem(
+                                                    text = { Text(selection) },
+                                                    onClick = {
+                                                        currencySymbol = selection
+                                                        currencyExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                HeroInput(
+                                    value = storeName,
+                                    onValueChange = { storeName = it },
+                                    label = { Text("Store/Business Name") },
+                                    leadingIcon = { Icon(Icons.Default.Store, null, tint = HeroUITheme.colors.accent) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("store_name_input"),
+                                    singleLine = true,
+                                    shape = HeroUITheme.radius.md
+                                )
+
+                                ExposedDropdownMenuBox(
+                                    expanded = currencyExpanded,
+                                    onExpandedChange = { currencyExpanded = !currencyExpanded }
+                                ) {
+                                    HeroInput(
+                                        readOnly = true,
+                                        value = "Currency Unit:  $currencySymbol",
+                                        onValueChange = {},
+                                        label = { Text("Operational Currency") },
+                                        leadingIcon = { Icon(Icons.Default.Paid, null, tint = HeroUITheme.colors.accent) },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = currencyExpanded) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .menuAnchor()
+                                            .testTag("currency_selector_input"),
+                                        shape = HeroUITheme.radius.md
+                                    )
+                                    ExposedDropdownMenu(
+                                        expanded = currencyExpanded,
+                                        onDismissRequest = { currencyExpanded = false }
+                                    ) {
+                                        currencies.forEach { selection ->
+                                            DropdownMenuItem(
+                                                text = { Text(selection) },
+                                                onClick = {
+                                                    currencySymbol = selection
+                                                    currencyExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Tax rate (Philippine 12% VAT default)
+                            HeroInput(
+                                value = taxPercentageStr,
+                                onValueChange = { taxPercentageStr = it },
+                                label = { Text("Value-Added Tax (%) - PH VAT") },
+                                supportingText = { Text("Standard 12% VAT included in product retail prices (amount / 1.12 x 0.12)") },
+                                leadingIcon = { Icon(Icons.Default.Percent, null, tint = HeroUITheme.colors.accent) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("tax_percentage_input"),
+                                singleLine = true,
+                                shape = HeroUITheme.radius.md
+                            )
+
+                            HeroDivider(color = HeroUITheme.colors.separator, modifier = Modifier.padding(vertical = 4.dp))
+
+                            Text(
+                                "Digital Services Retailing",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = HeroUITheme.colors.foreground
+                            )
+
+                            // Expressive Hero Selection Tiles
+                            val services = listOf(
+                                Triple("GCash Retailing", "Cash In, Cash Out transactions", hasGCash) to { hasGCash = !hasGCash },
+                                Triple("Maya Services", "Digital payments with flat bank fees", hasMaya) to { hasMaya = !hasMaya },
+                                Triple("Prepaid Mobile Load", "Smart, TNT, Globe, TM e-loading (2% retailer rebate)", hasLoad) to { hasLoad = !hasLoad }
+                            )
+
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { hasGCash = !hasGCash },
+                                shape = HeroUITheme.radius.lg,
+                                color = if (hasGCash) HeroUITheme.colors.accent.copy(alpha = 0.1f) else HeroUITheme.colors.surfaceSecondary,
+                                border = if (hasGCash) androidx.compose.foundation.BorderStroke(1.5.dp, HeroUITheme.colors.accent) else androidx.compose.foundation.BorderStroke(1.dp, HeroUITheme.colors.border)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    HeroCheckbox(
+                                        checked = hasGCash,
+                                        onCheckedChange = { hasGCash = it },
+                                        modifier = Modifier.testTag("setup_has_gcash_checkbox")
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text("GCash Retailing", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                        Text("Cash In, Cash Out transactions", style = MaterialTheme.typography.bodySmall, color = HeroUITheme.colors.muted)
+                                    }
+                                }
+                            }
+
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { hasMaya = !hasMaya },
+                                shape = HeroUITheme.radius.lg,
+                                color = if (hasMaya) HeroUITheme.colors.accent.copy(alpha = 0.1f) else HeroUITheme.colors.surfaceSecondary,
+                                border = if (hasMaya) androidx.compose.foundation.BorderStroke(1.5.dp, HeroUITheme.colors.accent) else androidx.compose.foundation.BorderStroke(1.dp, HeroUITheme.colors.border)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    HeroCheckbox(
+                                        checked = hasMaya,
+                                        onCheckedChange = { hasMaya = it },
+                                        modifier = Modifier.testTag("setup_has_maya_checkbox")
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text("Maya Services", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                        Text("Digital payments with flat bank fees", style = MaterialTheme.typography.bodySmall, color = HeroUITheme.colors.muted)
+                                    }
+                                }
+                            }
+
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { hasLoad = !hasLoad },
+                                shape = HeroUITheme.radius.lg,
+                                color = if (hasLoad) HeroUITheme.colors.accent.copy(alpha = 0.1f) else HeroUITheme.colors.surfaceSecondary,
+                                border = if (hasLoad) androidx.compose.foundation.BorderStroke(1.5.dp, HeroUITheme.colors.accent) else androidx.compose.foundation.BorderStroke(1.dp, HeroUITheme.colors.border)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    HeroCheckbox(
+                                        checked = hasLoad,
+                                        onCheckedChange = { hasLoad = it },
+                                        modifier = Modifier.testTag("setup_has_load_checkbox")
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text("Prepaid Mobile Load", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                        Text("Smart, TNT, Globe, TM e-loading (2% retailer rebate)", style = MaterialTheme.typography.bodySmall, color = HeroUITheme.colors.muted)
+                                    }
+                                }
+                            }
+
+                            if (hasLoad) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    HeroInput(
+                                        value = smartLoadBalStr,
+                                        onValueChange = { smartLoadBalStr = it },
+                                        label = { Text("Smart/TNT Wallet ($currencySymbol)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f).testTag("setup_smart_load_input"),
+                                        shape = HeroUITheme.radius.md
+                                    )
+                                    HeroInput(
+                                        value = globeLoadBalStr,
+                                        onValueChange = { globeLoadBalStr = it },
+                                        label = { Text("Globe/TM Wallet ($currencySymbol)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f).testTag("setup_globe_load_input"),
+                                        shape = HeroUITheme.radius.md
+                                    )
+                                }
+                            }
+
+                            if (hasLoad || hasGCash || hasMaya) {
+                                HeroDivider(color = HeroUITheme.colors.separator, modifier = Modifier.padding(vertical = 4.dp))
+                                Text(
+                                    "Customer Service Fee Tuning",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = HeroUITheme.colors.foreground
+                                )
+
+                                if (hasLoad) {
+                                    HeroInput(
+                                        value = loadFeeStr,
+                                        onValueChange = { loadFeeStr = it },
+                                        label = { Text("Prepaid Load Charge ($currencySymbol)") },
+                                        supportingText = { Text("Default customer surcharge (e.g. ₱2.00 on ₱20 load)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.fillMaxWidth().testTag("setup_load_fee_input"),
+                                        shape = HeroUITheme.radius.md,
+                                        singleLine = true
+                                    )
+                                }
+
+                                if (hasGCash) {
+                                    HeroInput(
+                                        value = gcashFeeStr,
+                                        onValueChange = { gcashFeeStr = it },
+                                        label = { Text("GCash Service Fee ($currencySymbol)") },
+                                        supportingText = { Text("Base rate per ₱1,000 tier (e.g. ₱10.00)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.fillMaxWidth().testTag("setup_gcash_fee_input"),
+                                        shape = HeroUITheme.radius.md,
+                                        singleLine = true
+                                    )
+                                }
+
+                                if (hasMaya) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        HeroInput(
+                                            value = mayaFeeStr,
+                                            onValueChange = { mayaFeeStr = it },
+                                            label = { Text("Maya Fee ($currencySymbol)") },
+                                            supportingText = { Text("Store fee (₱10.00)") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            modifier = Modifier.weight(1f).testTag("setup_maya_fee_input"),
+                                            shape = HeroUITheme.radius.md,
+                                            singleLine = true
+                                        )
+                                        HeroInput(
+                                            value = mayaBankFeeStr,
+                                            onValueChange = { mayaBankFeeStr = it },
+                                            label = { Text("Bank Fee ($currencySymbol)") },
+                                            supportingText = { Text("Transfer fee (₱15.00)") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            modifier = Modifier.weight(1f).testTag("setup_maya_bank_fee_input"),
+                                            shape = HeroUITheme.radius.md,
+                                            singleLine = true
                                         )
                                     }
-                                    context.startActivity(intent)
-                                } catch (_: Exception) {}
-                                return@Button
+                                }
                             }
-                            if (adminUsername.isNotBlank() && SecurityHelper.isValidPin(adminPassword)) {
-                                viewModel.completeInitialSetup(
-                                    storeName = storeName.trim(),
-                                    currency = currencySymbol,
-                                    taxPercent = taxPercentageStr.toDoubleOrNull() ?: 0.0,
-                                    adminUser = adminUsername.trim(),
-                                    adminPass = adminPassword,
-                                    adminName = adminName.trim(),
-                                    adminPhone = adminPhoneNumber.trim(),
-                                    hasGCash = hasGCash,
-                                    hasMaya = hasMaya,
-                                    hasLoad = hasLoad,
-                                    smartLoadBalance = smartLoadBalStr.toDoubleOrNull() ?: 0.0,
-                                    globeLoadBalance = globeLoadBalStr.toDoubleOrNull() ?: 0.0,
-                                    loadServiceFee = loadFeeStr.toDoubleOrNull() ?: 2.0,
-                                    gcashServiceFee = gcashFeeStr.toDoubleOrNull() ?: 10.0,
-                                    mayaServiceFee = mayaFeeStr.toDoubleOrNull() ?: 10.0,
-                                    mayaBankFee = mayaBankFeeStr.toDoubleOrNull() ?: 15.0
+
+                        } else {
+                            // Step 2: Administrative Security
+                            HeroCardHeader(
+                                title = "Step 2: Admin Accounts & Terminal Security",
+                                subtitle = "Create master credentials and lock down kiosk mode",
+                                icon = Icons.Default.Shield,
+                                iconColor = HeroUITheme.colors.accent
+                            )
+
+                            // Device Administrator Security Card
+                            HeroCard(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                shape = HeroUITheme.radius.lg,
+                                backgroundColor = if (isDeviceAdminActive)
+                                    HeroUITheme.colors.success.copy(alpha = 0.1f)
+                                else
+                                    HeroUITheme.colors.danger.copy(alpha = 0.1f),
+                                borderColor = if (isDeviceAdminActive)
+                                    HeroUITheme.colors.success.copy(alpha = 0.4f)
+                                else
+                                    HeroUITheme.colors.danger.copy(alpha = 0.4f)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (isDeviceAdminActive) Icons.Default.Shield else Icons.Default.GppMaybe,
+                                                contentDescription = null,
+                                                tint = if (isDeviceAdminActive) HeroUITheme.colors.success else HeroUITheme.colors.danger,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(
+                                                text = "Device Administrator",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.titleMedium
+                                            )
+                                        }
+                                        HeroChip(
+                                            text = if (isDeviceAdminActive) "ACTIVE" else "REQUIRED",
+                                            color = if (isDeviceAdminActive) HeroColor.Success else HeroColor.Danger,
+                                            variant = HeroChipVariant.Solid
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = if (isDeviceAdminActive)
+                                            "Device Administrator is active. Anti-uninstall defense and Kiosk unpin lock are enforced."
+                                        else
+                                            "Device Administrator privilege is required to lock kiosk mode and prevent unauthorized app uninstallation or clearing data.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = HeroUITheme.colors.muted
+                                    )
+                                    if (!isDeviceAdminActive) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        HeroButton(
+                                            onClick = {
+                                                try {
+                                                    val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                                                        putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, StorePointDeviceAdminReceiver.getComponentName(context))
+                                                        putExtra(
+                                                            DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                                            "StorePoint requires Device Administrator privileges to lock kiosk mode and prevent unauthorized app uninstallation or clearing data."
+                                                        )
+                                                    }
+                                                    context.startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "Could not open Device Admin screen: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = HeroColor.Danger,
+                                            variant = HeroButtonVariant.Solid,
+                                            size = HeroSize.Md,
+                                            icon = Icons.Default.AdminPanelSettings,
+                                            text = "Activate Device Administrator"
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (isExpanded) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    HeroInput(
+                                        value = adminName,
+                                        onValueChange = { adminName = it },
+                                        label = { Text("Admin / Owner Full Name") },
+                                        placeholder = { Text("Juan Dela Cruz") },
+                                        leadingIcon = { Icon(Icons.Default.Badge, null, tint = HeroUITheme.colors.accent) },
+                                        modifier = Modifier.weight(1f).testTag("admin_name_input"),
+                                        singleLine = true,
+                                        shape = HeroUITheme.radius.md
+                                    )
+                                    HeroInput(
+                                        value = adminPhoneNumber,
+                                        onValueChange = { input ->
+                                            if (input.length <= 15 && input.all { it.isDigit() || it == '+' || it == ' ' || it == '-' }) {
+                                                adminPhoneNumber = input
+                                            }
+                                        },
+                                        label = { Text("Admin Phone Number") },
+                                        placeholder = { Text("09171234567") },
+                                        leadingIcon = { Icon(Icons.Default.Phone, null, tint = HeroUITheme.colors.accent) },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                        modifier = Modifier.weight(1f).testTag("admin_phone_input"),
+                                        singleLine = true,
+                                        shape = HeroUITheme.radius.md
+                                    )
+                                }
+                            } else {
+                                HeroInput(
+                                    value = adminName,
+                                    onValueChange = { adminName = it },
+                                    label = { Text("Admin / Owner Full Name") },
+                                    placeholder = { Text("Juan Dela Cruz") },
+                                    leadingIcon = { Icon(Icons.Default.Badge, null, tint = HeroUITheme.colors.accent) },
+                                    modifier = Modifier.fillMaxWidth().testTag("admin_name_input"),
+                                    singleLine = true,
+                                    shape = HeroUITheme.radius.md
+                                )
+                                HeroInput(
+                                    value = adminPhoneNumber,
+                                    onValueChange = { input ->
+                                        if (input.length <= 15 && input.all { it.isDigit() || it == '+' || it == ' ' || it == '-' }) {
+                                            adminPhoneNumber = input
+                                        }
+                                    },
+                                    label = { Text("Admin Phone Number") },
+                                    placeholder = { Text("09171234567") },
+                                    supportingText = { Text("Dialed automatically when cashiers trigger 'Call Admin'") },
+                                    leadingIcon = { Icon(Icons.Default.Phone, null, tint = HeroUITheme.colors.accent) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                    modifier = Modifier.fillMaxWidth().testTag("admin_phone_input"),
+                                    singleLine = true,
+                                    shape = HeroUITheme.radius.md
+                                )
+                            }
+
+                            HeroInput(
+                                value = adminUsername,
+                                onValueChange = { adminUsername = it },
+                                label = { Text("Admin Username") },
+                                placeholder = { Text("admin") },
+                                leadingIcon = { Icon(Icons.Default.AccountCircle, null, tint = HeroUITheme.colors.accent) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("admin_user_input"),
+                                singleLine = true,
+                                shape = HeroUITheme.radius.md
+                            )
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Admin ${SecurityHelper.PIN_LENGTH}-Digit PIN",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = HeroUITheme.colors.foreground
+                                    )
+                                    val adminPinWeak = adminPassword.isNotEmpty() && SecurityHelper.isWeakPin(adminPassword)
+                                    if (adminPinWeak) {
+                                        HeroChip(text = "Too Weak", color = HeroColor.Danger, variant = HeroChipVariant.Flat)
+                                    } else if (adminPassword.length == SecurityHelper.PIN_LENGTH) {
+                                        HeroChip(text = "PIN Ready", color = HeroColor.Success, variant = HeroChipVariant.Flat)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                val adminPinWeak = adminPassword.isNotEmpty() && SecurityHelper.isWeakPin(adminPassword)
+                                ExpressiveOtpPinInput(
+                                    pin = adminPassword,
+                                    onPinChange = { adminPassword = it },
+                                    isMasked = true,
+                                    isError = adminPinWeak,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("admin_password_input")
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = when {
+                                        adminPinWeak -> "Too easy to guess — ${SecurityHelper.pinPolicyHint()}"
+                                        adminPassword.length == SecurityHelper.PIN_LENGTH -> "✓ Master PIN ready"
+                                        else -> "${adminPassword.length}/${SecurityHelper.PIN_LENGTH} digits (numeric only)"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = when {
+                                        adminPinWeak -> HeroUITheme.colors.danger
+                                        adminPassword.length == SecurityHelper.PIN_LENGTH -> HeroUITheme.colors.success
+                                        else -> HeroUITheme.colors.muted
+                                    }
                                 )
                             }
                         }
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .padding(start = if (activeStep == 2) 8.dp else 0.dp)
-                        .testTag("setup_action_button"),
-                    shape = CircleShape,
-                    enabled = if (activeStep == 1) {
-                        storeName.isNotBlank() && taxPercentageStr.toDoubleOrNull() != null
-                    } else {
-                        storeName.isNotBlank() && taxPercentageStr.toDoubleOrNull() != null &&
-                        adminUsername.isNotBlank() &&
-                        SecurityHelper.isValidPin(adminPassword) &&
-                        !SecurityHelper.isWeakPin(adminPassword) &&
-                        isDeviceAdminActive
-                    }
-                ) {
-                    Text(
-                        text = if (activeStep == 1) "Next Phase" else "Save & Complete",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (activeStep == 1) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(Icons.Default.ArrowForward, contentDescription = null)
-                    } else {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(Icons.Default.Check, contentDescription = null)
                     }
                 }
+
+                // Action / Navigation Footer
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (activeStep == 2) {
+                        HeroButton(
+                            onClick = { activeStep = 1 },
+                            modifier = Modifier.weight(1f).padding(end = 8.dp),
+                            color = HeroColor.Default,
+                            variant = HeroButtonVariant.Bordered,
+                            size = HeroSize.Lg,
+                            icon = Icons.Default.ArrowBack,
+                            text = "Back"
+                        )
+                    }
+
+                    HeroButton(
+                        onClick = {
+                            if (activeStep == 1) {
+                                if (storeName.isNotBlank() && taxPercentageStr.toDoubleOrNull() != null) {
+                                    activeStep = 2
+                                }
+                            } else {
+                                if (!isDeviceAdminActive) {
+                                    Toast.makeText(context, "Please activate Device Administrator first to secure this POS terminal.", Toast.LENGTH_LONG).show()
+                                    try {
+                                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                                            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, StorePointDeviceAdminReceiver.getComponentName(context))
+                                            putExtra(
+                                                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                                "StorePoint requires Device Administrator privileges to lock kiosk mode and prevent unauthorized app uninstallation or clearing data."
+                                            )
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                    return@HeroButton
+                                }
+                                if (adminUsername.isNotBlank() && SecurityHelper.isValidPin(adminPassword)) {
+                                    viewModel.completeInitialSetup(
+                                        storeName = storeName.trim(),
+                                        currency = currencySymbol,
+                                        taxPercent = taxPercentageStr.toDoubleOrNull() ?: 0.0,
+                                        adminUser = adminUsername.trim(),
+                                        adminPass = adminPassword,
+                                        adminName = adminName.trim(),
+                                        adminPhone = adminPhoneNumber.trim(),
+                                        hasGCash = hasGCash,
+                                        hasMaya = hasMaya,
+                                        hasLoad = hasLoad,
+                                        smartLoadBalance = smartLoadBalStr.toDoubleOrNull() ?: 0.0,
+                                        globeLoadBalance = globeLoadBalStr.toDoubleOrNull() ?: 0.0,
+                                        loadServiceFee = loadFeeStr.toDoubleOrNull() ?: 2.0,
+                                        gcashServiceFee = gcashFeeStr.toDoubleOrNull() ?: 10.0,
+                                        mayaServiceFee = mayaFeeStr.toDoubleOrNull() ?: 10.0,
+                                        mayaBankFee = mayaBankFeeStr.toDoubleOrNull() ?: 15.0
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = if (activeStep == 2) 8.dp else 0.dp)
+                            .testTag("setup_action_button"),
+                        color = HeroColor.Primary,
+                        variant = HeroButtonVariant.Solid,
+                        size = HeroSize.Lg,
+                        icon = if (activeStep == 1) null else Icons.Default.Check,
+                        trailingIcon = if (activeStep == 1) Icons.Default.ArrowForward else null,
+                        text = if (activeStep == 1) "Next Phase" else "Save & Complete",
+                        enabled = if (activeStep == 1) {
+                            storeName.isNotBlank() && taxPercentageStr.toDoubleOrNull() != null
+                        } else {
+                            storeName.isNotBlank() && taxPercentageStr.toDoubleOrNull() != null &&
+                            adminUsername.isNotBlank() &&
+                            SecurityHelper.isValidPin(adminPassword) &&
+                            !SecurityHelper.isWeakPin(adminPassword) &&
+                            isDeviceAdminActive
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
-}
 }
 

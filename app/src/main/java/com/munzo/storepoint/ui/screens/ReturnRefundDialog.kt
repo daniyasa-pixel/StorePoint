@@ -28,9 +28,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.munzo.storepoint.data.ReturnTransaction
+import com.munzo.storepoint.data.ReturnItem
 import com.munzo.storepoint.data.Transaction
 import com.munzo.storepoint.data.TransactionItem
 import com.munzo.storepoint.ui.StorePointViewModel
+import com.munzo.storepoint.ui.theme.HeroUITheme
+import com.munzo.storepoint.ui.components.*
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -59,6 +62,7 @@ fun ReturnRefundDialog(
     var customerName by remember { mutableStateOf("") }
     var returnNotes by remember { mutableStateOf("") }
     var completedReturnTx by remember { mutableStateOf<ReturnTransaction?>(null) }
+    var completedReturnItems by remember { mutableStateOf<List<ReturnItem>>(emptyList()) }
 
     val recentTransactions = remember(allTransactions, transactionSearchQuery) {
         if (transactionSearchQuery.isBlank()) {
@@ -125,7 +129,7 @@ fun ReturnRefundDialog(
                         color = MaterialTheme.colorScheme.outline
                     )
 
-                    Card(
+                    HeroCard(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -163,26 +167,39 @@ fun ReturnRefundDialog(
 
                     Spacer(modifier = Modifier.weight(1f))
 
+                    HeroButton(
+                        onClick = {
+                            viewModel.printRefundReceiptHardware(ret, completedReturnItems) { success, msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        variant = HeroButtonVariant.Bordered,
+                        color = HeroColor.Default,
+                        text = "Print Thermal Refund Slip",
+                        icon = Icons.Default.Print,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("print_refund_receipt_btn")
+                    )
+
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(
+                        HeroButton(
                             onClick = {
                                 completedReturnTx = null
                                 loadedTx = null
                                 loadedItems = emptyList()
                                 selectedTransactionId = null
                             },
-                            shape = CircleShape,
-                            modifier = Modifier.weight(1f).height(48.dp)
-                        ) {
-                            Text("Process Another Return")
-                        }
-                        Button(
+                            variant = HeroButtonVariant.Bordered,
+                            color = HeroColor.Default,
+                            text = "Process Another Return",
+                            modifier = Modifier.weight(1f)
+                        )
+                        HeroButton(
                             onClick = onDismiss,
-                            shape = CircleShape,
-                            modifier = Modifier.weight(1f).height(48.dp).testTag("return_done_button")
-                        ) {
-                            Text("Done", fontWeight = FontWeight.Bold)
-                        }
+                            text = "Done",
+                            modifier = Modifier.weight(1f).testTag("return_done_button")
+                        )
                     }
                 }
             } else {
@@ -224,7 +241,7 @@ fun ReturnRefundDialog(
                             ) {
                                 Text("1. Select Completed Transaction", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                 
-                                OutlinedTextField(
+                                HeroInput(
                                     value = transactionSearchQuery,
                                     onValueChange = { transactionSearchQuery = it },
                                     label = { Text("Search Tx #, Cashier, Tender") },
@@ -245,7 +262,7 @@ fun ReturnRefundDialog(
                                     items(recentTransactions) { tx ->
                                         val isSelected = selectedTransactionId == tx.id
                                         val dateStr = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(tx.timestamp))
-                                        Card(
+                                        HeroCard(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clickable { 
@@ -376,7 +393,7 @@ fun ReturnRefundDialog(
                                             val returnQty = currentSelection?.first ?: 1
                                             val restock = currentSelection?.second ?: true
 
-                                            Card(
+                                            HeroCard(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 shape = RoundedCornerShape(16.dp),
                                                 colors = CardDefaults.cardColors(
@@ -395,7 +412,7 @@ fun ReturnRefundDialog(
                                                             verticalAlignment = Alignment.CenterVertically,
                                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                         ) {
-                                                            Checkbox(
+                                                            HeroCheckbox(
                                                                 checked = isChecked,
                                                                 onCheckedChange = { checked ->
                                                                     if (checked) {
@@ -449,7 +466,7 @@ fun ReturnRefundDialog(
                                                             }
 
                                                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                                                Checkbox(
+                                                                HeroCheckbox(
                                                                     checked = restock,
                                                                     onCheckedChange = { checked ->
                                                                         returnSelections[item.id] = Pair(returnQty, checked)
@@ -597,11 +614,11 @@ fun ReturnRefundDialog(
                                             )
                                         }
 
-                                        Button(
+                                        HeroButton(
                                             onClick = {
                                                 if (returnSelections.isEmpty()) {
                                                     Toast.makeText(context, "Please select at least 1 item to return", Toast.LENGTH_SHORT).show()
-                                                    return@Button
+                                                    return@HeroButton
                                                 }
                                                 val drafts = returnSelections.mapNotNull { (itemId, sel) ->
                                                     val item = loadedItems.find { it.id == itemId }
@@ -623,6 +640,18 @@ fun ReturnRefundDialog(
                                                     customerName = customerName,
                                                     notes = returnNotes,
                                                     onSuccess = { ret ->
+                                                        completedReturnItems = drafts.map { draft ->
+                                                            ReturnItem(
+                                                                returnTransactionId = ret.id,
+                                                                productId = draft.originalItem.productId,
+                                                                productName = draft.originalItem.productName,
+                                                                quantity = draft.returnQuantity,
+                                                                unitPrice = draft.unitRefundPrice,
+                                                                refundAmount = draft.returnQuantity * draft.unitRefundPrice,
+                                                                uomName = draft.originalItem.uomName,
+                                                                restockToInventory = draft.restockToInventory
+                                                            )
+                                                        }
                                                         completedReturnTx = ret
                                                         Toast.makeText(context, "Return #${ret.id} processed successfully!", Toast.LENGTH_LONG).show()
                                                     },
@@ -631,14 +660,12 @@ fun ReturnRefundDialog(
                                                     }
                                                 )
                                             },
-                                            shape = CircleShape,
-                                            modifier = Modifier.fillMaxWidth().height(50.dp).testTag("process_return_submit_btn"),
-                                            enabled = returnSelections.isNotEmpty()
-                                        ) {
-                                            Icon(Icons.Default.AssignmentReturn, contentDescription = null)
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Complete Return ($curr${String.format(Locale.getDefault(), "%.2f", totalRefundAmount)})", fontWeight = FontWeight.Bold)
-                                        }
+                                            text = "Complete Return ($curr${String.format(Locale.getDefault(), "%.2f", totalRefundAmount)})",
+                                            icon = Icons.Default.AssignmentReturn,
+                                            enabled = returnSelections.isNotEmpty(),
+                                            color = HeroColor.Primary,
+                                            modifier = Modifier.fillMaxWidth().testTag("process_return_submit_btn")
+                                        )
                                     }
                                 }
                             }
@@ -652,33 +679,17 @@ fun ReturnRefundDialog(
                                     .padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                TabRow(
-                                    selectedTabIndex = mobileTab,
+                                val returnTabLabels = listOf(
+                                    "1. Select Tx",
+                                    if (returnSelections.isEmpty()) "2. Return Items" else "2. Return Items (${returnSelections.size})"
+                                )
+                                HeroSegmentedTabs(
+                                    items = listOf(0, 1),
+                                    selectedItem = mobileTab,
+                                    onItemSelected = { mobileTab = it },
+                                    labelProvider = { returnTabLabels[it] },
                                     modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Tab(
-                                        selected = mobileTab == 0,
-                                        onClick = { mobileTab = 0 },
-                                        text = {
-                                            Text(
-                                                "1. Select Tx",
-                                                fontWeight = FontWeight.Bold,
-                                                style = MaterialTheme.typography.labelMedium
-                                            )
-                                        }
-                                    )
-                                    Tab(
-                                        selected = mobileTab == 1,
-                                        onClick = { mobileTab = 1 },
-                                        text = {
-                                            Text(
-                                                if (returnSelections.isEmpty()) "2. Return Items" else "2. Return Items (${returnSelections.size})",
-                                                fontWeight = FontWeight.Bold,
-                                                style = MaterialTheme.typography.labelMedium
-                                            )
-                                        }
-                                    )
-                                }
+                                )
 
                                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                                     if (mobileTab == 0) {

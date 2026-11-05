@@ -36,6 +36,7 @@ import com.munzo.storepoint.ui.layout.rememberWindowLayout
 import com.munzo.storepoint.ui.theme.ExpressiveButtonShape
 import com.munzo.storepoint.ui.theme.glassPanel
 import com.munzo.storepoint.ui.theme.tactileBounce
+import com.munzo.storepoint.ui.components.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -306,7 +307,7 @@ fun WalkthroughSlide(
     subtitle: String,
     description: String
 ) {
-    Card(
+    HeroCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
@@ -387,7 +388,7 @@ fun TermsAndConditionsSlide(
     accepted: Boolean,
     onAcceptChanged: (Boolean) -> Unit
 ) {
-    Card(
+    HeroCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
@@ -431,7 +432,7 @@ fun TermsAndConditionsSlide(
             )
 
             // Scrollable terms container
-            Card(
+            HeroCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(300.dp),
@@ -512,7 +513,7 @@ fun TermsAndConditionsSlide(
                         .fillMaxWidth()
                         .padding(14.dp)
                 ) {
-                    Checkbox(
+                    HeroCheckbox(
                         checked = accepted,
                         onCheckedChange = { onAcceptChanged(it) },
                         modifier = Modifier.testTag("terms_cb")

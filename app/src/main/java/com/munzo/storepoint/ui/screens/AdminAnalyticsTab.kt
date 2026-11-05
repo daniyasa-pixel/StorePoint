@@ -19,6 +19,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,11 +28,14 @@ import androidx.compose.ui.unit.dp
 import com.munzo.storepoint.data.*
 import com.munzo.storepoint.ui.StorePointViewModel
 import com.munzo.storepoint.ui.theme.*
+import com.munzo.storepoint.ui.theme.HeroUITheme
+import com.munzo.storepoint.ui.components.*
+import com.munzo.storepoint.util.PdfExportUtil
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// Analytics and Shifts Page
+// Analytics and Financial Reporting Page
 @Composable
 fun AnalyticsTab(
     transactions: List<Transaction>,
@@ -44,11 +49,26 @@ fun AnalyticsTab(
     storeConfig: StoreConfig? = null,
     viewModel: StorePointViewModel? = null
 ) {
+    val context = LocalContext.current
     val totalRevenue = transactions.sumOf { it.totalAmount }
     val totalProfit = transactionItems.sumOf { (it.price - it.cost) * it.quantity }
     val avgTransaction = if (transactions.isNotEmpty()) totalRevenue / transactions.size else 0.0
     val lowStockItems = products.filter { it.stockCount in 1..5 }
     val outOfStockItems = products.filter { it.stockCount <= 0 }
+
+    // Top-performing products calculation
+    val topProducts = remember(transactionItems) {
+        transactionItems
+            .groupBy { it.productName }
+            .map { (name, items) ->
+                val totalQty = items.sumOf { it.quantity }
+                val totalSales = items.sumOf { it.price * it.quantity }
+                val totalProfit = items.sumOf { (it.price - it.cost) * it.quantity }
+                Triple(name, totalQty, Pair(totalSales, totalProfit))
+            }
+            .sortedByDescending { it.third.first } // Ranked by sales revenue
+            .take(5)
+    }
 
     Column(
         modifier = Modifier
@@ -63,7 +83,7 @@ fun AnalyticsTab(
         ) {
             ExpressiveMetricCard(
                 modifier = Modifier.weight(1f),
-                title = "Daily Sales Revenue",
+                title = "Daily Gross Sales",
                 value = "$curr${String.format(Locale.US, "%.2f", totalRevenue)}",
                 icon = Icons.Default.TrendingUp,
                 accentColor = MaterialTheme.colorScheme.primary
@@ -74,7 +94,7 @@ fun AnalyticsTab(
                 title = "Earned Net Profit",
                 value = "$curr${String.format(Locale.US, "%.2f", totalProfit)}",
                 icon = Icons.Default.MonetizationOn,
-                accentColor = MaterialTheme.colorScheme.primary
+                accentColor = Color(0xFF10B981)
             )
         }
 
@@ -85,7 +105,7 @@ fun AnalyticsTab(
         ) {
             ExpressiveMetricCard(
                 modifier = Modifier.weight(1f),
-                title = "Avg Basket Ticket",
+                title = "Avg Basket Ticket Size",
                 value = "$curr${String.format(Locale.US, "%.2f", avgTransaction)}",
                 icon = Icons.Default.ShoppingBasket,
                 accentColor = MaterialTheme.colorScheme.secondary
@@ -93,16 +113,126 @@ fun AnalyticsTab(
 
             ExpressiveMetricCard(
                 modifier = Modifier.weight(1f),
-                title = "Stock Warnings",
+                title = "Low-Stock Warnings",
                 value = "${lowStockItems.size + outOfStockItems.size} items",
                 icon = Icons.Default.Warning,
-                accentColor = if (outOfStockItems.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
-                subtitle = if (outOfStockItems.isNotEmpty()) "${outOfStockItems.size} out of stock" else null
+                accentColor = if (outOfStockItems.isNotEmpty()) MaterialTheme.colorScheme.error else Color(0xFFF59E0B),
+                subtitle = if (outOfStockItems.isNotEmpty()) "${outOfStockItems.size} out of stock" else "${lowStockItems.size} low stock"
             )
         }
 
-        // High-fidelity GCash System Wallet Retailing balance card
-        Card(
+        // Sales Revenue Trend Plot
+        Text("Sales Revenue Trend Visualization", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        InteractiveSalesTrendChart(transactions, curr)
+
+        // Top-Performing Product Rankings
+        HeroCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .expressiveGlassCard(cornerRadius = 24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            "Top-Performing Product Rankings",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "Best-selling catalog items ranked by volume & revenue",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.Leaderboard,
+                        contentDescription = "Rankings",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                if (topProducts.isEmpty()) {
+                    Text(
+                        "No item sales registered yet. Complete register checkouts to see product leaderboards.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                } else {
+                    topProducts.forEachIndexed { index, (productName, qtySold, salesProfit) ->
+                        val (sales, profit) = salesProfit
+                        val rankColor = when (index) {
+                            0 -> Color(0xFFF59E0B) // Gold
+                            1 -> Color(0xFF94A3B8) // Silver
+                            2 -> Color(0xFFD97706) // Bronze
+                            else -> MaterialTheme.colorScheme.outline
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = rankColor.copy(alpha = 0.2f),
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            "#${index + 1}",
+                                            fontWeight = FontWeight.Black,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = rankColor
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        productName,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        "$qtySold units sold • Profit: $curr${String.format(Locale.US, "%.2f", profit)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
+
+                            Text(
+                                "$curr${String.format(Locale.US, "%.2f", sales)}",
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // PDF & CSV Export Engine (PdfExportUtil)
+        HeroCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .expressiveGlassCard(
@@ -112,182 +242,153 @@ fun AnalyticsTab(
             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
             shape = RoundedCornerShape(24.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AccountBalanceWallet,
-                            contentDescription = "Wallet Icon",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(26.dp)
+                    Column {
+                        Text(
+                            "PDF & CSV Financial Export Engine",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "Export print-ready audit PDFs and spreadsheet CSV sheets",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
                         )
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "GCash Retailing Balance",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.outline,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            softWrap = false
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                }
+
+                // 1) Sales Summary Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Sales Summaries", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                        Text("Daily transactions, payment methods & VAT tax breakdown", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HeroButton(
+                            onClick = {
+                                storeConfig?.let { cfg ->
+                                    PdfExportUtil.exportSalesAndInventoryReportPdf(context, cfg, transactions, products)
+                                }
+                            },
+                            modifier = Modifier.testTag("export_sales_pdf_btn"),
+                            text = "PDF",
+                            icon = Icons.Default.PictureAsPdf,
+                            color = HeroColor.Primary,
+                            variant = HeroButtonVariant.Bordered,
+                            size = HeroSize.Sm
                         )
-                        Text(
-                            text = "$curr${String.format(Locale.getDefault(), "%.2f", gcashBalance)}",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            softWrap = false
+
+                        HeroButton(
+                            onClick = {
+                                storeConfig?.let { cfg ->
+                                    PdfExportUtil.exportSalesSummaryCsv(context, cfg, transactions)
+                                }
+                            },
+                            modifier = Modifier.testTag("export_sales_csv_btn"),
+                            text = "CSV",
+                            icon = Icons.Default.Description,
+                            color = HeroColor.Primary,
+                            variant = HeroButtonVariant.Solid,
+                            size = HeroSize.Sm
                         )
                     }
                 }
-                ExpressivePillBadge(
-                    text = "REGISTERED WALLET",
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-        }
 
-        // Prepaid Load Wallets (Smart/TNT and Globe/TM with 2% Rebate)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Smart / TNT Load Wallet Card
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .expressiveGlassCard(
-                        cornerRadius = 20.dp,
-                        accentGlow = MaterialTheme.colorScheme.primary
-                    ),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                HeroDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // 2) Daily Register Journal Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.PhoneAndroid,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        ExpressivePillBadge(
-                            text = "2% REBATE",
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Daily Register Journals", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                        Text("Cashier shift sessions, starting floats, drawer cash counts", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                     }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "Smart / TNT Load Wallet",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.outline,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HeroButton(
+                            onClick = {
+                                storeConfig?.let { cfg ->
+                                    PdfExportUtil.exportDailyRegisterJournalPdf(context, cfg, sessions)
+                                }
+                            },
+                            modifier = Modifier.testTag("export_journal_pdf_btn"),
+                            text = "PDF",
+                            icon = Icons.Default.PictureAsPdf,
+                            color = HeroColor.Primary,
+                            variant = HeroButtonVariant.Bordered,
+                            size = HeroSize.Sm
                         )
-                        Text(
-                            text = "$curr${String.format(Locale.getDefault(), "%.2f", smartLoadBalance)}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.onSurface
+
+                        HeroButton(
+                            onClick = {
+                                storeConfig?.let { cfg ->
+                                    PdfExportUtil.exportDailyRegisterJournalCsv(context, cfg, sessions)
+                                }
+                            },
+                            modifier = Modifier.testTag("export_journal_csv_btn"),
+                            text = "CSV",
+                            icon = Icons.Default.Description,
+                            color = HeroColor.Primary,
+                            variant = HeroButtonVariant.Solid,
+                            size = HeroSize.Sm
                         )
                     }
                 }
-            }
 
-            // Globe / TM Load Wallet Card
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .expressiveGlassCard(
-                        cornerRadius = 20.dp,
-                        accentGlow = MaterialTheme.colorScheme.secondary
-                    ),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                HeroDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // 3) Inventory Valuation Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.SimCard,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        ExpressivePillBadge(
-                            text = "2% REBATE",
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Inventory Valuation Reports", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                        Text("Asset valuation (COGS vs Retail), stock quantities & profit margins", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                     }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "Globe / TM Load Wallet",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.outline,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HeroButton(
+                            onClick = {
+                                storeConfig?.let { cfg ->
+                                    PdfExportUtil.exportInventoryValuationPdf(context, cfg, products)
+                                }
+                            },
+                            modifier = Modifier.testTag("export_inventory_pdf_btn"),
+                            text = "PDF",
+                            icon = Icons.Default.PictureAsPdf,
+                            color = HeroColor.Primary,
+                            variant = HeroButtonVariant.Bordered,
+                            size = HeroSize.Sm
                         )
-                        Text(
-                            text = "$curr${String.format(Locale.getDefault(), "%.2f", globeLoadBalance)}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.onSurface
+
+                        HeroButton(
+                            onClick = {
+                                storeConfig?.let { cfg ->
+                                    PdfExportUtil.exportInventoryValuationCsv(context, cfg, products)
+                                }
+                            },
+                            modifier = Modifier.testTag("export_inventory_csv_btn"),
+                            text = "CSV",
+                            icon = Icons.Default.Description,
+                            color = HeroColor.Primary,
+                            variant = HeroButtonVariant.Solid,
+                            size = HeroSize.Sm
                         )
                     }
                 }
@@ -301,7 +402,7 @@ fun AnalyticsTab(
         var editMayaFee by remember(storeConfig) { mutableStateOf(String.format(Locale.US, "%.2f", storeConfig?.mayaServiceFee ?: 10.0)) }
         var editMayaBankFee by remember(storeConfig) { mutableStateOf(String.format(Locale.US, "%.2f", storeConfig?.mayaBankFee ?: 15.0)) }
 
-        Card(
+        HeroCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .expressiveGlassCard(
@@ -342,20 +443,20 @@ fun AnalyticsTab(
                         }
                         Column {
                             Text(
-                                text = "Digital Service Charges",
+                                text = "Digital Service Fee Configuration",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Default store service fees for Load, GCash & Maya",
+                                text = "Custom fee tuning for GCash tiers, Maya transfers & prepaid load",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
                     }
 
-                    FilledTonalButton(
+                    HeroButton(
                         onClick = {
                             editLoadFee = String.format(Locale.US, "%.2f", storeConfig?.loadServiceFee ?: 2.0)
                             editGcashFee = String.format(Locale.US, "%.2f", storeConfig?.gcashServiceFee ?: 10.0)
@@ -363,13 +464,13 @@ fun AnalyticsTab(
                             editMayaBankFee = String.format(Locale.US, "%.2f", storeConfig?.mayaBankFee ?: 15.0)
                             showEditFeesDialog = true
                         },
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Edit Charges", style = MaterialTheme.typography.labelMedium)
-                    }
+                        modifier = Modifier.testTag("edit_digital_fees_btn"),
+                        text = "Tune Fees",
+                        icon = Icons.Default.Edit,
+                        color = HeroColor.Primary,
+                        variant = HeroButtonVariant.Flat,
+                        size = HeroSize.Sm
+                    )
                 }
 
                 Row(
@@ -401,14 +502,14 @@ fun AnalyticsTab(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Text("GCash Fee", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                            Text("GCash Tier Fee", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             Text(
                                 "$curr${String.format(Locale.US, "%.2f", storeConfig?.gcashServiceFee ?: 10.0)}",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            Text("per ₱1,000 tier", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                            Text("per ₱1,000 bracket", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                         }
                     }
 
@@ -419,14 +520,14 @@ fun AnalyticsTab(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Text("Maya Fee", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                            Text("Maya Transfer Fee", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             Text(
                                 "$curr${String.format(Locale.US, "%.2f", storeConfig?.mayaServiceFee ?: 10.0)}",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            Text("Bank fee: $curr${String.format(Locale.US, "%.2f", storeConfig?.mayaBankFee ?: 15.0)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                            Text("Bank: $curr${String.format(Locale.US, "%.2f", storeConfig?.mayaBankFee ?: 15.0)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                         }
                     }
                 }
@@ -436,7 +537,7 @@ fun AnalyticsTab(
         if (showEditFeesDialog) {
             AlertDialog(
                 onDismissRequest = { showEditFeesDialog = false },
-                title = { Text("Configure Digital Service Charges", fontWeight = FontWeight.Bold) },
+                title = { Text("Tune Digital Service Charges", fontWeight = FontWeight.Bold) },
                 text = {
                     Column(
                         modifier = Modifier
@@ -445,54 +546,54 @@ fun AnalyticsTab(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            "Set the default store convenience fees for digital services. Cashiers can also adjust fees on the POS screen if needed.",
+                            "Set default store convenience fees for mobile load, GCash brackets, and Maya transfers.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
 
-                        OutlinedTextField(
+                        HeroInput(
                             value = editLoadFee,
                             onValueChange = { editLoadFee = it },
                             label = { Text("Prepaid Load Charge ($curr)") },
                             supportingText = { Text("Default customer surcharge (e.g. ₱2.00 on ₱20 load)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().testTag("edit_load_fee_input")
                         )
 
-                        OutlinedTextField(
+                        HeroInput(
                             value = editGcashFee,
                             onValueChange = { editGcashFee = it },
                             label = { Text("GCash Service Charge ($curr)") },
                             supportingText = { Text("Base rate per ₱1,000 tier (e.g. ₱10.00)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().testTag("edit_gcash_fee_input")
                         )
 
-                        OutlinedTextField(
+                        HeroInput(
                             value = editMayaFee,
                             onValueChange = { editMayaFee = it },
                             label = { Text("Maya Service Charge ($curr)") },
                             supportingText = { Text("Base store convenience fee (e.g. ₱10.00)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().testTag("edit_maya_fee_input")
                         )
 
-                        OutlinedTextField(
+                        HeroInput(
                             value = editMayaBankFee,
                             onValueChange = { editMayaBankFee = it },
                             label = { Text("Maya Cash-In Bank Fee ($curr)") },
-                            supportingText = { Text("Maya/partner bank transfer surcharge (e.g. ₱15.00)") },
+                            supportingText = { Text("Partner bank transfer surcharge (e.g. ₱15.00)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().testTag("edit_maya_bank_fee_input")
                         )
                     }
                 },
                 confirmButton = {
-                    Button(
+                    HeroButton(
                         onClick = {
                             val lFee = editLoadFee.toDoubleOrNull() ?: 2.0
                             val gFee = editGcashFee.toDoubleOrNull() ?: 10.0
@@ -500,10 +601,13 @@ fun AnalyticsTab(
                             val mbFee = editMayaBankFee.toDoubleOrNull() ?: 15.0
                             viewModel?.updateDigitalServiceFees(lFee, gFee, mFee, mbFee)
                             showEditFeesDialog = false
-                        }
-                    ) {
-                        Text("Save Charges")
-                    }
+                        },
+                        modifier = Modifier.testTag("save_service_fees_btn"),
+                        text = "Save Charges",
+                        color = HeroColor.Primary,
+                        variant = HeroButtonVariant.Solid,
+                        size = HeroSize.Md
+                    )
                 },
                 dismissButton = {
                     TextButton(onClick = { showEditFeesDialog = false }) {
@@ -513,18 +617,14 @@ fun AnalyticsTab(
             )
         }
 
-        // Custom canvas graph diagram
-        Text("Interactive Sales revenue curve (Daily sales trend plot)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        InteractiveSalesTrendChart(transactions, curr)
-
         // Shifts history audit log list
-        Text("Staff register Shift sessions log (${sessions.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Card(
+        Text("Staff Register Shift Sessions Log (${sessions.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        HeroCard(
             modifier = Modifier.fillMaxWidth().glassPanel(cornerRadius = 24.dp),
             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
             shape = RoundedCornerShape(24.dp)
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
+            Column(modifier = Modifier.padding(14.dp)) {
                 if (sessions.isEmpty()) {
                     Text("No shifts recorded in local database yet.", color = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(12.dp))
                 } else {
@@ -556,7 +656,7 @@ fun AnalyticsTab(
                                 }
                             }
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                        HeroDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                     }
                 }
             }
@@ -567,7 +667,6 @@ fun AnalyticsTab(
 // Canvas-drawn sales trend diagram
 @Composable
 fun InteractiveSalesTrendChart(transactions: List<Transaction>, curr: String) {
-    // Generate simple simulated hourly or daily data from past sales
     val rawPrices = transactions.map { it.totalAmount }
     val dataPoints = if (rawPrices.isEmpty()) {
         listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f)

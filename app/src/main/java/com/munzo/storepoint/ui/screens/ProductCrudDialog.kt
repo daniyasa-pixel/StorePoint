@@ -1,5 +1,6 @@
 package com.munzo.storepoint.ui.screens
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -20,6 +21,8 @@ import com.munzo.storepoint.data.Category
 import com.munzo.storepoint.data.Product
 import com.munzo.storepoint.ui.BarcodeScannerDialog
 import com.munzo.storepoint.ui.theme.ExpressiveSectionHeader
+import com.munzo.storepoint.ui.theme.HeroUITheme
+import com.munzo.storepoint.ui.components.*
 
 // Product add/edit modal dialogue
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,12 +55,16 @@ fun ProductCrudDialog(
         barcodeReam: String,
         barcodeMasterCase: String,
         barcodeCustomUom: String,
-        cost: Double
+        cost: Double,
+        baseUom: String,
+        trackInventory: Boolean
     ) -> Unit
 ) {
     var pName by remember { mutableStateOf(editingProduct?.name ?: "") }
+    var pBaseUom by remember { mutableStateOf(editingProduct?.baseUom ?: "pc") }
     var pPriceStr by remember { mutableStateOf(editingProduct?.price?.toString() ?: "") }
     var pStockStr by remember { mutableStateOf(editingProduct?.stockCount?.toString() ?: "") }
+    var pTrackInventory by remember { mutableStateOf(editingProduct?.trackInventory ?: true) }
     var pBarcode by remember { mutableStateOf(editingProduct?.barcode ?: "") }
     var pExpirationDate by remember { mutableStateOf(editingProduct?.expirationDate ?: "") }
     var pCostStr by remember { mutableStateOf(editingProduct?.cost?.toString() ?: "") }
@@ -97,7 +104,7 @@ fun ProductCrudDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            Button(
+            HeroButton(
                 onClick = {
                     val price = pPriceStr.toDoubleOrNull() ?: 0.0
                     val stock = pStockStr.toIntOrNull() ?: 0
@@ -127,15 +134,16 @@ fun ProductCrudDialog(
                             barcodeReam.trim(),
                             barcodeMasterCase.trim(),
                             barcodeCustomUom.trim(),
-                            cost
+                            cost,
+                            pBaseUom.trim().ifBlank { "pc" },
+                            pTrackInventory
                         )
                     }
                 },
+                text = "Save Item",
                 modifier = Modifier.testTag("product_submit_button"),
                 enabled = pName.isNotBlank() && pPriceStr.toDoubleOrNull() != null && pStockStr.toIntOrNull() != null
-            ) {
-                Text("Save Item")
-            }
+            )
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
@@ -146,7 +154,7 @@ fun ProductCrudDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.imePadding().verticalScroll(rememberScrollState())
             ) {
-                OutlinedTextField(
+                HeroInput(
                     value = pName,
                     onValueChange = { pName = it },
                     label = { Text("Product Label/Name") },
@@ -160,7 +168,7 @@ fun ProductCrudDialog(
                     onExpandedChange = { categoriesExpanded = !categoriesExpanded }
                 ) {
                     val categoryLabel = categories.find { it.id == pCategoryId }?.name ?: "Assign Category"
-                    OutlinedTextField(
+                    HeroInput(
                         readOnly = true,
                         value = categoryLabel,
                         onValueChange = {},
@@ -188,7 +196,7 @@ fun ProductCrudDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
+                    HeroInput(
                         value = pPriceStr,
                         onValueChange = { pPriceStr = it },
                         label = { Text("Selling Price") },
@@ -197,7 +205,7 @@ fun ProductCrudDialog(
                         singleLine = true
                     )
 
-                    OutlinedTextField(
+                    HeroInput(
                         value = pCostStr,
                         onValueChange = { pCostStr = it },
                         label = { Text("Dealer's Price") },
@@ -207,7 +215,7 @@ fun ProductCrudDialog(
                     )
                 }
 
-                OutlinedTextField(
+                HeroInput(
                     value = pStockStr,
                     onValueChange = { pStockStr = it },
                     label = { Text("Open Inventory Stock Count") },
@@ -216,13 +224,72 @@ fun ProductCrudDialog(
                     singleLine = true
                 )
 
+                // Track Inventory Toggle
+                HeroCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Track Inventory",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                            )
+                            Text(
+                                "Decrement stock upon sale & alert when low",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        HeroSwitch(
+                            checked = pTrackInventory,
+                            onCheckedChange = { pTrackInventory = it },
+                            modifier = Modifier.testTag("add_ptrack_inventory_switch")
+                        )
+                    }
+                }
+
+                // Base Unit of Measure (UOM) selection
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Base Unit of Measure (UOM):", style = MaterialTheme.typography.labelMedium)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("pc", "kg", "liters", "pack", "bottle", "can", "box").forEach { uom ->
+                            FilterChip(
+                                selected = pBaseUom.equals(uom, ignoreCase = true),
+                                onClick = { pBaseUom = uom },
+                                label = { Text(uom) }
+                            )
+                        }
+                    }
+                    HeroInput(
+                        value = pBaseUom,
+                        onValueChange = { pBaseUom = it },
+                        label = { Text("Base UOM (pc, kg, liters, pack, etc.)") },
+                        modifier = Modifier.fillMaxWidth().testTag("add_base_uom_input"),
+                        singleLine = true
+                    )
+                }
+
                 // Barcode input with real CameraX scanner workflow
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
+                    HeroInput(
                         value = pBarcode,
                         onValueChange = { pBarcode = it },
                         label = { Text("SKU / Barcode Lookup") },
@@ -282,7 +349,7 @@ fun ProductCrudDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                 ) {
-                    Checkbox(
+                    HeroCheckbox(
                         checked = hasExpiration,
                         onCheckedChange = { hasExpiration = it }
                     )
@@ -290,7 +357,7 @@ fun ProductCrudDialog(
                 }
 
                 if (hasExpiration) {
-                    OutlinedTextField(
+                    HeroInput(
                         value = pExpirationDate,
                         onValueChange = { pExpirationDate = it },
                         label = { Text("Expiration Date (YYYY-MM-DD)") },
@@ -313,7 +380,7 @@ fun ProductCrudDialog(
                 // Dynamic UOM Configuration Segment
                 val isCigaretteOrCigar = categoryName.contains("Cigarette", ignoreCase = true) || categoryName.contains("Cigar", ignoreCase = true)
                 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                HeroDivider(modifier = Modifier.padding(vertical = 8.dp))
                 
                 ExpressiveSectionHeader(
                     title = "Unit of Measurement Setup",
@@ -328,17 +395,17 @@ fun ProductCrudDialog(
                     )
                     
                     // 10s Pack
-                    Card(
+                    HeroCard(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = hasStick10s, onCheckedChange = { hasStick10s = it })
+                                HeroCheckbox(checked = hasStick10s, onCheckedChange = { hasStick10s = it })
                                 Text("Available in 10s Pack (10 sticks)", style = MaterialTheme.typography.bodyMedium)
                             }
                             if (hasStick10s) {
-                                OutlinedTextField(
+                                HeroInput(
                                     value = priceStick10sStr,
                                     onValueChange = { priceStick10sStr = it },
                                     label = { Text("Price for 10s Pack") },
@@ -352,7 +419,7 @@ fun ProductCrudDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    OutlinedTextField(
+                                    HeroInput(
                                         value = barcode10s,
                                         onValueChange = { barcode10s = it },
                                         label = { Text("10s Barcode Scanner Lookup") },
@@ -372,17 +439,17 @@ fun ProductCrudDialog(
                     
                     // 20s Pack
                     Spacer(modifier = Modifier.height(4.dp))
-                    Card(
+                    HeroCard(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = hasStick20s, onCheckedChange = { hasStick20s = it })
+                                HeroCheckbox(checked = hasStick20s, onCheckedChange = { hasStick20s = it })
                                 Text("Available in 20s Pack (20 sticks)", style = MaterialTheme.typography.bodyMedium)
                             }
                             if (hasStick20s) {
-                                OutlinedTextField(
+                                HeroInput(
                                     value = priceStick20sStr,
                                     onValueChange = { priceStick20sStr = it },
                                     label = { Text("Price for 20s Pack") },
@@ -396,7 +463,7 @@ fun ProductCrudDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    OutlinedTextField(
+                                    HeroInput(
                                         value = barcode20s,
                                         onValueChange = { barcode20s = it },
                                         label = { Text("20s Barcode Scanner Lookup") },
@@ -416,17 +483,17 @@ fun ProductCrudDialog(
                     
                     // Ream
                     Spacer(modifier = Modifier.height(4.dp))
-                    Card(
+                    HeroCard(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = hasReam, onCheckedChange = { hasReam = it })
+                                HeroCheckbox(checked = hasReam, onCheckedChange = { hasReam = it })
                                 Text("Available in Ream / Carton (200 sticks)", style = MaterialTheme.typography.bodyMedium)
                             }
                             if (hasReam) {
-                                OutlinedTextField(
+                                HeroInput(
                                     value = priceReamStr,
                                     onValueChange = { priceReamStr = it },
                                     label = { Text("Price for Ream") },
@@ -440,7 +507,7 @@ fun ProductCrudDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    OutlinedTextField(
+                                    HeroInput(
                                         value = barcodeReam,
                                         onValueChange = { barcodeReam = it },
                                         label = { Text("Ream Barcode Scanner Lookup") },
@@ -460,17 +527,17 @@ fun ProductCrudDialog(
                     
                     // Master Case
                     Spacer(modifier = Modifier.height(4.dp))
-                    Card(
+                    HeroCard(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = hasMasterCase, onCheckedChange = { hasMasterCase = it })
+                                HeroCheckbox(checked = hasMasterCase, onCheckedChange = { hasMasterCase = it })
                                 Text("Available in Master Case (10,000 sticks)", style = MaterialTheme.typography.bodyMedium)
                             }
                             if (hasMasterCase) {
-                                OutlinedTextField(
+                                HeroInput(
                                     value = priceMasterCaseStr,
                                     onValueChange = { priceMasterCaseStr = it },
                                     label = { Text("Price for Master Case") },
@@ -484,7 +551,7 @@ fun ProductCrudDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    OutlinedTextField(
+                                    HeroInput(
                                         value = barcodeMasterCase,
                                         onValueChange = { barcodeMasterCase = it },
                                         label = { Text("Master Case Barcode Scanner Lookup") },
@@ -508,17 +575,17 @@ fun ProductCrudDialog(
                         color = MaterialTheme.colorScheme.outline
                     )
                     
-                    Card(
+                    HeroCard(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = hasCustomUom, onCheckedChange = { hasCustomUom = it })
+                                HeroCheckbox(checked = hasCustomUom, onCheckedChange = { hasCustomUom = it })
                                 Text("Enable Custom Unit Option", style = MaterialTheme.typography.bodyMedium)
                             }
                             if (hasCustomUom) {
-                                OutlinedTextField(
+                                HeroInput(
                                     value = customUomName,
                                     onValueChange = { customUomName = it },
                                     label = { Text("UOM Name (e.g., Box, Case of 6)") },
@@ -526,7 +593,7 @@ fun ProductCrudDialog(
                                     singleLine = true
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedTextField(
+                                HeroInput(
                                     value = customUomMultiplierStr,
                                     onValueChange = { customUomMultiplierStr = it },
                                     label = { Text("Pieces Multiplier (e.g. 6 or 12)") },
@@ -535,7 +602,7 @@ fun ProductCrudDialog(
                                     singleLine = true
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedTextField(
+                                HeroInput(
                                     value = customUomPriceStr,
                                     onValueChange = { customUomPriceStr = it },
                                     label = { Text("Price for this Custom UOM") },
@@ -549,7 +616,7 @@ fun ProductCrudDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    OutlinedTextField(
+                                    HeroInput(
                                         value = barcodeCustomUom,
                                         onValueChange = { barcodeCustomUom = it },
                                         label = { Text("Custom UOM Barcode Scanner") },

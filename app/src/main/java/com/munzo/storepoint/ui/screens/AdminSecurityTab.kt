@@ -12,6 +12,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -44,6 +45,8 @@ import com.munzo.storepoint.StorePointDeviceAdminReceiver
 import com.munzo.storepoint.data.*
 import com.munzo.storepoint.ui.StorePointViewModel
 import com.munzo.storepoint.ui.theme.*
+import com.munzo.storepoint.ui.theme.HeroUITheme
+import com.munzo.storepoint.ui.components.*
 import com.munzo.storepoint.util.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -178,11 +181,30 @@ fun SecurityTab(viewModel: StorePointViewModel) {
     val is80mm by viewModel.is80mmThermal.collectAsState()
     val isAutoKick by viewModel.isAutoKickDrawerEnabled.collectAsState()
     val printerHasCutter by viewModel.printerHasAutoCutter.collectAsState()
+    val storeTin by viewModel.storeTin.collectAsState()
+    val storeAddress by viewModel.storeAddress.collectAsState()
+    val receiptHeader by viewModel.receiptHeader.collectAsState()
+    val receiptFooter by viewModel.receiptFooter.collectAsState()
+    val printReceiptBarcode by viewModel.printReceiptBarcode.collectAsState()
+
     var editPrinterIp by remember(printerIp) { mutableStateOf(printerIp) }
     var editPrinterPort by remember(printerPort) { mutableStateOf(printerPort.toString()) }
     var editPrinterMac by remember(printerMac) { mutableStateOf(printerMac) }
+    var editStoreTin by remember(storeTin) { mutableStateOf(storeTin) }
+    var editStoreAddress by remember(storeAddress) { mutableStateOf(storeAddress) }
+    var editReceiptHeader by remember(receiptHeader) { mutableStateOf(receiptHeader) }
+    var editReceiptFooter by remember(receiptFooter) { mutableStateOf(receiptFooter) }
+    var editPrintBarcode by remember(printReceiptBarcode) { mutableStateOf(printReceiptBarcode) }
     var showBtDevicesDialog by remember { mutableStateOf(false) }
     var showUsbDevicesDialog by remember { mutableStateOf(false) }
+
+    // Kiosk App Whitelisting & Admin PIN Reset states
+    val allowedTerminalApps by viewModel.allowedTerminalApps.collectAsState()
+    var newAllowedPackage by remember { mutableStateOf("") }
+    var adminResetCurrentPin by remember { mutableStateOf("") }
+    var adminResetNewPin by remember { mutableStateOf("") }
+    var adminResetConfirmPin by remember { mutableStateOf("") }
+    var adminResetError by remember { mutableStateOf<String?>(null) }
 
     // Diagnostics states
     val crashLogs by viewModel.crashLogs.collectAsState()
@@ -269,7 +291,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
         )
 
         // --- DATABASE CONNECTION & PEAK PERFORMANCE ENGINE HEALTH ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth().testTag("db_connection_health_card"),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -399,7 +421,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
         }
 
         // --- ADMIN ASSISTANCE & PHONE DIALING CONFIGURATION ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.25f)
@@ -434,7 +456,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                     }
                 }
 
-                OutlinedTextField(
+                HeroInput(
                     value = adminContactName,
                     onValueChange = {
                         adminContactName = it
@@ -447,7 +469,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                OutlinedTextField(
+                HeroInput(
                     value = adminPhoneNumber,
                     onValueChange = {
                         adminPhoneNumber = it
@@ -509,7 +531,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
         }
 
         // --- ALLOWED TERMINAL APPS (WHITELIST FOR CASHIER TERMINAL) ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)
@@ -575,7 +597,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                     }
                 }
 
-                OutlinedTextField(
+                HeroInput(
                     value = appSearchQuery,
                     onValueChange = { appSearchQuery = it },
                     label = { Text("Search installed applications") },
@@ -597,7 +619,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                     it.second.contains(appSearchQuery, ignoreCase = true) || it.first.contains(appSearchQuery, ignoreCase = true)
                 }
 
-                Card(
+                HeroCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 280.dp),
@@ -628,7 +650,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                                         .fillMaxWidth()
                                         .background(
                                             if (isAllowed) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-                                            else Color.Transparent,
+                                             else Color.Transparent,
                                             RoundedCornerShape(6.dp)
                                         )
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
@@ -639,7 +661,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                                         Text(label, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text(pkg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
-                                    Switch(
+                                    HeroSwitch(
                                         checked = isAllowed,
                                         onCheckedChange = { checked ->
                                             allowedAppsSet = if (checked) {
@@ -731,7 +753,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
         }
 
         // --- ALWAYS ON DISPLAY TOGGLE ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = if (isAlwaysOn) {
@@ -771,7 +793,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         )
                     }
                 }
-                Switch(
+                HeroSwitch(
                     checked = isAlwaysOn,
                     onCheckedChange = { viewModel.setAlwaysOnEnabled(it) }
                 )
@@ -788,7 +810,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
         )
 
         // --- LAUNCHER KIOSK LOCKDOWN CONTROL ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = if (isKioskActive) {
@@ -869,7 +891,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                     }
                 }
 
-                Button(
+                HeroButton(
                     onClick = {
                         if (isKioskActive) {
                             // SECURITY (issue #2): fail closed. This branch used to call
@@ -905,22 +927,250 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         }
                     },
                     modifier = Modifier.fillMaxWidth().testTag("toggle_kiosk_button"),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isKioskActive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
+                    color = if (isKioskActive) HeroColor.Danger else HeroColor.Primary,
+                    text = if (isKioskActive) "Disable Kiosk Mode (Enter PIN to Unlock)" else "Activate Kiosk Mode (Lock Screen)",
+                    icon = if (isKioskActive) Icons.Default.LockOpen else Icons.Default.Lock
+                )
+            }
+        }
+
+        // --- AUTHORIZED TERMINAL APPLICATIONS WHITELIST ---
+        HeroCard(
+            modifier = Modifier.fillMaxWidth().testTag("kiosk_app_whitelisting_card"),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(
-                        imageVector = if (isKioskActive) Icons.Default.LockOpen else Icons.Default.Lock,
-                        contentDescription = null
+                        imageVector = Icons.Default.Apps,
+                        contentDescription = "Authorized Terminal Apps",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isKioskActive) "Disable Kiosk Mode (Enter PIN to Unlock)" else "Activate Kiosk Mode (Lock Screen)")
+                    Column {
+                        Text(
+                            text = "Kiosk Whitelisted Terminal Applications",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "Authorized banking, e-wallet, and utility apps cashiers may launch in kiosk mode.",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Whitelisted applications can be launched directly from the register without exiting Kiosk Mode or allowing unauthorized device access:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Whitelisted app items
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    allowedTerminalApps.forEach { pkg ->
+                        HeroCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val friendlyName = when {
+                                    pkg.contains("gcash", ignoreCase = true) -> "GCash (E-Wallet)"
+                                    pkg.contains("paymaya", ignoreCase = true) || pkg.contains("maya", ignoreCase = true) -> "Maya (E-Wallet / Bank)"
+                                    pkg.contains("stk", ignoreCase = true) -> "SIM Toolkit (Telco Airtime)"
+                                    pkg.contains("bdo", ignoreCase = true) -> "BDO Digital Banking"
+                                    pkg.contains("bpi", ignoreCase = true) -> "BPI Mobile Banking"
+                                    pkg.contains("unionbank", ignoreCase = true) -> "UnionBank Online"
+                                    else -> "Authorized App"
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(friendlyName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text(pkg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                }
+                                IconButton(
+                                    onClick = { viewModel.removeAllowedTerminalApp(pkg) },
+                                    modifier = Modifier.size(32.dp).testTag("remove_whitelist_${pkg}")
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Quick presets
+                Text("Quick Preset Whitelist Packages:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        "GCash" to "com.globe.gcash.android",
+                        "Maya" to "com.paymaya",
+                        "SIM Toolkit" to "com.android.stk",
+                        "BDO" to "ph.com.bdo.digital",
+                        "BPI" to "com.bpi.ng.app",
+                        "UnionBank" to "com.unionbankph.online"
+                    ).forEach { (label, pkg) ->
+                        AssistChip(
+                            onClick = {
+                                viewModel.addAllowedTerminalApp(pkg)
+                                Toast.makeText(context, "Added $label to Kiosk whitelist.", Toast.LENGTH_SHORT).show()
+                            },
+                            label = { Text("+$label") }
+                        )
+                    }
+                }
+
+                // Add custom package row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HeroInput(
+                        value = newAllowedPackage,
+                        onValueChange = { newAllowedPackage = it },
+                        label = { Text("Add Android Package Name") },
+                        placeholder = { Text("e.g. com.mybank.pos") },
+                        modifier = Modifier.weight(1f).testTag("whitelist_package_input"),
+                        singleLine = true
+                    )
+                    HeroButton(
+                        onClick = {
+                            if (newAllowedPackage.isNotBlank()) {
+                                viewModel.addAllowedTerminalApp(newAllowedPackage.trim())
+                                newAllowedPackage = ""
+                                Toast.makeText(context, "Package added to whitelist.", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        text = "Add",
+                        icon = Icons.Default.Add,
+                        modifier = Modifier.testTag("add_whitelist_app_btn")
+                    )
                 }
             }
         }
 
+        // --- ADMIN SECURITY & PIN RESET MECHANISM ---
+        HeroCard(
+            modifier = Modifier.fillMaxWidth().testTag("admin_pin_reset_card"),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LockReset,
+                        contentDescription = "Admin PIN Reset",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Admin Security & PIN Reset",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "Reset administrator PIN with current PIN or Master Recovery Key.",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+
+                adminResetError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                }
+
+                HeroInput(
+                    value = adminResetCurrentPin,
+                    onValueChange = { adminResetCurrentPin = it; adminResetError = null },
+                    label = { Text("Current PIN or Master Recovery Key") },
+                    placeholder = { Text("Current PIN or STOREPOINT-ADMIN-RESET") },
+                    modifier = Modifier.fillMaxWidth().testTag("reset_admin_current_pin_input"),
+                    singleLine = true
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HeroInput(
+                        value = adminResetNewPin,
+                        onValueChange = { adminResetNewPin = it.take(4); adminResetError = null },
+                        label = { Text("New 4-Digit PIN") },
+                        placeholder = { Text("4 digits") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.weight(1f).testTag("reset_admin_new_pin_input"),
+                        singleLine = true
+                    )
+
+                    HeroInput(
+                        value = adminResetConfirmPin,
+                        onValueChange = { adminResetConfirmPin = it.take(4); adminResetError = null },
+                        label = { Text("Confirm PIN") },
+                        placeholder = { Text("4 digits") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.weight(1f).testTag("reset_admin_confirm_pin_input"),
+                        singleLine = true
+                    )
+                }
+
+                HeroButton(
+                    onClick = {
+                        if (adminResetNewPin != adminResetConfirmPin) {
+                            adminResetError = "New PIN and Confirm PIN do not match."
+                            return@HeroButton
+                        }
+                        val currentAdmin = activeUser?.username ?: "admin"
+                        viewModel.resetAdminPin(
+                            adminUsername = currentAdmin,
+                            currentPinOrRecoveryKey = adminResetCurrentPin,
+                            newPin = adminResetNewPin
+                        ) { success, msg ->
+                            if (success) {
+                                adminResetCurrentPin = ""
+                                adminResetNewPin = ""
+                                adminResetConfirmPin = ""
+                                adminResetError = null
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            } else {
+                                adminResetError = msg
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("reset_admin_pin_submit_btn"),
+                    text = "Reset & Update Admin PIN",
+                    icon = Icons.Default.Key
+                )
+            }
+        }
+
         // --- BIOMETRIC SECURITY MANAGEMENT ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -959,7 +1209,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                             )
                         }
                     }
-                    Switch(
+                    HeroSwitch(
                         checked = isBiometricEnabled,
                         onCheckedChange = { enabled ->
                             if (enabled && !isBiometricSupported) {
@@ -980,7 +1230,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
         }
 
         // --- HARDWARE PRINTER & ESC/POS PERIPHERAL CARD ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -1090,7 +1340,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         }
 
                         if (showManualMac) {
-                            OutlinedTextField(
+                            HeroInput(
                                 value = editPrinterMac,
                                 onValueChange = {
                                     editPrinterMac = it
@@ -1153,7 +1403,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedTextField(
+                        HeroInput(
                             value = editPrinterIp,
                             onValueChange = {
                                 editPrinterIp = it
@@ -1164,7 +1414,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                             modifier = Modifier.weight(2f),
                             singleLine = true
                         )
-                        OutlinedTextField(
+                        HeroInput(
                             value = editPrinterPort,
                             onValueChange = {
                                 editPrinterPort = it
@@ -1189,7 +1439,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         Text("80mm Paper Width", fontWeight = FontWeight.SemiBold)
                         Text(if (is80mm) "80mm Wide (48 columns)" else "58mm Standard / XP-58 Plus (32 columns)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Switch(checked = is80mm, onCheckedChange = { viewModel.setPaperWidth80mm(it) })
+                    HeroSwitch(checked = is80mm, onCheckedChange = { viewModel.setPaperWidth80mm(it) })
                 }
 
                 Row(
@@ -1205,7 +1455,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(checked = printerHasCutter, onCheckedChange = { viewModel.setPrinterHasAutoCutter(it) })
+                    HeroSwitch(checked = printerHasCutter, onCheckedChange = { viewModel.setPrinterHasAutoCutter(it) })
                 }
 
                 Row(
@@ -1217,7 +1467,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         Text("Auto-Kick Drawer on Cash Sale", fontWeight = FontWeight.SemiBold)
                         Text("Automatically pop drawer open upon cash checkout completion (RJ11)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Switch(checked = isAutoKick, onCheckedChange = { viewModel.setAutoKickDrawerEnabled(it) })
+                    HeroSwitch(checked = isAutoKick, onCheckedChange = { viewModel.setAutoKickDrawerEnabled(it) })
                 }
 
                 Row(
@@ -1253,8 +1503,112 @@ fun SecurityTab(viewModel: StorePointViewModel) {
             }
         }
 
+        // --- RECEIPT BRANDING, STORE TIN & BARCODE CONFIGURATION ---
+        HeroCard(
+            modifier = Modifier.fillMaxWidth().testTag("receipt_branding_card"),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ReceiptLong,
+                        contentDescription = "Receipt Branding & TIN",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Receipt Branding & Store TIN / VAT",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "Custom header, footer, BIR TIN/VAT registration, and barcode printing.",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+
+                HeroInput(
+                    value = editStoreTin,
+                    onValueChange = { editStoreTin = it },
+                    label = { Text("Store TIN / VAT Reg. Number") },
+                    placeholder = { Text("VAT Reg. TIN: 000-123-456-000") },
+                    modifier = Modifier.fillMaxWidth().testTag("edit_store_tin_input"),
+                    singleLine = true
+                )
+
+                HeroInput(
+                    value = editStoreAddress,
+                    onValueChange = { editStoreAddress = it },
+                    label = { Text("Store Address / Branch") },
+                    placeholder = { Text("Unit 102 Rizal Avenue, Poblacion, Metro Manila") },
+                    modifier = Modifier.fillMaxWidth().testTag("edit_store_address_input"),
+                    singleLine = true
+                )
+
+                HeroInput(
+                    value = editReceiptHeader,
+                    onValueChange = { editReceiptHeader = it },
+                    label = { Text("Custom Receipt Header Message") },
+                    placeholder = { Text("Welcome to our Sari-Sari Store!") },
+                    modifier = Modifier.fillMaxWidth().testTag("edit_receipt_header_input"),
+                    singleLine = true
+                )
+
+                HeroInput(
+                    value = editReceiptFooter,
+                    onValueChange = { editReceiptFooter = it },
+                    label = { Text("Custom Receipt Footer Notice") },
+                    placeholder = { Text("Items can be returned/exchanged within 7 days.") },
+                    modifier = Modifier.fillMaxWidth().testTag("edit_receipt_footer_input"),
+                    maxLines = 2
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Print 1D Barcode on Receipts", fontWeight = FontWeight.SemiBold)
+                        Text("Prints Code 128 / Code 39 barcode for quick scanner returns & shift audits", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    HeroSwitch(
+                        checked = editPrintBarcode,
+                        onCheckedChange = { editPrintBarcode = it },
+                        modifier = Modifier.testTag("toggle_receipt_barcode_switch")
+                    )
+                }
+
+                HeroButton(
+                    onClick = {
+                        viewModel.updateReceiptBranding(
+                            tin = editStoreTin.trim(),
+                            address = editStoreAddress.trim(),
+                            header = editReceiptHeader.trim(),
+                            footer = editReceiptFooter.trim(),
+                            printBarcode = editPrintBarcode
+                        )
+                        Toast.makeText(context, "Receipt branding & TIN settings saved.", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("save_receipt_branding_btn"),
+                    text = "Save Receipt Branding & TIN",
+                    icon = Icons.Default.Save
+                )
+            }
+        }
+
         // --- FULL DATABASE BACKUP & DISASTER RECOVERY ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -1311,37 +1665,31 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
-                        modifier = Modifier.weight(1f),
+                    HeroButton(
+                        modifier = Modifier.weight(1f).testTag("export_full_db_btn"),
                         onClick = {
                             backupPassphrase = ""
                             backupPassphraseConfirm = ""
                             backupPassphraseError = ""
                             showExportEncryptDialog = true
-                        }
-                    ) {
-                        Icon(Icons.Default.Upload, null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Export Full DB")
-                    }
+                        },
+                        text = "Export Full DB",
+                        icon = Icons.Default.Upload
+                    )
 
-                    Button(
-                        modifier = Modifier.weight(1f),
+                    HeroButton(
+                        modifier = Modifier.weight(1f).testTag("restore_full_db_btn"),
                         onClick = {
                             fullRestoreLauncher.launch("application/json")
                         },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondary
-                        )
-                    ) {
-                        Icon(Icons.Default.Download, null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Restore Full DB")
-                    }
+                        color = HeroColor.Default,
+                        text = "Restore Full DB",
+                        icon = Icons.Default.Download
+                    )
                 }
 
                 // Dedicated Section: Store Inventory Data Transfer & Quick Share (.spinventory / .json)
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                HeroDivider(modifier = Modifier.padding(vertical = 4.dp))
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -1363,15 +1711,13 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Quick Share", style = MaterialTheme.typography.labelSmall)
                             }
-                            Button(
+                            HeroButton(
                                 onClick = { importLauncher.launch("*/*") },
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                size = HeroSize.Sm,
+                                text = "Import Inventory",
+                                icon = Icons.Default.Download,
                                 modifier = Modifier.testTag("import_inventory_data_btn")
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Import Inventory", style = MaterialTheme.typography.labelSmall)
-                            }
+                            )
                         }
                     }
                 }
@@ -1379,7 +1725,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
         }
 
         // --- OBSERVABILITY & CRASH DIAGNOSTICS CARD ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -1448,7 +1794,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
         }
 
         // --- OBSERVABILITY & CRASH DIAGNOSTICS CARD ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -1489,7 +1835,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                     val rt = Runtime.getRuntime()
                     val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
                     val maxMb = rt.maxMemory() / (1024 * 1024)
-                    Card(
+                    HeroCard(
                         modifier = Modifier.weight(1f),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
@@ -1498,7 +1844,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                             Text("${usedMb}MB / ${maxMb}MB", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                         }
                     }
-                    Card(
+                    HeroCard(
                         modifier = Modifier.weight(1f),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
@@ -1513,16 +1859,16 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedButton(
+                    HeroButton(
                         onClick = { showCrashLogsDialog = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Visibility, null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Crash Logs (${crashLogs.size})")
-                    }
+                        modifier = Modifier.weight(1f).testTag("view_crash_logs_btn"),
+                        variant = HeroButtonVariant.Bordered,
+                        color = HeroColor.Default,
+                        text = "Crash Logs (${crashLogs.size})",
+                        icon = Icons.Default.Visibility
+                    )
 
-                    Button(
+                    HeroButton(
                         onClick = {
                             val report = viewModel.getDiagnosticReport()
                             val sendIntent = Intent(Intent.ACTION_SEND).apply {
@@ -1532,18 +1878,16 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                             }
                             context.startActivity(Intent.createChooser(sendIntent, "Share Diagnostics"))
                         },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Share Report")
-                    }
+                        modifier = Modifier.weight(1f).testTag("share_diagnostics_report_btn"),
+                        text = "Share Report",
+                        icon = Icons.Default.Share
+                    )
                 }
             }
         }
 
         // --- DEVICE ADMINISTRATOR CARD ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = if (isAdminActive) {
@@ -1669,7 +2013,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
         }
 
         // --- ACCIDENTAL DATA CLEAR PREVENTATIVE WIPE ---
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
@@ -1725,7 +2069,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
         }
 
         // Additional register lock system or tips
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
@@ -2217,7 +2561,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(crashLogs) { entry ->
-                            Card(
+                            HeroCard(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                             ) {
@@ -2281,18 +2625,18 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         "Optionally protect this backup with a password (AES-256 + HMAC-SHA256). Leave the fields empty to export an unprotected file. Do not forget the password — it cannot be recovered.",
                         style = MaterialTheme.typography.bodyMedium
                     )
-                    OutlinedTextField(
+                    HeroInput(
                         value = backupPassphrase,
                         onValueChange = { backupPassphrase = it },
                         label = { Text("Backup password (optional)") },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("backup_passphrase_input"),
                         singleLine = true
                     )
-                    OutlinedTextField(
+                    HeroInput(
                         value = backupPassphraseConfirm,
                         onValueChange = { backupPassphraseConfirm = it },
                         label = { Text("Confirm backup password") },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("backup_passphrase_confirm_input"),
                         singleLine = true
                     )
                     if (backupPassphraseError.isNotEmpty()) {
@@ -2302,6 +2646,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
             },
             confirmButton = {
                 Button(
+                    modifier = Modifier.testTag("confirm_export_backup_btn"),
                     onClick = {
                         if (backupPassphrase != backupPassphraseConfirm) {
                             backupPassphraseError = "Passwords do not match."
@@ -2371,11 +2716,11 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold
                     )
-                                        OutlinedTextField(
+                                        HeroInput(
                         value = restorePassphrase,
                         onValueChange = { restorePassphrase = it },
                         label = { Text("Backup password (required only for password-protected backups)") },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("restore_passphrase_input"),
                         singleLine = true
                     )
                     Text(
@@ -2383,7 +2728,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold
                     )
-                    OutlinedTextField(
+                    HeroInput(
                         value = restoreAdminPinInput,
                         onValueChange = {
                             if (it.length <= SecurityHelper.PIN_LENGTH && it.all { c -> c.isDigit() }) {
@@ -2394,7 +2739,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         label = { Text("Admin PIN (${SecurityHelper.PIN_LENGTH} digits)") },
                         isError = restoreAdminPinError.isNotEmpty(),
                         visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("restore_admin_pin_input"),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
@@ -2403,6 +2748,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         confirmButton = {
                 Button(
                     enabled = SecurityHelper.isValidPinLenient(restoreAdminPinInput),
+                    modifier = Modifier.testTag("confirm_full_restore_btn"),
                     onClick = {
                         viewModel.viewModelScope.launch {
                             if (viewModel.verifyAdminPin(restoreAdminPinInput)) {
@@ -2455,7 +2801,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(summary.message, fontWeight = FontWeight.Medium)
                     if (summary.success) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        HeroDivider(modifier = Modifier.padding(vertical = 4.dp))
                         Text("• Staff Users Restored: ${summary.usersCount}", style = MaterialTheme.typography.bodySmall)
                         Text("• Products Restored: ${summary.productsCount}", style = MaterialTheme.typography.bodySmall)
                         Text("• Transactions Restored: ${summary.transactionsCount}", style = MaterialTheme.typography.bodySmall)
@@ -2504,7 +2850,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(pairedPrinters) { device ->
-                            Card(
+                            HeroCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
@@ -2581,7 +2927,7 @@ fun SecurityTab(viewModel: StorePointViewModel) {
                         items(usbPrinters) { device ->
                             val rawDevice = remember { UsbPrinterHelper.findDeviceByIdentifier(context, device.identifier) }
                             val hasPerm = rawDevice?.let { UsbPrinterHelper.hasPermission(context, it) } ?: false
-                            Card(
+                            HeroCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {

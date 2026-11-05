@@ -45,6 +45,7 @@ import com.munzo.storepoint.ui.theme.ExpressiveSectionHeader
 import com.munzo.storepoint.ui.theme.glassPanel
 import com.munzo.storepoint.ui.theme.tactileBounce
 import com.munzo.storepoint.util.APP_VERSION
+import com.munzo.storepoint.ui.components.*
 
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Download
@@ -215,7 +216,7 @@ fun AboutScreenContent(
             }
         }
 
-        HorizontalDivider(
+        HeroDivider(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
             modifier = Modifier.padding(horizontal = 12.dp)
         )
@@ -228,7 +229,7 @@ fun AboutScreenContent(
             modifier = Modifier.align(Alignment.Start)
         )
 
-        Card(
+        HeroCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("developer_profile_card"),
@@ -283,7 +284,7 @@ fun AboutScreenContent(
                     }
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                HeroDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
 
                 // Bio info
                 Text(
@@ -340,7 +341,7 @@ fun AboutScreenContent(
         }
 
         // --- INTERACTIVE / EXPANDABLE PRIVACY POLICY CARD ---
-        Card(
+        HeroCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { privacyExpanded = !privacyExpanded }
@@ -405,7 +406,7 @@ fun AboutScreenContent(
                         modifier = Modifier.padding(top = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                        HeroDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
 
                         // Policy 1: Offline Processing
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -504,7 +505,7 @@ fun AboutScreenContent(
         }
 
         // --- INTERACTIVE / EXPANDABLE TERMS AND CONDITIONS CARD ---
-        Card(
+        HeroCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { termsExpanded = !termsExpanded }
@@ -569,7 +570,7 @@ fun AboutScreenContent(
                         modifier = Modifier.padding(top = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                        HeroDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
 
                         Text(
                             text = "By using the system, you acknowledge and agree that:",

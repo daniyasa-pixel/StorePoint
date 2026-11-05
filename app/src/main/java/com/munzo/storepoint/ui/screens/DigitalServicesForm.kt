@@ -35,6 +35,7 @@ import com.munzo.storepoint.ui.theme.ExpressiveSplitButton
 import com.munzo.storepoint.ui.theme.GCashColor
 import com.munzo.storepoint.ui.theme.LoadColor
 import com.munzo.storepoint.ui.theme.MayaColor
+import com.munzo.storepoint.ui.components.*
 import java.util.Locale
 
 fun calculateTieredStoreFee(amount: Double, baseFeePerThousand: Double = 10.0): Double {
@@ -127,7 +128,7 @@ fun DigitalServicesForm(
         amount - storeFee
     }
 
-    Card(
+    HeroCard(
         modifier = modifier
             .fillMaxWidth()
             .testTag("digital_services_card"),
@@ -204,7 +205,7 @@ fun DigitalServicesForm(
                         label = "ScaleShift"
                     )
 
-                    Card(
+                    HeroCard(
                         onClick = {
                             selectedService = service
                             if (service == "Load") {
@@ -281,7 +282,7 @@ fun DigitalServicesForm(
             }
 
             // Pay-First Flow Note: Cashier collects payment first before launching GCash or Load app post-checkout
-            Card(
+            HeroCard(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
@@ -337,7 +338,7 @@ fun DigitalServicesForm(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf("Smart", "TNT", "Globe", "TM").forEach { net ->
+                        listOf("Smart", "TNT", "Globe", "TM", "DITO").forEach { net ->
                             val isSelected = selectedNetwork == net
                             ExpressiveChip(
                                 label = net,
@@ -350,7 +351,7 @@ fun DigitalServicesForm(
             }
 
             // Input Fields Row
-            OutlinedTextField(
+            HeroInput(
                 value = amountStr,
                 onValueChange = { amountStr = it },
                 label = { Text("Retailing Amount ($curr)") },
@@ -362,7 +363,7 @@ fun DigitalServicesForm(
             )
 
             // Customer Mobile Number Input (for GCash, Maya, Load)
-            OutlinedTextField(
+            HeroInput(
                 value = mobileNumber,
                 onValueChange = { input ->
                     if (input.length <= 13 && input.all { it.isDigit() || it == '+' }) {
@@ -397,7 +398,7 @@ fun DigitalServicesForm(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
+                HeroInput(
                     value = customFeeInput,
                     onValueChange = { customFeeInput = it },
                     label = { Text("Store Service Charge ($curr)") },
@@ -408,12 +409,13 @@ fun DigitalServicesForm(
                     leadingIcon = { Icon(Icons.Default.PriceCheck, null, modifier = Modifier.size(16.dp)) },
                     supportingText = {
                         val defStr = String.format(Locale.getDefault(), "%.2f", computedDefaultFee)
-                        Text(if (customFeeInput.isEmpty()) "Owner default: $curr$defStr" else "Custom charge active")
+                        val feeDesc = if (selectedService == "Load") "Retailer markup" else "Tiered ₱1k brackets"
+                        Text(if (customFeeInput.isEmpty()) "$feeDesc default: $curr$defStr" else "Custom charge active")
                     }
                 )
 
                 if (selectedService == "Maya" && selectedAction == "Cash In") {
-                    OutlinedTextField(
+                    HeroInput(
                         value = customBankFeeInput,
                         onValueChange = { customBankFeeInput = it },
                         label = { Text("Maya Bank Fee ($curr)") },
@@ -449,7 +451,7 @@ fun DigitalServicesForm(
             }
 
             // Receipt Breakdown / Calculations Dashboard
-            Card(
+            HeroCard(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -467,7 +469,7 @@ fun DigitalServicesForm(
                         color = MaterialTheme.colorScheme.outline
                     )
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    HeroDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -520,7 +522,7 @@ fun DigitalServicesForm(
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    HeroDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -561,9 +563,11 @@ fun DigitalServicesForm(
                         )
                     } else if (selectedService == "Load") {
                         Spacer(modifier = Modifier.height(4.dp))
-                        val isSmartNetwork = selectedNetwork.equals("Smart", ignoreCase = true) || selectedNetwork.equals("TNT", ignoreCase = true)
-                        val walletName = if (isSmartNetwork) "Smart Load" else "Globe Load"
-                        val currentWalletBal = if (isSmartNetwork) smartLoadBalance else globeLoadBalance
+                        val isSmartOrDito = selectedNetwork.equals("Smart", ignoreCase = true) ||
+                            selectedNetwork.equals("TNT", ignoreCase = true) ||
+                            selectedNetwork.equals("DITO", ignoreCase = true)
+                        val walletName = if (isSmartOrDito) "$selectedNetwork Load" else "Globe Load"
+                        val currentWalletBal = if (isSmartOrDito) smartLoadBalance else globeLoadBalance
                         val loadWalletCost = com.munzo.storepoint.data.StorePointRepository.roundMoney(amount * 0.98)
                         val calculatedBal = (currentWalletBal - loadWalletCost).coerceAtLeast(0.0)
                         val displayedBal = if (isSensitiveDataVisible) "$curr${String.format(Locale.getDefault(), "%.2f", calculatedBal)}" else "$curr••••"
@@ -571,6 +575,68 @@ fun DigitalServicesForm(
                             text = "Estimated final $walletName Wallet: $displayedBal (Cost: $curr${String.format(Locale.getDefault(), "%.2f", loadWalletCost)})",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+            }
+
+            // Direct SMS / USSD / E-Wallet Trigger Shortcuts
+            if (amount > 0.0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (selectedService == "Load") {
+                        val ussdCode = DigitalServicesHelper.getUssdCodeForNetwork(selectedNetwork)
+                        AssistChip(
+                            onClick = { DigitalServicesHelper.launchDialer(context, ussdCode) },
+                            label = { Text("USSD ($ussdCode)") },
+                            leadingIcon = { Icon(Icons.Default.Call, null, modifier = Modifier.size(14.dp)) }
+                        )
+                        if (mobileNumber.isNotBlank()) {
+                            val smsCmd = DigitalServicesHelper.getSmsCommand(selectedService, selectedNetwork, mobileNumber, amount)
+                            AssistChip(
+                                onClick = { DigitalServicesHelper.launchSms(context, mobileNumber, smsCmd) },
+                                label = { Text("Direct SMS") },
+                                leadingIcon = { Icon(Icons.Default.Send, null, modifier = Modifier.size(14.dp)) }
+                            )
+                        }
+                    } else if (selectedService == "GCash") {
+                        AssistChip(
+                            onClick = { DigitalServicesHelper.launchGCash(context) },
+                            label = { Text("Open GCash") },
+                            leadingIcon = { Icon(Icons.Default.Launch, null, modifier = Modifier.size(14.dp)) }
+                        )
+                        if (mobileNumber.isNotBlank()) {
+                            val smsMsg = "GCash $selectedAction: ₱${String.format(Locale.getDefault(), "%.2f", amount)}"
+                            AssistChip(
+                                onClick = { DigitalServicesHelper.launchSms(context, mobileNumber, smsMsg) },
+                                label = { Text("SMS Notice") },
+                                leadingIcon = { Icon(Icons.Default.Send, null, modifier = Modifier.size(14.dp)) }
+                            )
+                        }
+                    } else if (selectedService == "Maya") {
+                        AssistChip(
+                            onClick = { DigitalServicesHelper.launchMaya(context) },
+                            label = { Text("Open Maya") },
+                            leadingIcon = { Icon(Icons.Default.Launch, null, modifier = Modifier.size(14.dp)) }
+                        )
+                        if (mobileNumber.isNotBlank()) {
+                            val smsMsg = "Maya $selectedAction: ₱${String.format(Locale.getDefault(), "%.2f", amount)}"
+                            AssistChip(
+                                onClick = { DigitalServicesHelper.launchSms(context, mobileNumber, smsMsg) },
+                                label = { Text("SMS Notice") },
+                                leadingIcon = { Icon(Icons.Default.Send, null, modifier = Modifier.size(14.dp)) }
+                            )
+                        }
+                    }
+                    if (mobileNumber.isNotBlank()) {
+                        AssistChip(
+                            onClick = { DigitalServicesHelper.copyToClipboard(context, "Mobile Number", mobileNumber) },
+                            label = { Text("Copy Number") },
+                            leadingIcon = { Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(14.dp)) }
                         )
                     }
                 }

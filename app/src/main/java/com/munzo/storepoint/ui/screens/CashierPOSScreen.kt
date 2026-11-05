@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingFlat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +56,8 @@ import com.munzo.storepoint.ui.theme.tactileBounce
 import com.munzo.storepoint.ui.theme.GCashColor
 import com.munzo.storepoint.ui.theme.MayaColor
 import com.munzo.storepoint.ui.theme.LoadColor
+import com.munzo.storepoint.ui.theme.HeroUITheme
+import com.munzo.storepoint.ui.components.*
 import com.munzo.storepoint.ui.components.ExpressiveButton
 import com.munzo.storepoint.ui.components.ExpressiveButtonSize
 import com.munzo.storepoint.ui.components.ExpressiveButtonVariant
@@ -96,6 +99,7 @@ fun CashierPOSScreen(
     var debouncedSearchQuery by remember { mutableStateOf("") }
     LaunchedEffect(searchQuery) { kotlinx.coroutines.delay(140); debouncedSearchQuery = searchQuery }
     var selectedCategory by remember { mutableStateOf<Category?>(null) }
+    val categoryNameById = remember(categories) { categories.associate { it.id to it.name } }
     var activePortraitTab by remember { mutableStateOf(0) }
     var activeCatalogSection by remember { mutableStateOf(0) } // 0 = Standard Products, 1 = Digital Services
 
@@ -124,12 +128,18 @@ fun CashierPOSScreen(
     // Dialog flags
     var showShiftStartDialog by remember { mutableStateOf(false) }
     var showShiftCloseDialog by remember { mutableStateOf(false) }
+    var showActiveShiftLogoutWarning by remember { mutableStateOf(false) }
     var showPaymentDialog by remember { mutableStateOf(false) }
     var showParkDialog by remember { mutableStateOf(false) }
     var showParkedTxDialog by remember { mutableStateOf(false) }
     var showReceiptDialog by remember { mutableStateOf(false) }
     var showReturnRefundDialog by remember { mutableStateOf(false) }
+    var showBulkProductionDialog by remember { mutableStateOf(false) }
+    var showDrawerCashInOutDialog by remember { mutableStateOf(false) }
+    var showFastCashierSwitchDialog by remember { mutableStateOf(false) }
     var productForVariantPicker by remember { mutableStateOf<com.munzo.storepoint.data.Product?>(null) }
+    var productForDiscountDialog by remember { mutableStateOf<com.munzo.storepoint.data.Product?>(null) }
+    var lastScannedBarcodeFeedback by remember { mutableStateOf<String?>(null) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showCallAdminDialog by remember { mutableStateOf(false) }
     var showTerminalAppsDialog by remember { mutableStateOf(false) }
@@ -172,6 +182,7 @@ fun CashierPOSScreen(
     var itemPendingDelete by remember { mutableStateOf<com.munzo.storepoint.data.Product?>(null) }
 
     val selectedCartUoms by viewModel.selectedCartUoms.collectAsState()
+    val cartItemDiscounts by viewModel.cartItemDiscounts.collectAsState()
 
     // Calculations based exclusively on CHECKED shopping cart items.
     // LAYA fast-response fix: plain derivedStateOf (not nested in remember) so cart
@@ -184,7 +195,9 @@ fun CashierPOSScreen(
     val doubleTaxRate = storeConfig?.taxPercentage ?: 12.0
     val grossCartTotal = activeCartItems.sumOf { 
         val uom = selectedCartUoms[it.first.id] ?: com.munzo.storepoint.data.UomOption("Base Unit", 1, it.first.price)
-        uom.price * it.second
+        val discount = cartItemDiscounts[it.first.id] ?: 0.0
+        val effectivePrice = (uom.price - discount).coerceAtLeast(0.0)
+        effectivePrice * it.second
     }
     // Philippine VAT: retail prices displayed on product tags already include the 12% Value-Added Tax.
     // Formula: amount / 1.12 x .12
@@ -286,7 +299,7 @@ fun CashierPOSScreen(
                         }
                     }
 
-                    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    HeroDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
 
                     Text(
                         text = "ACTIVE CASHIER PROFILE",
@@ -318,7 +331,7 @@ fun CashierPOSScreen(
                                 )
                             }
                         }
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = activeUser?.username ?: "Cashier",
                                 style = MaterialTheme.typography.bodyLarge,
@@ -330,6 +343,13 @@ fun CashierPOSScreen(
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold
                             )
+                        }
+
+                        FilledTonalIconButton(
+                            onClick = { showFastCashierSwitchDialog = true },
+                            modifier = Modifier.size(36.dp).testTag("switch_cashier_btn")
+                        ) {
+                            Icon(Icons.Default.SwapHoriz, contentDescription = "Fast Cashier Switch", modifier = Modifier.size(18.dp))
                         }
                     }
 
@@ -366,14 +386,26 @@ fun CashierPOSScreen(
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Starting cash drawer", style = MaterialTheme.typography.bodySmall)
-                                Text(
-                                    text = if (isSensitiveDataVisible) "$curr${String.format(Locale.getDefault(), "%.2f", session.startingCash)}" else "$curr••••",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Column {
+                                    Text("Starting cash drawer", style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        text = if (isSensitiveDataVisible) "$curr${String.format(Locale.getDefault(), "%.2f", session.startingCash)}" else "$curr••••",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { showDrawerCashInOutDialog = true },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp).testTag("quick_cash_in_out_btn")
+                                ) {
+                                    Icon(Icons.Default.PointOfSale, contentDescription = "Cash In/Out", modifier = Modifier.size(12.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Cash In/Out", style = MaterialTheme.typography.labelSmall)
+                                }
                             }
 
                             if (storeConfig?.hasGCash == true) {
@@ -411,7 +443,7 @@ fun CashierPOSScreen(
                                             text = {
                                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     Text("Enter the accurate secondary GCash digital balance of this outlet's retailing account:", style = MaterialTheme.typography.bodyMedium)
-                                                    OutlinedTextField(
+                                                    HeroInput(
                                                         value = tempBalStr,
                                                         onValueChange = { tempBalStr = it },
                                                         label = { Text("GCash Balance ($curr)") },
@@ -477,7 +509,7 @@ fun CashierPOSScreen(
                                             text = {
                                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     Text("Enter current retailer load wallet balance for Smart/TNT (2% rebate active):", style = MaterialTheme.typography.bodyMedium)
-                                                    OutlinedTextField(
+                                                    HeroInput(
                                                         value = tempBalStr,
                                                         onValueChange = { tempBalStr = it },
                                                         label = { Text("Smart Load Balance ($curr)") },
@@ -541,7 +573,7 @@ fun CashierPOSScreen(
                                             text = {
                                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     Text("Enter current retailer load wallet balance for Globe/TM (2% rebate active):", style = MaterialTheme.typography.bodyMedium)
-                                                    OutlinedTextField(
+                                                    HeroInput(
                                                         value = tempBalStr,
                                                         onValueChange = { tempBalStr = it },
                                                         label = { Text("Globe Load Balance ($curr)") },
@@ -575,7 +607,7 @@ fun CashierPOSScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    HorizontalDivider()
+                    HeroDivider()
 
                     // Returns, Refunds & Exchanges Launcher
                     NavigationDrawerItem(
@@ -587,6 +619,42 @@ fun CashierPOSScreen(
                             showReturnRefundDialog = true
                         },
                         modifier = Modifier.testTag("drawer_returns_refunds")
+                    )
+
+                    // Bulk-to-Retail Repackaging & Production (BOM Engine)
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Transform, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        label = { Text("Bulk Repackaging (BOM)", fontWeight = FontWeight.SemiBold) },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showBulkProductionDialog = true
+                        },
+                        modifier = Modifier.testTag("drawer_bulk_production")
+                    )
+
+                    // Drawer Cash Management (Cash In / Out & Petty Cash)
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.PointOfSale, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        label = { Text("Cash In / Cash Out", fontWeight = FontWeight.SemiBold) },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showDrawerCashInOutDialog = true
+                        },
+                        modifier = Modifier.testTag("drawer_cash_in_out")
+                    )
+
+                    // Fast Cashier PIN Switching
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        label = { Text("Switch Staff / Cashier", fontWeight = FontWeight.SemiBold) },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showFastCashierSwitchDialog = true
+                        },
+                        modifier = Modifier.testTag("drawer_switch_cashier")
                     )
 
                     // Call Admin / Supervisor Assistance Request (Cashiers only, strictly hidden on admin accounts)
@@ -642,7 +710,7 @@ fun CashierPOSScreen(
                     }
 
                     // Shift session actions — single, non-duplicated source for shift + terminal actions.
-                    HorizontalDivider(
+                    HeroDivider(
                         modifier = Modifier.padding(horizontal = 12.dp),
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
                     )
@@ -679,7 +747,7 @@ fun CashierPOSScreen(
                         }
                     }
 
-                    ExpressiveButton(
+                    HeroButton(
                         onClick = {
                             coroutineScope.launch { drawerState.close() }
                             if (activeSession != null) {
@@ -691,28 +759,32 @@ fun CashierPOSScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("drawer_end_shift_btn"),
-                        label = "End of Day Close Shift",
+                        text = "End of Day Close Shift",
                         icon = Icons.Default.Assessment,
-                        variant = ExpressiveButtonVariant.FILLED,
-                        size = ExpressiveButtonSize.M,
-                        enabled = activeSession != null,
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
+                        color = HeroColor.Danger,
+                        variant = HeroButtonVariant.Solid,
+                        size = HeroSize.Md,
+                        enabled = activeSession != null
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    ExpressiveButton(
+                    HeroButton(
                         onClick = {
                             coroutineScope.launch { drawerState.close() }
-                            viewModel.logout()
-                            onLogout()
+                            if (activeSession != null) {
+                                showActiveShiftLogoutWarning = true
+                            } else {
+                                viewModel.logout()
+                                onLogout()
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("drawer_logout_btn"),
-                        label = "Log Out Terminal",
+                        text = "Log Out Terminal",
                         icon = Icons.Default.ExitToApp,
-                        variant = ExpressiveButtonVariant.OUTLINED,
-                        size = ExpressiveButtonSize.M,
+                        color = HeroColor.Default,
+                        variant = HeroButtonVariant.Bordered,
+                        size = HeroSize.Md
                     )
 
 
@@ -802,6 +874,18 @@ fun CashierPOSScreen(
                                     }
                                 },
                                 actions = {
+                                    if (activeUser?.role?.equals("ADMIN", ignoreCase = true) != true) {
+                                        IconButton(
+                                            onClick = { showCallAdminDialog = true },
+                                            modifier = Modifier.testTag("top_bar_call_admin_btn")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AdminPanelSettings,
+                                                contentDescription = "Call Admin / Supervisor Assistance",
+                                                tint = MaterialTheme.colorScheme.tertiary
+                                            )
+                                        }
+                                    }
                                     IconButton(
                                         onClick = { showReturnRefundDialog = true },
                                         modifier = Modifier.testTag("top_bar_return_btn")
@@ -866,7 +950,8 @@ fun CashierPOSScreen(
                             .imePadding()
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                     ) {
-                        val isPortrait = maxWidth < 650.dp
+                        val screenMaxWidth = maxWidth
+                        val isPortrait = screenMaxWidth < 650.dp
 
                     // Left Workspace Content: Catalog Search, Categories & Grid
                     @Composable
@@ -878,49 +963,19 @@ fun CashierPOSScreen(
                                 .padding(12.dp)
                         ) {
                             if (showDigitalCategory && !isPortrait) {
-                                TabRow(
-                                    selectedTabIndex = activeCatalogSection,
+                                HeroSegmentedTabs(
+                                    items = listOf("Standard Products", "Digital Services"),
+                                    selectedItem = if (activeCatalogSection == 0) "Standard Products" else "Digital Services",
+                                    onItemSelected = { selected ->
+                                        val idx = if (selected == "Standard Products") 0 else 1
+                                        activeCatalogSection = idx
+                                        if (isPortrait) activePortraitTab = idx + 1
+                                    },
+                                    labelProvider = { it },
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(bottom = 12.dp)
-                                        .height(48.dp)
-                                        .clip(RoundedCornerShape(8.dp)),
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
-                                    indicator = {}
-                                ) {
-                                    Tab(
-                                        selected = activeCatalogSection == 0,
-                                        onClick = { 
-                                            activeCatalogSection = 0
-                                            if (isPortrait) activePortraitTab = 1
-                                        },
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(Icons.Default.Storefront, null, modifier = Modifier.size(18.dp))
-                                                Text("Standard Products", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            }
-                                        }
-                                    )
-                                    Tab(
-                                        selected = activeCatalogSection == 1,
-                                        onClick = { 
-                                            activeCatalogSection = 1
-                                            if (isPortrait) activePortraitTab = 2
-                                        },
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(Icons.Default.PhoneAndroid, null, modifier = Modifier.size(18.dp))
-                                                Text("Digital Services", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            }
-                                        }
-                                    )
-                                }
+                                )
                             }
 
                             if (activeCatalogSection == 1 && showDigitalCategory) {
@@ -960,12 +1015,12 @@ fun CashierPOSScreen(
                             TextField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
-                                placeholder = { Text(searchCopy.placeholder, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                placeholder = { Text(searchCopy.placeholder, style = MaterialTheme.typography.bodyMedium, color = HeroUITheme.colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Default.Search,
                                         contentDescription = "Search",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        tint = HeroUITheme.colors.muted
                                     )
                                 },
                                 trailingIcon = {
@@ -979,79 +1034,82 @@ fun CashierPOSScreen(
                                                 Icon(
                                                     imageVector = Icons.Default.Close,
                                                     contentDescription = "Clear search",
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    tint = HeroUITheme.colors.muted
                                                 )
                                             }
                                         }
                                         FilledTonalIconButton(
                                             onClick = { viewModel.isScannerOpen.value = true },
-                                            modifier = Modifier.testTag("barcode_cam_trigger")
+                                            modifier = Modifier.testTag("barcode_cam_trigger"),
+                                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                                containerColor = HeroUITheme.colors.accent.copy(alpha = 0.14f),
+                                                contentColor = HeroUITheme.colors.accent
+                                            )
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.QrCodeScanner,
                                                 contentDescription = "Scan",
-                                                tint = MaterialTheme.colorScheme.primary
+                                                tint = HeroUITheme.colors.accent
                                             )
                                         }
                                     }
                                 },
-                                shape = CircleShape,
+                                shape = HeroUITheme.radius.full,
                                 colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                    focusedContainerColor = HeroUITheme.colors.surfaceSecondary,
+                                    unfocusedContainerColor = HeroUITheme.colors.surfaceSecondary,
                                     focusedIndicatorColor = Color.Transparent,
                                     unfocusedIndicatorColor = Color.Transparent,
                                     disabledIndicatorColor = Color.Transparent
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .border(1.dp, HeroUITheme.colors.border, HeroUITheme.radius.full)
                                     .padding(bottom = 8.dp)
                                     .testTag("catalog_search_bar"),
                                 singleLine = true
                             )
                             } // end BoxWithConstraints for adaptive search copy
 
-
-
-                             // Horizontal Category row filters
+                             // HeroUI v3 Category Filter Row
                              Row(
                                  modifier = Modifier
                                      .fillMaxWidth()
                                      .horizontalScroll(rememberScrollState())
                                      .padding(vertical = 6.dp),
-                                 verticalAlignment = Alignment.CenterVertically
+                                 verticalAlignment = Alignment.CenterVertically,
+                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                              ) {
-                                Text(
-                                    "Filter: ",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                 Text(
+                                     "Filter: ",
+                                     style = MaterialTheme.typography.labelMedium,
+                                     color = HeroUITheme.colors.muted
+                                 )
 
-                                // "All" chip
-                                FilterChip(
-                                    selected = selectedCategory == null,
-                                    onClick = { selectedCategory = null },
-                                    label = { Text("All") },
-                                    modifier = Modifier.testTag("cat_chip_all")
-                                )
+                                 // "All" chip
+                                 HeroChip(
+                                     text = "All",
+                                     variant = if (selectedCategory == null) HeroChipVariant.Solid else HeroChipVariant.Flat,
+                                     color = if (selectedCategory == null) HeroColor.Primary else HeroColor.Default,
+                                     onClick = { selectedCategory = null },
+                                     modifier = Modifier.testTag("cat_chip_all")
+                                 )
 
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                val showDigitalCategory = (storeConfig?.hasGCash == true) || (storeConfig?.hasMaya == true) || (storeConfig?.hasLoad == true)
-                                categories.filterNot { cat ->
-                                    cat.name.contains("Digital", ignoreCase = true) || cat.name.contains("Service", ignoreCase = true)
-                                }.forEach { cat ->
-                                    FilterChip(
-                                        selected = selectedCategory?.id == cat.id,
-                                        onClick = { selectedCategory = cat },
-                                        label = { Text(cat.name) },
-                                        modifier = Modifier
-                                            .padding(end = 4.dp)
-                                            .testTag("cat_chip_${cat.id}")
-                                    )
-                                }
-                            }
+                                 val showDigitalCategory = (storeConfig?.hasGCash == true) || (storeConfig?.hasMaya == true) || (storeConfig?.hasLoad == true)
+                                 categories.filterNot { cat ->
+                                     cat.name.contains("Digital", ignoreCase = true) || cat.name.contains("Service", ignoreCase = true)
+                                 }.forEach { cat ->
+                                     val isSelected = selectedCategory?.id == cat.id
+                                     HeroChip(
+                                         text = cat.name,
+                                         icon = if (cat.iconBadge.isNotBlank()) getCategoryIconVector(cat.iconBadge) else null,
+                                         variant = if (isSelected) HeroChipVariant.Solid else HeroChipVariant.Flat,
+                                         color = if (isSelected) HeroColor.Primary else HeroColor.Default,
+                                         onClick = { selectedCategory = cat },
+                                         modifier = Modifier.testTag("cat_chip_${cat.id}")
+                                     )
+                                 }
+                             }
 
                             // Product Grid Catalog — LAYA fast-response: memoized, debounced, O(1) category map.
                             val categoryNameById = remember(categories) { categories.associate { it.id to it.name } }
@@ -1065,7 +1123,7 @@ fun CashierPOSScreen(
                                                    categoryName.contains("Digital", ignoreCase = true)
                                 
                                 !isOldDigital && (selectedCategory == null || p.categoryId == selectedCategory?.id) &&
-                                        (effectiveQuery.isBlank() || p.name.contains(effectiveQuery, ignoreCase = true) || p.barcode.contains(effectiveQuery))
+                                        (effectiveQuery.isBlank() || p.name.contains(effectiveQuery, ignoreCase = true) || p.barcode.contains(effectiveQuery, ignoreCase = true) || categoryName.contains(effectiveQuery, ignoreCase = true))
                             }
                         }
 
@@ -1179,7 +1237,7 @@ fun CashierPOSScreen(
                                         val isSmart = item.name.contains("Smart", ignoreCase = true) || item.name.contains("TNT", ignoreCase = true)
                                         val isGlobe = item.name.contains("Globe", ignoreCase = true) || item.name.contains("TM", ignoreCase = true)
 
-                                        Card(
+                                        HeroCard(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .tactileBounce {
@@ -1199,25 +1257,24 @@ fun CashierPOSScreen(
                                             // and bottom-right and draws straight edges for
                                             // the other two - so every catalog tile had two
                                             // hard 90-degree corners.
-                                            shape = ExpressiveSmallCardShape,
+                                            shape = HeroUITheme.radius.lg,
                                             colors = CardDefaults.cardColors(
                                                 containerColor = if (isOutOfStock) {
-                                                    MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.4f)
+                                                    HeroUITheme.colors.surfaceSecondary.copy(alpha = 0.5f)
                                                 } else {
-                                                    MaterialTheme.colorScheme.surfaceContainerLow
+                                                    HeroUITheme.colors.surface
                                                 }
                                             ),
-                                            border = if (isOutOfStock || isLowStock) {
-                                                BorderStroke(
-                                                    width = 1.5.dp,
-                                                    color = if (isOutOfStock) 
-                                                        MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
-                                                    else 
-                                                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.6f)
-                                                )
-                                            } else null,
+                                            border = BorderStroke(
+                                                width = 1.dp,
+                                                color = when {
+                                                    isOutOfStock -> HeroUITheme.colors.danger.copy(alpha = 0.4f)
+                                                    isLowStock -> HeroUITheme.colors.warning.copy(alpha = 0.5f)
+                                                    else -> HeroUITheme.colors.border
+                                                }
+                                            ),
                                             elevation = CardDefaults.cardElevation(
-                                                defaultElevation = if (isOutOfStock) 0.dp else 2.dp
+                                                defaultElevation = if (isOutOfStock) 0.dp else 1.dp
                                             )
                                         ) {
                                             Column(
@@ -1233,49 +1290,27 @@ fun CashierPOSScreen(
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     val categoryName = categoryNameById[item.categoryId] ?: "General"
-                                                    Surface(
-                                                        shape = ExpressiveChipShape,
-                                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                                        // Take only the slack, so a long category name
-                                                        // ellipsizes instead of squeezing the stock pill
-                                                        // (or pushing it off the card edge).
+                                                    HeroChip(
+                                                        text = categoryName,
+                                                        variant = HeroChipVariant.Flat,
+                                                        color = HeroColor.Primary,
                                                         modifier = Modifier.weight(1f, fill = false)
-                                                    ) {
-                                                        Text(
-                                                            text = categoryName,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis,
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                        )
-                                                    }
+                                                    )
 
-                                                    Surface(
-                                                        shape = ExpressiveChipShape,
-                                                        color = when {
-                                                            isOutOfStock -> MaterialTheme.colorScheme.errorContainer
-                                                            isLowStock -> MaterialTheme.colorScheme.tertiaryContainer
-                                                            else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                                                    HeroChip(
+                                                        text = when {
+                                                            isOutOfStock -> "OUT"
+                                                            isLowStock -> "LOW: ${item.stockCount}"
+                                                            else -> "${item.stockCount} left"
                                                         },
-                                                        modifier = Modifier.padding(start = 8.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = when {
-                                                                isOutOfStock -> "OUT"
-                                                                isLowStock -> "LOW: ${item.stockCount}"
-                                                                else -> "${item.stockCount} left"
-                                                            },
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = when {
-                                                                isOutOfStock -> MaterialTheme.colorScheme.onErrorContainer
-                                                                isLowStock -> MaterialTheme.colorScheme.onTertiaryContainer
-                                                                else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                                            },
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                        )
-                                                    }
+                                                        variant = HeroChipVariant.Flat,
+                                                        color = when {
+                                                            isOutOfStock -> HeroColor.Danger
+                                                            isLowStock -> HeroColor.Warning
+                                                            else -> HeroColor.Default
+                                                        },
+                                                        modifier = Modifier.padding(start = 6.dp)
+                                                    )
                                                 }
 
                                                 // Fixed 2-Line Product Title for Perfect Alignment
@@ -1283,16 +1318,13 @@ fun CashierPOSScreen(
                                                     text = item.name,
                                                     style = MaterialTheme.typography.titleSmall,
                                                     fontWeight = FontWeight.SemiBold,
-                                                    color = if (isOutOfStock) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                                                    color = if (isOutOfStock) HeroUITheme.colors.muted else HeroUITheme.colors.foreground,
                                                     maxLines = 2,
                                                     minLines = 2,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
 
-                                                // Bottom Price and Action Row.
-                                                // The price takes the slack so the trailing UOM/launch
-                                                // affordance is never pushed off the card edge by a
-                                                // long value (e.g. a 5-digit price on a narrow tile).
+                                                // Bottom Price and Action Row
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1302,24 +1334,18 @@ fun CashierPOSScreen(
                                                         text = "$curr${String.format(Locale.getDefault(), "%.2f", item.price)}",
                                                         style = MaterialTheme.typography.titleMedium,
                                                         fontWeight = FontWeight.Black,
-                                                        color = MaterialTheme.colorScheme.primary,
+                                                        color = HeroUITheme.colors.accent,
                                                         maxLines = 1,
                                                         overflow = TextOverflow.Ellipsis,
                                                         modifier = Modifier.weight(1f, fill = false)
                                                     )
 
                                                     if (availableUoms.size > 1) {
-                                                        Surface(
-                                                            color = MaterialTheme.colorScheme.secondaryContainer,
-                                                            shape = RoundedCornerShape(6.dp)
-                                                        ) {
-                                                            Text(
-                                                                text = "${availableUoms.size} UOM",
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                            )
-                                                        }
+                                                        HeroChip(
+                                                            text = "${availableUoms.size} UOM",
+                                                            variant = HeroChipVariant.Flat,
+                                                            color = HeroColor.Primary
+                                                        )
                                                     } else if (isGCash || isSmart || isGlobe) {
                                                         val context = LocalContext.current
                                                         IconButton(
@@ -1349,7 +1375,7 @@ fun CashierPOSScreen(
                                                             Icon(
                                                                 imageVector = Icons.Default.Launch,
                                                                 contentDescription = "Dial/App",
-                                                                tint = MaterialTheme.colorScheme.primary,
+                                                                tint = HeroUITheme.colors.accent,
                                                                 modifier = Modifier.size(16.dp)
                                                             )
                                                         }
@@ -1367,7 +1393,7 @@ fun CashierPOSScreen(
 
                     // Right Workspace Content: Checkout Register Card
                     val registerContent = @Composable {
-                        Card(
+                        HeroCard(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(12.dp),
@@ -1394,7 +1420,7 @@ fun CashierPOSScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    OutlinedTextField(
+                                    HeroInput(
                                         value = scannerQuantityInput,
                                         onValueChange = { scannerQuantityInput = it },
                                         label = { Text("Qty") },
@@ -1405,11 +1431,13 @@ fun CashierPOSScreen(
 
                                     Box(modifier = Modifier.weight(1f)) {
                                         var isDropdownExpanded by remember { mutableStateOf(false) }
-                                        val matchedSuggestions = remember(manualBarcodeInput, products) {
+                                        val matchedSuggestions = remember(manualBarcodeInput, products, categoryNameById) {
                                             if (manualBarcodeInput.isBlank()) emptyList()
                                             else products.filter {
+                                                val catName = categoryNameById[it.categoryId] ?: ""
                                                 it.name.contains(manualBarcodeInput, ignoreCase = true) ||
-                                                it.barcode.contains(manualBarcodeInput, ignoreCase = true)
+                                                it.barcode.contains(manualBarcodeInput, ignoreCase = true) ||
+                                                catName.contains(manualBarcodeInput, ignoreCase = true)
                                             }.take(5)
                                         }
 
@@ -1418,7 +1446,7 @@ fun CashierPOSScreen(
                                         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                                         val searchCopy = ScanSearchField.copyFor(maxWidth, hasSiblingField = true)
 
-                                        OutlinedTextField(
+                                        HeroInput(
                                             value = manualBarcodeInput,
                                             onValueChange = { 
                                                 manualBarcodeInput = it 
@@ -1551,7 +1579,7 @@ fun CashierPOSScreen(
                                             ) {
                                                 val allChecked = cartItems.all { checkedCartItems[it.first.id] != false }
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Checkbox(
+                                                    HeroCheckbox(
                                                         checked = allChecked && cartItems.isNotEmpty(),
                                                         onCheckedChange = { allCheckedValue ->
                                                             cartItems.forEach {
@@ -1582,9 +1610,12 @@ fun CashierPOSScreen(
                                             val product = lineItem.first
                                             val qty = lineItem.second
                                             val isChecked = checkedCartItems[product.id] ?: true
-                                            val activeUom = selectedCartUoms[product.id] ?: com.munzo.storepoint.data.UomOption("Base Unit", 1, product.price); val linePriceTotal = activeUom.price * qty
+                                            val activeUom = selectedCartUoms[product.id] ?: com.munzo.storepoint.data.UomOption("Base Unit", 1, product.price)
+                                            val itemDiscount = cartItemDiscounts[product.id] ?: 0.0
+                                            val effectivePrice = (activeUom.price - itemDiscount).coerceAtLeast(0.0)
+                                            val linePriceTotal = effectivePrice * qty
 
-                                            Card(
+                                            HeroCard(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .pointerInput(product.id) {
@@ -1614,7 +1645,7 @@ fun CashierPOSScreen(
                                                         modifier = Modifier.fillMaxWidth(),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        Checkbox(
+                                                        HeroCheckbox(
                                                             checked = isChecked,
                                                             onCheckedChange = { checkedCartItems[product.id] = it },
                                                             modifier = Modifier.testTag("item_check_${product.id}")
@@ -1651,17 +1682,54 @@ fun CashierPOSScreen(
                                                         horizontalArrangement = Arrangement.SpaceBetween,
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // Price and UOM selector
+                                                        // Price and UOM selector & Discount
                                                         Row(
                                                             verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                                                             modifier = Modifier.weight(1f)
                                                         ) {
-                                                            Text(
-                                                                text = "$curr${String.format(Locale.getDefault(), "%.2f", activeUom.price)}",
-                                                                style = MaterialTheme.typography.labelMedium,
-                                                                color = MaterialTheme.colorScheme.outline
-                                                            )
+                                                            if (itemDiscount > 0.0) {
+                                                                Column {
+                                                                    Text(
+                                                                        text = "$curr${String.format(Locale.getDefault(), "%.2f", activeUom.price)}",
+                                                                        style = MaterialTheme.typography.labelSmall.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough),
+                                                                        color = MaterialTheme.colorScheme.outline
+                                                                    )
+                                                                    Text(
+                                                                        text = "$curr${String.format(Locale.getDefault(), "%.2f", effectivePrice)}",
+                                                                        style = MaterialTheme.typography.labelMedium,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = MaterialTheme.colorScheme.primary
+                                                                    )
+                                                                }
+                                                                Surface(
+                                                                    onClick = { productForDiscountDialog = product },
+                                                                    shape = RoundedCornerShape(6.dp),
+                                                                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                                                                    modifier = Modifier.testTag("cart_discount_chip_${product.id}")
+                                                                ) {
+                                                                    Row(
+                                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                                        verticalAlignment = Alignment.CenterVertically
+                                                                    ) {
+                                                                        Icon(Icons.Default.Percent, null, modifier = Modifier.size(10.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                                                                        Spacer(modifier = Modifier.width(2.dp))
+                                                                        Text("-$curr${String.format(Locale.getDefault(), "%.2f", itemDiscount)}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                Text(
+                                                                    text = "$curr${String.format(Locale.getDefault(), "%.2f", activeUom.price)}",
+                                                                    style = MaterialTheme.typography.labelMedium,
+                                                                    color = MaterialTheme.colorScheme.outline
+                                                                )
+                                                                IconButton(
+                                                                    onClick = { productForDiscountDialog = product },
+                                                                    modifier = Modifier.size(24.dp).testTag("cart_discount_btn_${product.id}")
+                                                                ) {
+                                                                    Icon(Icons.Default.Percent, contentDescription = "Add Discount", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(12.dp))
+                                                                }
+                                                            }
 
                                                             val uomsList = viewModel.getActiveUomsForProduct(product)
                                                             if (uomsList.size > 1) {
@@ -1747,7 +1815,7 @@ fun CashierPOSScreen(
                                 }
 
                                 // Math Subtotals
-                                HorizontalDivider()
+                                HeroDivider()
 
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
@@ -1811,16 +1879,17 @@ fun CashierPOSScreen(
                                     }
                                 }
 
-                                ExpressiveButton(
+                                HeroButton(
                                     onClick = { showPaymentDialog = true },
                                     enabled = activeCartItems.isNotEmpty() && activeSession != null,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .testTag("checkout_charge_button"),
-                                    label = "Charge $curr${String.format(Locale.getDefault(), "%.2f", totalAmount)} [F9]",
+                                    text = "Charge $curr${String.format(Locale.getDefault(), "%.2f", totalAmount)} [F9]",
                                     icon = Icons.Default.ShoppingBag,
-                                    variant = ExpressiveButtonVariant.FILLED,
-                                    size = ExpressiveButtonSize.L,
+                                    color = HeroColor.Primary,
+                                    variant = HeroButtonVariant.Solid,
+                                    size = HeroSize.Lg
                                 )
                             }
                         }
@@ -1835,7 +1904,17 @@ fun CashierPOSScreen(
 
                             TabRow(
                                 selectedTabIndex = selectedIndex,
-                                modifier = Modifier.fillMaxWidth().testTag("pos_portrait_tab_row")
+                                modifier = Modifier.fillMaxWidth().testTag("pos_portrait_tab_row"),
+                                containerColor = HeroUITheme.colors.surface,
+                                contentColor = HeroUITheme.colors.accent,
+                                indicator = { tabPositions ->
+                                    if (selectedIndex < tabPositions.size) {
+                                        TabRowDefaults.SecondaryIndicator(
+                                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedIndex]),
+                                            color = HeroUITheme.colors.accent
+                                        )
+                                    }
+                                }
                             ) {
                                 Tab(
                                     selected = selectedIndex == 0,
@@ -1920,10 +1999,12 @@ fun CashierPOSScreen(
                     } else {
                         // Landscape/Wide layout: Side-by-side Sari-Sari Digital Retailing & Checkout Register
                         Row(modifier = Modifier.fillMaxSize()) {
-                            Box(modifier = Modifier.fillMaxHeight().weight(1.0f)) {
+                            val catalogWeight = if (screenMaxWidth >= 900.dp) 0.58f else 0.50f
+                            val registerWeight = 1f - catalogWeight
+                            Box(modifier = Modifier.fillMaxHeight().weight(catalogWeight)) {
                                 catalogContent()
                             }
-                            Box(modifier = Modifier.fillMaxHeight().weight(1.0f)) {
+                            Box(modifier = Modifier.fillMaxHeight().weight(registerWeight)) {
                                 registerContent()
                             }
                         }
@@ -1941,7 +2022,7 @@ fun CashierPOSScreen(
             AlertDialog(
                 onDismissRequest = {}, // Force compliance: must enter shift to use POS
                 confirmButton = {
-                    ExpressiveButton(
+                    HeroButton(
                         onClick = {
                             val amount = initialCashInput.toDoubleOrNull() ?: 0.0
                             val gcashBal = initialGCashInput.toDoubleOrNull() ?: 0.0
@@ -1958,9 +2039,10 @@ fun CashierPOSScreen(
                             showShiftStartDialog = false
                         },
                         modifier = Modifier.testTag("shift_start_confirm"),
-                        label = "Register Drawer Start",
-                        variant = ExpressiveButtonVariant.FILLED,
-                        size = ExpressiveButtonSize.M,
+                        text = "Register Drawer Start",
+                        color = HeroColor.Primary,
+                        variant = HeroButtonVariant.Solid,
+                        size = HeroSize.Md
                     )
                 },
                 title = { Text("Open Shift Drawer Session") },
@@ -1971,7 +2053,7 @@ fun CashierPOSScreen(
                     ) {
                         Text("Welcome cashier! Register the physical starting cash float and the digital wallet balance to start your shift session.")
                         
-                        OutlinedTextField(
+                        HeroInput(
                             value = initialCashInput,
                             onValueChange = { initialCashInput = it },
                             label = { Text("Starting Cash float ($curr)") },
@@ -1980,7 +2062,7 @@ fun CashierPOSScreen(
                         )
 
                         if (storeConfig?.hasGCash == true) {
-                            OutlinedTextField(
+                            HeroInput(
                                 value = initialGCashInput,
                                 onValueChange = { initialGCashInput = it },
                                 label = { Text("Starting GCash/Digital Balance ($curr)") },
@@ -1990,7 +2072,7 @@ fun CashierPOSScreen(
                         }
 
                         if (storeConfig?.hasLoad == true) {
-                            OutlinedTextField(
+                            HeroInput(
                                 value = initialSmartLoadInput,
                                 onValueChange = { initialSmartLoadInput = it },
                                 label = { Text("Starting Smart/TNT Load Wallet ($curr)") },
@@ -1998,7 +2080,7 @@ fun CashierPOSScreen(
                                 modifier = Modifier.fillMaxWidth().testTag("starting_smart_load_input")
                             )
 
-                            OutlinedTextField(
+                            HeroInput(
                                 value = initialGlobeLoadInput,
                                 onValueChange = { initialGlobeLoadInput = it },
                                 label = { Text("Starting Globe/TM Load Wallet ($curr)") },
@@ -2034,28 +2116,84 @@ fun CashierPOSScreen(
             val sessionTransactions = remember(transactionsList, activeSession) {
                 transactionsList.filter { it.timestamp >= (activeSession?.startTime ?: 0L) }
             }
+            val startingFloat = activeSession?.startingCash ?: 0.0
             val cashSalesInSession = remember(sessionTransactions) {
-                sessionTransactions.filter { it.paymentMethod == "CASH" }.sumOf { it.totalAmount }
+                sessionTransactions.sumOf {
+                    if (it.paymentMethod == "CASH") it.totalAmount
+                    else if (it.paymentMethod.startsWith("SPLIT")) it.cashPaid
+                    else 0.0
+                }
             }
             val drawerPayoutsList by viewModel.allDrawerTransactions.collectAsState()
-            val sessionPayouts = remember(drawerPayoutsList, activeSession) {
+            val sessionDrawerTx = remember(drawerPayoutsList, activeSession) {
                 drawerPayoutsList.filter {
                     it.sessionId == (activeSession?.id ?: 0)
-                }.sumOf { it.amount }
+                }
             }
-            val expectedCash = (activeSession?.startingCash ?: 0.0) + cashSalesInSession + sessionPayouts
+            val cashIn = remember(sessionDrawerTx) {
+                sessionDrawerTx.filter { it.amount > 0 }.sumOf { it.amount }
+            }
+            val cashOut = remember(sessionDrawerTx) {
+                sessionDrawerTx.filter { it.amount < 0 && !it.reason.startsWith("Refund") && it.type != "REFUND" }.sumOf { -it.amount }
+            }
+            val cashRefunds = remember(sessionDrawerTx) {
+                sessionDrawerTx.filter { it.amount < 0 && (it.reason.startsWith("Refund") || it.type == "REFUND") }.sumOf { -it.amount }
+            }
+            val expectedCash = StorePointRepository.roundMoney(startingFloat + cashSalesInSession + cashIn - cashOut - cashRefunds)
+
+            // GCash Digital Wallet Ledger
+            val allWalletEntries by viewModel.allWalletLedger.collectAsState()
+            val sessionGcashEntries = remember(allWalletEntries, activeSession) {
+                allWalletEntries.filter { it.walletType == "GCASH" && it.timestamp >= (activeSession?.startTime ?: 0L) }
+            }
+            val gcashInflow = remember(sessionGcashEntries) {
+                sessionGcashEntries.filter { it.delta > 0 }.sumOf { it.delta }
+            }
+            val gcashDisbursed = remember(sessionGcashEntries) {
+                sessionGcashEntries.filter { it.delta < 0 }.sumOf { -it.delta }
+            }
             val expectedGCash = storeConfig?.gcashBalance ?: 0.0
+            val gcashStartingBalance = StorePointRepository.roundMoney(expectedGCash - gcashInflow + gcashDisbursed)
+
+            // Prepaid Load (Smart & Globe)
+            val sessionSmartEntries = remember(allWalletEntries, activeSession) {
+                allWalletEntries.filter { it.walletType == "SMART" && it.timestamp >= (activeSession?.startTime ?: 0L) }
+            }
+            val smartReloadSales = remember(sessionSmartEntries) {
+                sessionSmartEntries.filter { it.delta < 0 }.sumOf { -it.delta }
+            }
             val expectedSmartLoad = storeConfig?.smartLoadBalance ?: 0.0
+            val smartStartingBalance = StorePointRepository.roundMoney(expectedSmartLoad + smartReloadSales)
+
+            val sessionGlobeEntries = remember(allWalletEntries, activeSession) {
+                allWalletEntries.filter { it.walletType == "GLOBE" && it.timestamp >= (activeSession?.startTime ?: 0L) }
+            }
+            val globeReloadSales = remember(sessionGlobeEntries) {
+                sessionGlobeEntries.filter { it.delta < 0 }.sumOf { -it.delta }
+            }
             val expectedGlobeLoad = storeConfig?.globeLoadBalance ?: 0.0
+            val globeStartingBalance = StorePointRepository.roundMoney(expectedGlobeLoad + globeReloadSales)
 
             if (activeSession != null) {
                 ShiftReconciliationDialog(
                     session = activeSession!!,
                     viewModel = viewModel,
                     expectedCash = expectedCash,
+                    startingFloat = startingFloat,
+                    cashSales = cashSalesInSession,
+                    cashIn = cashIn,
+                    cashOut = cashOut,
+                    cashRefunds = cashRefunds,
                     expectedGCash = expectedGCash,
+                    gcashStartingBalance = gcashStartingBalance,
+                    gcashInflow = gcashInflow,
+                    gcashDisbursed = gcashDisbursed,
                     expectedSmartLoad = expectedSmartLoad,
+                    smartStartingBalance = smartStartingBalance,
+                    smartReloadSales = smartReloadSales,
                     expectedGlobeLoad = expectedGlobeLoad,
+                    globeStartingBalance = globeStartingBalance,
+                    globeReloadSales = globeReloadSales,
                     onDismiss = { showShiftCloseDialog = false },
                     onShiftClosed = {
                         showShiftCloseDialog = false
@@ -2067,15 +2205,80 @@ fun CashierPOSScreen(
             }
         }
 
-        // 3) Barcode scanner camera view
+        // Active Shift Logout Warning (Guard against abandoning open shifts)
+        if (showActiveShiftLogoutWarning) {
+            AlertDialog(
+                onDismissRequest = { showActiveShiftLogoutWarning = false },
+                icon = { Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                title = { Text("Active Shift Handover Required", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "You have an active open cashier shift (#SES-${activeSession?.id}). Store policy requires physical drawer balancing and reconciliation before logging out.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            "Please reconcile your shift now or cancel to return to POS operations.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showActiveShiftLogoutWarning = false
+                            showShiftCloseDialog = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.testTag("logout_warning_reconcile_btn")
+                    ) {
+                        Text("Reconcile & Close Shift")
+                    }
+                },
+                dismissButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (activeUser?.role.equals("ADMIN", ignoreCase = true)) {
+                            TextButton(
+                                onClick = {
+                                    showActiveShiftLogoutWarning = false
+                                    viewModel.logout()
+                                    onLogout()
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("Admin Force Logout")
+                            }
+                        }
+                        TextButton(onClick = { showActiveShiftLogoutWarning = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                }
+            )
+        }
+
+        // 3) Barcode scanner camera view (Continuous Fast Item Addition)
         if (isScannerOpen) {
             BarcodeScannerDialog(
                 products = products,
+                title = "Continuous Barcode Scanner",
+                instruction = "Point camera at barcodes. Items are scanned and added continuously.",
+                continuous = true,
+                lastScannedBarcode = lastScannedBarcodeFeedback,
                 onBarcodeScanned = { barcode ->
+                    val match = products.find {
+                        it.barcode.equals(barcode.trim(), ignoreCase = true) ||
+                        (it.hasStick10s && it.barcode10s.equals(barcode.trim(), ignoreCase = true)) ||
+                        (it.hasStick20s && it.barcode20s.equals(barcode.trim(), ignoreCase = true))
+                    }
+                    lastScannedBarcodeFeedback = if (match != null) "${match.name} (+1)" else barcode
                     viewModel.handleBarcodeScan(barcode)
-                    viewModel.isScannerOpen.value = false
                 },
-                onDismiss = { viewModel.isScannerOpen.value = false }
+                onDismiss = {
+                    viewModel.isScannerOpen.value = false
+                    lastScannedBarcodeFeedback = null
+                }
             )
         }
 
@@ -2106,7 +2309,7 @@ fun CashierPOSScreen(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Hold catalog cart temporarily. You can retrieve it instantly later using the held sidebar panels.")
-                        OutlinedTextField(
+                        HeroInput(
                             value = parkNoteInput,
                             onValueChange = { parkNoteInput = it },
                             label = { Text("Reference text / Customer name") },
@@ -2294,14 +2497,14 @@ fun CashierPOSScreen(
                         
                         Text("Line Subtotal: $curr${String.format(Locale.US, "%.2f", subtotalValue)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        HeroDivider(modifier = Modifier.padding(vertical = 4.dp))
 
                         Text("Switch Unit of Measurement:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
 
                         val uomsList = viewModel.getActiveUomsForProduct(product)
                         uomsList.forEach { option ->
                             val isOptionSelected = activeUom.name == option.name
-                            Card(
+                            HeroCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .glassPanel(cornerRadius = 16.dp)
@@ -2449,7 +2652,7 @@ fun CashierPOSScreen(
                                 }
                             }
 
-                            OutlinedTextField(
+                            HeroInput(
                                 value = adminPhoneInput,
                                 onValueChange = {
                                     adminPhoneInput = it
@@ -2481,7 +2684,7 @@ fun CashierPOSScreen(
                             }
                         }
 
-                        OutlinedTextField(
+                        HeroInput(
                             value = assistanceNote,
                             onValueChange = { assistanceNote = it },
                             label = { Text("Note / Description (Optional)") },
@@ -2535,16 +2738,24 @@ fun CashierPOSScreen(
         }
 
         // 6) PAYMENT PROCESSING DIALOG
+        // 6) PAYMENT PROCESSING DIALOG (Multi-Tender Settlement: Cash, GCash, Maya, Split)
         if (showPaymentDialog) {
-            var selectedPaymentMethod by remember { mutableStateOf("CASH") }
+            var selectedPaymentMethod by remember { mutableStateOf("CASH") } // "CASH", "GCASH", "MAYA", "SPLIT"
+            var selectedSplitWallet by remember { mutableStateOf("GCash") }
             var amountPaidInput by remember { mutableStateOf("") }
+            var splitCashPaidInput by remember { mutableStateOf("") }
+            var ewalletRefNumber by remember { mutableStateOf("") }
             var customerNameInput by remember { mutableStateOf("") }
 
             val parsedPayAmount = amountPaidInput.replace(',', '.').toDoubleOrNull() ?: 0.0
             val calculatedChange = if (totalAmount < 0.0) -totalAmount else (parsedPayAmount - totalAmount).coerceAtLeast(0.0)
 
+            val parsedSplitCash = splitCashPaidInput.replace(',', '.').toDoubleOrNull() ?: 0.0
+            val splitWalletBalance = (totalAmount - parsedSplitCash).coerceAtLeast(0.0)
+            val splitCashChange = (parsedSplitCash - totalAmount).coerceAtLeast(0.0)
+
             Dialog(onDismissRequest = { showPaymentDialog = false }) {
-                Card(
+                HeroCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp)
@@ -2557,108 +2768,337 @@ fun CashierPOSScreen(
                             .fillMaxWidth()
                             .imePadding()
                             .verticalScroll(rememberScrollState())
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            "Select Payment Checkout Mode",
+                            "Multi-Tender Payment Settlement",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
 
-                        // Payment Methods toggle row (Locked to CASH only)
+                        // Payment Methods selectable row (Cash, GCash, Maya, Split Tender)
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Button(
-                                onClick = { 
-                                    selectedPaymentMethod = "CASH" 
-                                },
-                                modifier = Modifier.fillMaxWidth(0.6f).testTag("pay_cash_method"),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                )
+                            FilterChip(
+                                selected = selectedPaymentMethod == "CASH",
+                                onClick = { selectedPaymentMethod = "CASH" },
+                                label = { Text("Cash", fontWeight = FontWeight.Bold) },
+                                leadingIcon = { Icon(Icons.Default.AttachMoney, null, modifier = Modifier.size(16.dp)) },
+                                modifier = Modifier.testTag("pay_cash_method")
+                            )
+                            FilterChip(
+                                selected = selectedPaymentMethod == "GCASH",
+                                onClick = { selectedPaymentMethod = "GCASH" },
+                                label = { Text("GCash", fontWeight = FontWeight.Bold) },
+                                leadingIcon = { Icon(Icons.Default.PhoneAndroid, null, tint = GCashColor, modifier = Modifier.size(16.dp)) },
+                                modifier = Modifier.testTag("pay_gcash_method")
+                            )
+                            FilterChip(
+                                selected = selectedPaymentMethod == "MAYA",
+                                onClick = { selectedPaymentMethod = "MAYA" },
+                                label = { Text("Maya", fontWeight = FontWeight.Bold) },
+                                leadingIcon = { Icon(Icons.Default.AccountBalanceWallet, null, tint = MayaColor, modifier = Modifier.size(16.dp)) },
+                                modifier = Modifier.testTag("pay_maya_method")
+                            )
+                            FilterChip(
+                                selected = selectedPaymentMethod == "SPLIT",
+                                onClick = { selectedPaymentMethod = "SPLIT" },
+                                label = { Text("Split Tender", fontWeight = FontWeight.Bold) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingFlat, null, modifier = Modifier.size(16.dp)) },
+                                modifier = Modifier.testTag("pay_split_method")
+                            )
+                        }
+
+                        // Total Due Banner
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.AttachMoney, null)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Cash Mode Only")
+                                Text("Total Amount Due:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "$curr${String.format(Locale.getDefault(), "%.2f", totalAmount)}",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
 
-                        // Input bills
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                "Tender Total Due: $curr${String.format(Locale.getDefault(), "%.2f", totalAmount)}",
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Bold
-                            )
+                        // Mode-specific Payment Content
+                        when (selectedPaymentMethod) {
+                            "CASH" -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                    // Common Denomination Quick-Pay Buttons
+                                    Text("Quick-Pay Cash Denominations:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        SuggestionChip(
+                                            onClick = {
+                                                amountPaidInput = String.format(Locale.US, "%.2f", if (totalAmount < 0.0) 0.0 else totalAmount)
+                                            },
+                                            label = { Text("Exact", fontWeight = FontWeight.Bold) },
+                                            modifier = Modifier.testTag("denom_exact_btn")
+                                        )
+                                        listOf(20, 50, 100, 200, 500, 1000).forEach { denom ->
+                                            SuggestionChip(
+                                                onClick = {
+                                                    val current = amountPaidInput.replace(',', '.').toDoubleOrNull() ?: 0.0
+                                                    amountPaidInput = if (current == 0.0) {
+                                                        String.format(Locale.US, "%.2f", denom.toDouble())
+                                                    } else {
+                                                        String.format(Locale.US, "%.2f", current + denom)
+                                                    }
+                                                },
+                                                label = { Text("+$curr$denom") },
+                                                modifier = Modifier.testTag("denom_${denom}_btn")
+                                            )
+                                        }
+                                    }
 
-                            OutlinedTextField(
-                                value = amountPaidInput,
-                                onValueChange = { amountPaidInput = it },
-                                label = { Text(if (selectedPaymentMethod == "CASH") "Tendered Cash Paid Amount ($curr)" else "Digital Payment Reference Amount") },
-                                placeholder = { Text(String.format(Locale.getDefault(), "%.2f", if (totalAmount < 0.0) 0.0 else totalAmount)) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth().testTag("tendered_cash_input"),
-                                enabled = selectedPaymentMethod == "CASH",
-                                trailingIcon = {
-                                    IconButton(onClick = { amountPaidInput = String.format(Locale.getDefault(), "%.2f", if (totalAmount < 0.0) 0.0 else totalAmount) }) {
-                                        Icon(Icons.Default.DoneAll, "Exact amount")
+                                    HeroInput(
+                                        value = amountPaidInput,
+                                        onValueChange = { amountPaidInput = it },
+                                        label = { Text("Tendered Cash Paid Amount ($curr)") },
+                                        placeholder = { Text(String.format(Locale.getDefault(), "%.2f", if (totalAmount < 0.0) 0.0 else totalAmount)) },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.fillMaxWidth().testTag("tendered_cash_input"),
+                                        trailingIcon = {
+                                            if (amountPaidInput.isNotEmpty()) {
+                                                IconButton(onClick = { amountPaidInput = "" }) {
+                                                    Icon(Icons.Default.Clear, "Clear")
+                                                }
+                                            }
+                                        }
+                                    )
+
+                                    // Instant Change Calculation
+                                    if (totalAmount < 0.0 || (amountPaidInput.isNotBlank() && parsedPayAmount >= totalAmount)) {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(12.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                val changeLabel = if (totalAmount < 0.0) "CASH TO PAY OUT:" else "CHANGE TO RETURN:"
+                                                Text(changeLabel, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                                Text("$curr${String.format(Locale.getDefault(), "%.2f", calculatedChange)}", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                            }
+                                        }
+                                    } else if (amountPaidInput.isNotBlank() && parsedPayAmount < totalAmount) {
+                                        Text(
+                                            "Insufficient tender cash paid (Short by $curr${String.format(Locale.getDefault(), "%.2f", totalAmount - parsedPayAmount)}).",
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
                                     }
                                 }
-                            )
-
-                            OutlinedTextField(
-                                value = customerNameInput,
-                                onValueChange = { customerNameInput = it },
-                                label = { Text("Customer Name (Optional)") },
-                                placeholder = { Text("e.g. Walk-in or Juan Dela Cruz") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth().testTag("customer_name_input")
-                            )
-                        }
-
-                        // Change log
-                        if (selectedPaymentMethod == "CASH" && (totalAmount < 0.0 || (amountPaidInput.isNotBlank() && parsedPayAmount >= totalAmount))) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                val changeLabel = if (totalAmount < 0.0) "CASH TO PAY OUT:" else "CHANGE TO RETURN:"
-                                Text(changeLabel, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                                Text("$curr${String.format(Locale.getDefault(), "%.2f", calculatedChange)}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                             }
-                        } else if (selectedPaymentMethod == "CASH" && amountPaidInput.isNotBlank() && parsedPayAmount < totalAmount) {
-                            Text(
-                                "Insufficient tender cash paid.",
-                                color = Color.Red,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.align(Alignment.Start)
-                            )
+                            "GCASH" -> {
+                                HeroCard(
+                                    colors = CardDefaults.cardColors(containerColor = GCashColor.copy(alpha = 0.12f)),
+                                    border = BorderStroke(1.5.dp, GCashColor.copy(alpha = 0.5f)),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Icon(Icons.Default.PhoneAndroid, null, tint = GCashColor)
+                                            Text("GCash Digital Payment Settlement", fontWeight = FontWeight.Bold, color = GCashColor)
+                                        }
+                                        Text(
+                                            "Collect exact amount $curr${String.format(Locale.getDefault(), "%.2f", totalAmount)} via customer GCash transfer or QR code.",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+
+                                HeroInput(
+                                    value = ewalletRefNumber,
+                                    onValueChange = { ewalletRefNumber = it },
+                                    label = { Text("GCash Reference Number (Optional)") },
+                                    placeholder = { Text("e.g. 100234567890") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().testTag("ewallet_ref_input")
+                                )
+                            }
+                            "MAYA" -> {
+                                HeroCard(
+                                    colors = CardDefaults.cardColors(containerColor = MayaColor.copy(alpha = 0.12f)),
+                                    border = BorderStroke(1.5.dp, MayaColor.copy(alpha = 0.5f)),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Icon(Icons.Default.AccountBalanceWallet, null, tint = MayaColor)
+                                            Text("Maya Digital Payment Settlement", fontWeight = FontWeight.Bold, color = MayaColor)
+                                        }
+                                        Text(
+                                            "Collect exact amount $curr${String.format(Locale.getDefault(), "%.2f", totalAmount)} via customer Maya transfer or QR code.",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+
+                                HeroInput(
+                                    value = ewalletRefNumber,
+                                    onValueChange = { ewalletRefNumber = it },
+                                    label = { Text("Maya Reference Number (Optional)") },
+                                    placeholder = { Text("e.g. 987654321") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().testTag("ewallet_ref_input")
+                                )
+                            }
+                            "SPLIT" -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                                    Text("Split Bill: Part Cash + Part E-Wallet", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+
+                                    // Quick presets for cash portion
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        listOf(20, 50, 100, 200, 500).forEach { denom ->
+                                            if (denom < totalAmount) {
+                                                SuggestionChip(
+                                                    onClick = { splitCashPaidInput = String.format(Locale.US, "%.2f", denom.toDouble()) },
+                                                    label = { Text("Cash $curr$denom") }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    HeroInput(
+                                        value = splitCashPaidInput,
+                                        onValueChange = { splitCashPaidInput = it },
+                                        label = { Text("Cash Tendered Portion ($curr)") },
+                                        placeholder = { Text("e.g. 100.00") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.fillMaxWidth().testTag("split_cash_input")
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Remaining E-Wallet:", style = MaterialTheme.typography.bodySmall)
+                                        FilterChip(
+                                            selected = selectedSplitWallet == "GCash",
+                                            onClick = { selectedSplitWallet = "GCash" },
+                                            label = { Text("GCash") }
+                                        )
+                                        FilterChip(
+                                            selected = selectedSplitWallet == "Maya",
+                                            onClick = { selectedSplitWallet = "Maya" },
+                                            label = { Text("Maya") }
+                                        )
+                                    }
+
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                Text("Cash Paid:", style = MaterialTheme.typography.bodySmall)
+                                                Text("$curr${String.format(Locale.getDefault(), "%.2f", parsedSplitCash)}", fontWeight = FontWeight.Bold)
+                                            }
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                Text("Balance via $selectedSplitWallet:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                                Text("$curr${String.format(Locale.getDefault(), "%.2f", splitWalletBalance)}", fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                                            }
+                                            if (splitCashChange > 0.0) {
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                    Text("Cash Change:", style = MaterialTheme.typography.bodySmall)
+                                                    Text("$curr${String.format(Locale.getDefault(), "%.2f", splitCashChange)}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    HeroInput(
+                                        value = ewalletRefNumber,
+                                        onValueChange = { ewalletRefNumber = it },
+                                        label = { Text("$selectedSplitWallet Ref # (Optional)") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
                         }
 
-                        // Submit Checkout Actions (Processes check-out on activeCartItems exclusively!)
-                        ExpressiveButton(
+                        HeroInput(
+                            value = customerNameInput,
+                            onValueChange = { customerNameInput = it },
+                            label = { Text("Customer Name (Optional)") },
+                            placeholder = { Text("e.g. Walk-in or Juan Dela Cruz") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("customer_name_input")
+                        )
+
+                        // Submit Checkout Actions
+                        val isSubmitEnabled = when (selectedPaymentMethod) {
+                            "CASH" -> totalAmount <= 0.0 || (amountPaidInput.isNotBlank() && parsedPayAmount >= totalAmount)
+                            "SPLIT" -> parsedSplitCash > 0.0 || splitWalletBalance > 0.0
+                            else -> true // GCASH or MAYA exact digital payment
+                        }
+
+                        HeroButton(
                             onClick = {
+                                val finalMethod = when (selectedPaymentMethod) {
+                                    "SPLIT" -> "SPLIT ($selectedSplitWallet)"
+                                    else -> selectedPaymentMethod
+                                }
+                                val finalCash = when (selectedPaymentMethod) {
+                                    "CASH" -> parsedPayAmount
+                                    "SPLIT" -> parsedSplitCash
+                                    else -> totalAmount
+                                }
+                                val finalCustomer = when {
+                                    selectedPaymentMethod == "SPLIT" -> {
+                                        val base = customerNameInput.ifBlank { "Walk-in" }
+                                        val refStr = if (ewalletRefNumber.isNotBlank()) " Ref:$ewalletRefNumber" else ""
+                                        "$base [Cash: $curr${String.format(Locale.US, "%.2f", parsedSplitCash)}, $selectedSplitWallet: $curr${String.format(Locale.US, "%.2f", splitWalletBalance)}$refStr]"
+                                    }
+                                    selectedPaymentMethod != "CASH" && ewalletRefNumber.isNotBlank() -> {
+                                        val base = customerNameInput.ifBlank { "Walk-in" }
+                                        "$base [Ref: $ewalletRefNumber]"
+                                    }
+                                    else -> customerNameInput
+                                }
+
                                 executePaymentAction(
                                     viewModel = viewModel,
-                                    paymentMethod = selectedPaymentMethod,
-                                    cashPaid = parsedPayAmount,
+                                    paymentMethod = finalMethod,
+                                    cashPaid = finalCash,
                                     subtotal = subtotal,
                                     taxAmount = taxAmount,
                                     totalAmount = totalAmount,
                                     cartLineItems = activeCartItems,
-                                    customerName = customerNameInput,
+                                    customerName = finalCustomer,
                                     onComplete = { tx, items ->
                                         // Save completed tx state to open printable Receipt Dialog
                                         val pendingServices = DigitalServicesHelper.parseDigitalServiceItems(items)
@@ -2667,18 +3107,19 @@ fun CashierPOSScreen(
                                         lastCompletedItems = items
                                         showPaymentDialog = false
                                         showReceiptDialog = true
-                                        if (selectedPaymentMethod == "CASH" && viewModel.isAutoKickDrawerEnabled.value) {
+                                        if ((selectedPaymentMethod == "CASH" || selectedPaymentMethod == "SPLIT") && viewModel.isAutoKickDrawerEnabled.value) {
                                             viewModel.kickCashDrawer { _, _ -> }
                                         }
                                     }
                                 )
                             },
-                            enabled = selectedPaymentMethod != "CASH" || totalAmount <= 0.0 || (amountPaidInput.isNotBlank() && parsedPayAmount >= totalAmount),
+                            enabled = isSubmitEnabled,
                             modifier = Modifier.fillMaxWidth().testTag("payment_submit_button"),
-                            label = "Complete Checkout",
+                            text = "Complete Checkout",
                             icon = Icons.Filled.CheckCircle,
-                            variant = ExpressiveButtonVariant.FILLED,
-                            size = ExpressiveButtonSize.L,
+                            color = HeroColor.Primary,
+                            variant = HeroButtonVariant.Solid,
+                            size = HeroSize.Lg
                         )
                     }
                 }
@@ -2766,7 +3207,7 @@ fun CashierPOSScreen(
 
                         // Prominent banner if pay-first digital service items need fulfillment
                         if (pendingDigitalServices.isNotEmpty()) {
-                            Card(
+                            HeroCard(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -2818,7 +3259,7 @@ fun CashierPOSScreen(
                             }
                         }
 
-                        HorizontalDivider()
+                        HeroDivider()
                         Text("You can export the printable invoice receipt immediately in PDF format above for standard thermal printer sizes.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                     }
                 }
@@ -2864,7 +3305,7 @@ fun CashierPOSScreen(
                         )
 
                         pendingDigitalServices.forEach { item ->
-                            Card(
+                            HeroCard(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -2954,6 +3395,19 @@ fun CashierPOSScreen(
                                                     else "Open GCash (Send ₱${String.format(Locale.getDefault(), "%.2f", item.amount)})"
                                                 )
                                             }
+                                            if (item.mobileNumber.isNotBlank()) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        val smsMsg = "GCash ${item.action}: ₱${String.format(Locale.getDefault(), "%.2f", item.amount)} processed at store."
+                                                        DigitalServicesHelper.launchSms(context, item.mobileNumber, smsMsg)
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Icon(Icons.Default.Send, null, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("Direct SMS Confirmation", style = MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
                                         }
                                         "Maya" -> {
                                             Button(
@@ -2970,10 +3424,22 @@ fun CashierPOSScreen(
                                                     else "Open Maya (Send ₱${String.format(Locale.getDefault(), "%.2f", item.amount)})"
                                                 )
                                             }
+                                            if (item.mobileNumber.isNotBlank()) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        val smsMsg = "Maya ${item.action}: ₱${String.format(Locale.getDefault(), "%.2f", item.amount)} processed at store."
+                                                        DigitalServicesHelper.launchSms(context, item.mobileNumber, smsMsg)
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Icon(Icons.Default.Send, null, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("Direct SMS Confirmation", style = MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
                                         }
                                         "Load" -> {
-                                            val isSmart = item.network.equals("Smart", ignoreCase = true) || item.network.equals("TNT", ignoreCase = true)
-                                            val ussdCode = if (isSmart) "*123#" else "*143#"
+                                            val ussdCode = DigitalServicesHelper.getUssdCodeForNetwork(item.network)
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2998,6 +3464,20 @@ fun CashierPOSScreen(
                                                     Icon(Icons.Default.SimCard, null, modifier = Modifier.size(14.dp))
                                                     Spacer(modifier = Modifier.width(4.dp))
                                                     Text("SIM Toolkit", style = MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
+
+                                            if (item.mobileNumber.isNotBlank()) {
+                                                val smsCmd = DigitalServicesHelper.getSmsCommand(item.service, item.network, item.mobileNumber, item.amount)
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        DigitalServicesHelper.launchSms(context, item.mobileNumber, smsCmd)
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Icon(Icons.Default.Send, null, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("Direct SMS Trigger (${item.network})", style = MaterialTheme.typography.labelSmall)
                                                 }
                                             }
 
@@ -3084,7 +3564,7 @@ fun CashierPOSScreen(
                         )
 
                         if (launchableApps.isEmpty()) {
-                            Card(
+                            HeroCard(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                             ) {
@@ -3101,7 +3581,7 @@ fun CashierPOSScreen(
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 launchableApps.forEach { (pkg, label) ->
-                                    Card(
+                                    HeroCard(
                                         onClick = {
                                             DigitalServicesHelper.launchAppByPackage(context, pkg)
                                             showTerminalAppsDialog = false
@@ -3162,7 +3642,7 @@ fun CashierPOSScreen(
                             color = MaterialTheme.colorScheme.secondary
                         )
                         uomOptions.forEach { opt ->
-                            Card(
+                            HeroCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
@@ -3207,11 +3687,201 @@ fun CashierPOSScreen(
             )
         }
 
+        // Custom Item Discount Dialog
+        if (productForDiscountDialog != null) {
+            val prod = productForDiscountDialog!!
+            val activeUom = selectedCartUoms[prod.id] ?: com.munzo.storepoint.data.UomOption("Base Unit", 1, prod.price)
+            val basePrice = activeUom.price
+            val currentDiscount = cartItemDiscounts[prod.id] ?: 0.0
+
+            var discountMode by remember { mutableIntStateOf(0) } // 0 = Percent, 1 = Fixed Amount
+            var percentInput by remember { mutableStateOf(if (currentDiscount > 0.0 && basePrice > 0) String.format(Locale.US, "%.0f", (currentDiscount / basePrice) * 100) else "10") }
+            var amountInput by remember { mutableStateOf(if (currentDiscount > 0.0) String.format(Locale.US, "%.2f", currentDiscount) else "5.00") }
+
+            val parsedPercent = percentInput.replace(',', '.').toDoubleOrNull() ?: 0.0
+            val parsedAmount = amountInput.replace(',', '.').toDoubleOrNull() ?: 0.0
+
+            val calculatedDiscount = if (discountMode == 0) {
+                StorePointRepository.roundMoney((basePrice * (parsedPercent / 100.0)).coerceIn(0.0, basePrice))
+            } else {
+                StorePointRepository.roundMoney(parsedAmount.coerceIn(0.0, basePrice))
+            }
+            val discountedPrice = (basePrice - calculatedDiscount).coerceAtLeast(0.0)
+
+            AlertDialog(
+                onDismissRequest = { productForDiscountDialog = null },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Percent, null, tint = MaterialTheme.colorScheme.primary)
+                        Text("Custom Item Discount", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = prod.name,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = "Original Unit Price: $curr${String.format(Locale.getDefault(), "%.2f", basePrice)} (${activeUom.name})",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+
+                        // Mode Selector: Percent vs Fixed
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = discountMode == 0,
+                                onClick = { discountMode = 0 },
+                                label = { Text("Percentage (%)") },
+                                modifier = Modifier.weight(1f)
+                            )
+                            FilterChip(
+                                selected = discountMode == 1,
+                                onClick = { discountMode = 1 },
+                                label = { Text("Fixed Amount ($curr)") },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        if (discountMode == 0) {
+                            // Quick Percentage Presets
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf("5", "10", "15", "20", "50").forEach { pct ->
+                                    SuggestionChip(
+                                        onClick = { percentInput = pct },
+                                        label = { Text("$pct%") }
+                                    )
+                                }
+                            }
+                            HeroInput(
+                                value = percentInput,
+                                onValueChange = { percentInput = it },
+                                label = { Text("Discount Percentage") },
+                                trailingIcon = { Text("%", modifier = Modifier.padding(end = 12.dp), fontWeight = FontWeight.Bold) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().testTag("discount_percent_input")
+                            )
+                        } else {
+                            // Quick Fixed Amount Presets
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(5.0, 10.0, 20.0, 50.0).forEach { amt ->
+                                    if (amt < basePrice) {
+                                        SuggestionChip(
+                                            onClick = { amountInput = String.format(Locale.US, "%.2f", amt) },
+                                            label = { Text("$curr$amt") }
+                                        )
+                                    }
+                                }
+                            }
+                            HeroInput(
+                                value = amountInput,
+                                onValueChange = { amountInput = it },
+                                label = { Text("Discount Amount ($curr)") },
+                                leadingIcon = { Text(curr, modifier = Modifier.padding(start = 12.dp), fontWeight = FontWeight.Bold) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().testTag("discount_amount_input")
+                            )
+                        }
+
+                        // Summary preview
+                        HeroCard(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Discount per unit:", style = MaterialTheme.typography.bodySmall)
+                                    Text("-$curr${String.format(Locale.getDefault(), "%.2f", calculatedDiscount)}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                }
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Discounted Price:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text("$curr${String.format(Locale.getDefault(), "%.2f", discountedPrice)}", fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.setItemDiscount(prod.id, calculatedDiscount)
+                            productForDiscountDialog = null
+                            Toast.makeText(context, "Discount applied: -$curr${String.format(Locale.getDefault(), "%.2f", calculatedDiscount)}/unit", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.testTag("apply_discount_btn")
+                    ) {
+                        Text("Apply Discount")
+                    }
+                },
+                dismissButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (currentDiscount > 0.0) {
+                            TextButton(
+                                onClick = {
+                                    viewModel.setItemDiscount(prod.id, 0.0)
+                                    productForDiscountDialog = null
+                                    Toast.makeText(context, "Discount removed", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                modifier = Modifier.testTag("remove_discount_btn")
+                            ) {
+                                Text("Remove")
+                            }
+                        }
+                        TextButton(onClick = { productForDiscountDialog = null }) {
+                            Text("Cancel")
+                        }
+                    }
+                }
+            )
+        }
+
         // Returns, Refunds and Item Exchanges Dialog
         if (showReturnRefundDialog) {
             ReturnRefundDialog(
                 viewModel = viewModel,
                 onDismiss = { showReturnRefundDialog = false }
+            )
+        }
+
+        // Bulk-to-Retail Repackaging & Production (BOM Engine)
+        if (showBulkProductionDialog) {
+            BulkProductionDialog(
+                viewModel = viewModel,
+                onDismiss = { showBulkProductionDialog = false }
+            )
+        }
+
+        // Drawer Cash Management (Cash In / Cash Out Dialog)
+        if (showDrawerCashInOutDialog) {
+            DrawerCashInOutDialog(
+                viewModel = viewModel,
+                onDismiss = { showDrawerCashInOutDialog = false }
+            )
+        }
+
+        // Fast Cashier PIN Switch Dialog
+        if (showFastCashierSwitchDialog) {
+            FastCashierSwitchDialog(
+                viewModel = viewModel,
+                onDismiss = { showFastCashierSwitchDialog = false }
             )
         }
 
@@ -3297,7 +3967,7 @@ fun CashierPOSScreen(
                             }
                         }
 
-                        HorizontalDivider(
+                        HeroDivider(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                         )
 
@@ -3313,7 +3983,7 @@ fun CashierPOSScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
 
-                            Card(
+                            HeroCard(
                                 modifier = Modifier.fillMaxWidth().glassPanel(cornerRadius = 16.dp),
                                 colors = CardDefaults.cardColors(
                                     containerColor = Color.Transparent
@@ -3417,19 +4087,28 @@ private fun executePaymentAction(
     onComplete: (Transaction, List<TransactionItem>) -> Unit
 ) {
     val selectedUoms = viewModel.selectedCartUoms.value
+    val currentDiscounts = viewModel.cartItemDiscounts.value
     val itemsToSave = cartLineItems.map { lineItem ->
         val prod = lineItem.first
         val uom = selectedUoms[prod.id] ?: com.munzo.storepoint.data.UomOption("Base Unit", 1, prod.price)
-        val nameWithUom = if (uom.name.equals("Base Unit", ignoreCase = true) || uom.name.equals("Piece", ignoreCase = true) || uom.name.equals("Stick", ignoreCase = true)) {
+        val discount = currentDiscounts[prod.id] ?: 0.0
+        val effectivePrice = (uom.price - discount).coerceAtLeast(0.0)
+        val baseName = if (uom.name.equals("Base Unit", ignoreCase = true) || uom.name.equals("Piece", ignoreCase = true) || uom.name.equals("Stick", ignoreCase = true)) {
             prod.name
         } else {
             "${prod.name} (${uom.name})"
+        }
+        val nameWithUom = if (discount > 0.0) {
+            val currSym = viewModel.storeConfig.value?.currencySymbol ?: "$"
+            "$baseName (Disc -$currSym${String.format(Locale.US, "%.2f", discount)})"
+        } else {
+            baseName
         }
         TransactionItem(
             transactionId = 0, // Stub placeholder during checkout compilation
             productId = prod.id,
             productName = nameWithUom,
-            price = uom.price,
+            price = StorePointRepository.roundMoney(effectivePrice),
             quantity = lineItem.second,
             cost = prod.cost * uom.multiplier,
             uomName = uom.name

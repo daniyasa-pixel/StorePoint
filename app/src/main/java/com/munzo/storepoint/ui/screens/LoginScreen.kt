@@ -50,6 +50,9 @@ import com.munzo.storepoint.ui.components.ExpressiveButton
 import com.munzo.storepoint.ui.components.ExpressiveButtonSize
 import com.munzo.storepoint.ui.components.ExpressiveButtonVariant
 
+import com.munzo.storepoint.ui.components.*
+import com.munzo.storepoint.ui.theme.HeroUITheme
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun LoginScreen(
@@ -112,8 +115,6 @@ fun LoginScreen(
                 ) {
                     Text("Enter the Admin 4-Digit PIN to immediately stop Lock Task Mode and return to normal operation.")
                     Spacer(Modifier.height(4.dp))
-                    // Keypad, not the IME: the dialog is reachable from the status bar
-                    // during lockdown, where a system keyboard would cover the screen.
                     PinPadEntry(
                         pin = logoUnlockInput,
                         onPinChange = { logoUnlockInput = it },
@@ -175,23 +176,18 @@ fun LoginScreen(
         )
     }
 
-    val windowLayout = rememberWindowLayout()
-    val isCompact = windowLayout == WindowLayout.Compact
+    val heroWindowSize = rememberHeroWindowSize()
+    val isExpanded = heroWindowSize == HeroWindowSize.Expanded
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
     val lastUser by viewModel.lastLoggedInUser.collectAsState()
     val pendingResetUsers by viewModel.usersPendingPinReset.collectAsState()
 
-    // Fingerprint-first: the primary path on a device with a working sensor.
     val fragmentActivity = LocalContext.current as? androidx.fragment.app.FragmentActivity
     val biometricAvailability = remember(context) {
         com.munzo.storepoint.util.BiometricAuthHelper.checkAvailability(context)
     }
     val isBiometricAvailable = biometricAvailability.isAvailable
 
-    // The account the fingerprint prompt will resolve to on launch.
-    // `suppressedBiometric` is a local opt-out: "Sign in as someone else" suppresses
-    // the auto-prompt for the rest of this composition without clearing persisted
-    // state, so a legitimate later return still gets the zero-tap path.
     val suppressedBiometric = remember { mutableStateOf(false) }
     val effectiveLastUser = if (suppressedBiometric.value) null else lastUser
     val biometricTargetUser = remember(effectiveLastUser, pendingResetUsers) {
@@ -200,13 +196,9 @@ fun LoginScreen(
     val canOfferBiometric = isBiometricEnabled && isBiometricAvailable &&
         fragmentActivity != null && biometricTargetUser != null
 
-    // Inline error surface: a shake + message beats a transient toast the cashier
-    // can miss mid-rush (Laws of UX: Recognition over Recall, Doherty Threshold).
     var loginError by remember { mutableStateOf("") }
     var shakeTrigger by remember { mutableIntStateOf(0) }
 
-    // Auto-login: fires as soon as the 4th digit lands, so the common case costs
-    // zero extra taps (Laws of UX: Doherty Threshold, Goal-Gradient Effect).
     fun attemptLogin(pin: String) {
         if (username.isBlank()) {
             loginError = "Enter your username first."
@@ -224,14 +216,12 @@ fun LoginScreen(
             onFailure = { errorMsg ->
                 isAuthenticating = false
                 loginError = errorMsg
-                password = ""            // clear so a retry starts clean
-                shakeTrigger++           // drive the error micro-interaction
+                password = ""
+                shakeTrigger++
             }
         )
     }
 
-    // Fires the system prompt. Split out so both the auto-trigger on launch and the
-    // manual button share identical behaviour.
     fun launchBiometric(target: String) {
         val host = fragmentActivity ?: return
         com.munzo.storepoint.util.BiometricAuthHelper.authenticate(
@@ -240,13 +230,10 @@ fun LoginScreen(
             subtitle = "Verify to open the register as $target",
             onOutcome = { outcome, message ->
                 when (outcome) {
-                    com.munzo.storepoint.util.BiometricAuthHelper.BiometricOutcome.SUCCESS ->
-                        Unit // handled by onSuccess below
-                    com.munzo.storepoint.util.BiometricAuthHelper.BiometricOutcome.FALLBACK ->
-                        Unit // user chose the PIN pad; no error to show
-                    com.munzo.storepoint.util.BiometricAuthHelper.BiometricOutcome.UNAVAILABLE ->
-                        loginError = message
-                    else -> loginError = message // recoverable / fatal both route to PIN
+                    com.munzo.storepoint.util.BiometricAuthHelper.BiometricOutcome.SUCCESS -> Unit
+                    com.munzo.storepoint.util.BiometricAuthHelper.BiometricOutcome.FALLBACK -> Unit
+                    com.munzo.storepoint.util.BiometricAuthHelper.BiometricOutcome.UNAVAILABLE -> loginError = message
+                    else -> loginError = message
                 }
             },
             onSuccess = {
@@ -266,16 +253,18 @@ fun LoginScreen(
         )
     }
 
-    // Zero-tap return: the previous user is almost always the one returning to the
-    // register, so prompt for them automatically on launch (Laws of UX: Doherty
-    // Threshold + Goal-Gradient — no taps to reach the goal).
     LaunchedEffect(canOfferBiometric, biometricTargetUser) {
         if (canOfferBiometric && !isAuthenticating) {
             biometricTargetUser?.let { launchBiometric(it) }
         }
     }
 
-
+    LaunchedEffect(logoTapCount) {
+        if (logoTapCount > 0) {
+            kotlinx.coroutines.delay(3000L)
+            logoTapCount = 0
+        }
+    }
 
     Scaffold(
         modifier = Modifier.imePadding()
@@ -284,313 +273,540 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.TopCenter
+                .background(HeroUITheme.colors.background),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 480.dp)
-                    .fillMaxWidth()
-                    .padding(horizontal = if (isCompact) 16.dp else 24.dp, vertical = 16.dp)
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                LaunchedEffect(logoTapCount) {
-                    if (logoTapCount > 0) {
-                        kotlinx.coroutines.delay(3000L)
-                        logoTapCount = 0
-                    }
-                }
-
-                // Google-style SP App Logo with subtle elevation and tactile bounce
-                Surface(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .tactileBounce()
-                        .clickable {
-                            logoTapCount++
-                            if (logoTapCount >= 5) {
-                                logoTapCount = 0
-                                showLogoUnlockDialog = true
-                            }
-                        },
-                    shape = ExpressiveButtonShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    shadowElevation = 4.dp
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "SP",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            style = MaterialTheme.typography.displaySmall.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                letterSpacing = (-0.5).sp
-                            ),
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif
-                        )
-                    }
-                }
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 4.dp)) {
-                    Text(
-                        text = storeConfig?.storeName ?: "StorePoint POS",
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    Text(
-                        text = "Secure Terminal Access",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                // --- SCAN BADGE HIGHLIGHT CARD ---
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    ),
-                    shape = ExpressiveCardShape
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            "Scan ID Badge for Instant Login",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            "Simply tap below to launch the camera-based scanner and scan your barcode ID badge.",
-                            style = MaterialTheme.typography.bodySmall,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 16.sp
-                        )
-                        ExpressiveButton(
-                            onClick = { showScanner = true },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("scan_badge_login_button"),
-                            label = "Tap to Scan Badge",
-                            icon = Icons.Default.QrCodeScanner,
-                            variant = ExpressiveButtonVariant.FILLED,
-                            size = ExpressiveButtonSize.L,
-                        )
-                    }
-                }
-
-                // Divider OR label
+            if (isExpanded) {
+                // =========================================================================
+                // HeroUI v3 Dual-Pane Responsive Layout for Tablets & Landscape POS Terminals
+                // =========================================================================
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalArrangement = Arrangement.spacedBy(32.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
-                    Text(
-                        "OR ENTER ${SecurityHelper.PIN_LENGTH}-DIGIT PIN",
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.2.sp
-                    )
-                    HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
-                }
-
-                // --- MANUAL LOGIN CARD ---
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        // Rejection feedback: a short shake paired with the inline error
-                        // text, so a wrong PIN is unmissable even mid-checkout.
-                        .shakeOnTrigger(trigger = shakeTrigger),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    ),
-                    shape = ExpressiveCardShape
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    // Left Hero Brand Panel
+                    HeroCard(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        backgroundColor = HeroUITheme.colors.surface,
+                        borderColor = HeroUITheme.colors.border
                     ) {
-                        // Migration prompt: shown only when the typed account still
-                        // holds a legacy credential. Discoverable rather than a dead
-                        // end, so an upgrading user is never locked out.
-                        if (pendingResetUsers.any { it.username.equals(username.trim(), ignoreCase = true) }) {
-                            Surface(
-                                shape = ExpressiveCardShape,
-                                color = MaterialTheme.colorScheme.tertiaryContainer,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("pin_reset_banner")
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(36.dp),
+                            verticalArrangement = Arrangement.SpaceBetween,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Surface(
+                                    modifier = Modifier
+                                        .size(96.dp)
+                                        .tactileBounce()
+                                        .clickable {
+                                            logoTapCount++
+                                            if (logoTapCount >= 5) {
+                                                logoTapCount = 0
+                                                showLogoUnlockDialog = true
+                                            }
+                                        },
+                                    shape = HeroUITheme.radius.xl,
+                                    color = HeroUITheme.colors.accent,
+                                    shadowElevation = 8.dp
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "SP",
+                                            color = HeroUITheme.colors.accentForeground,
+                                            style = MaterialTheme.typography.displaySmall.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                letterSpacing = (-0.5).sp
+                                            )
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(20.dp))
+                                Text(
+                                    text = storeConfig?.storeName ?: "StorePoint POS",
+                                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                    color = HeroUITheme.colors.foreground,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                HeroChip(
+                                    text = "SECURE COMMERCIAL POS TERMINAL",
+                                    color = HeroColor.Primary,
+                                    variant = HeroChipVariant.Flat
+                                )
+                            }
+
+                            // Quick Scan Badge Hero Card
+                            HeroCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                backgroundColor = HeroUITheme.colors.surfaceSecondary,
+                                borderColor = HeroUITheme.colors.border
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    modifier = Modifier.padding(20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Text(
-                                        "This account still uses an old 6-digit PIN.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    Icon(
+                                        imageVector = Icons.Default.QrCodeScanner,
+                                        contentDescription = null,
+                                        tint = HeroUITheme.colors.accent,
+                                        modifier = Modifier.size(36.dp)
                                     )
-                                    ExpressiveButton(
-                                        onClick = onPinResetNavigate,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .testTag("pin_reset_start_button"),
-                                        label = "Set up my new 4-digit PIN",
-                                        icon = Icons.Default.LockReset,
-                                        variant = ExpressiveButtonVariant.TONAL,
-                                        size = ExpressiveButtonSize.M
+                                    Text(
+                                        "Instant Cashier Badge Sign-In",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = HeroUITheme.colors.foreground
+                                    )
+                                    Text(
+                                        "Hold your employee ID card to the barcode camera to unlock register access.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = HeroUITheme.colors.muted,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                    HeroButton(
+                                        onClick = { showScanner = true },
+                                        modifier = Modifier.fillMaxWidth().testTag("scan_badge_login_button"),
+                                        color = HeroColor.Primary,
+                                        variant = HeroButtonVariant.Solid,
+                                        size = HeroSize.Lg,
+                                        icon = Icons.Default.QrCodeScanner,
+                                        text = "Scan Staff Badge"
                                     )
                                 }
                             }
-                        }
 
-                        OutlinedTextField(
-                            value = username,
-                            onValueChange = { username = it },
-                            label = { Text("Account Username") },
-                            leadingIcon = { Icon(Icons.Default.AccountCircle, null) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("username_input"),
-                            singleLine = true,
-                            shape = RoundedCornerShape(16.dp)
-                        )
-
-                        // Shakes on failed auth: a visible, non-blocking confirmation
-                        // that the attempt was rejected (micro-interaction).
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                "${SecurityHelper.PIN_LENGTH}-Digit Security PIN",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            HeroButton(
+                                onClick = onAboutNavigate,
+                                color = HeroColor.Default,
+                                variant = HeroButtonVariant.Light,
+                                size = HeroSize.Sm,
+                                icon = Icons.Default.Info,
+                                text = "About StorePoint & Compliance",
+                                modifier = Modifier.testTag("about_storepoint_button")
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            // On-screen numeric keypad instead of the system keyboard:
-                            // the IME covered half the register and hid the sign-in
-                            // context, and it is a shoulder-surfing surface for the PIN
-                            // itself on a shared terminal.
-                            PinPadEntry(
-                                pin = password,
-                                onPinChange = { password = it },
-                                // Auto-login the instant the final digit lands - no
-                                // "Sign In" tap required in the common case.
-                                onPinComplete = { completed -> attemptLogin(completed) },
-                                isMasked = true,
-                                isError = loginError.isNotEmpty(),
-                                errorMessage = loginError.ifEmpty { null },
-                                isEnabled = !isAuthenticating,
+                        }
+                    }
+
+                    // Right Credentials PIN Pad Panel
+                    HeroCard(
+                        modifier = Modifier
+                            .weight(1.1f)
+                            .fillMaxHeight()
+                            .shakeOnTrigger(trigger = shakeTrigger),
+                        backgroundColor = HeroUITheme.colors.surface,
+                        borderColor = HeroUITheme.colors.border
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(32.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            HeroCardHeader(
+                                title = "Sign In to Terminal",
+                                subtitle = "Enter your username and 4-digit PIN",
+                                icon = Icons.Default.Lock,
+                                iconColor = HeroUITheme.colors.accent
+                            )
+
+                            if (pendingResetUsers.any { it.username.equals(username.trim(), ignoreCase = true) }) {
+                                HeroCard(
+                                    modifier = Modifier.fillMaxWidth().testTag("pin_reset_banner"),
+                                    backgroundColor = HeroUITheme.colors.warning.copy(alpha = 0.12f),
+                                    borderColor = HeroUITheme.colors.warning.copy(alpha = 0.3f)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            "This account still uses an old 6-digit PIN.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = HeroUITheme.colors.foreground,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        HeroButton(
+                                            onClick = onPinResetNavigate,
+                                            modifier = Modifier.fillMaxWidth().testTag("pin_reset_start_button"),
+                                            color = HeroColor.Warning,
+                                            variant = HeroButtonVariant.Flat,
+                                            size = HeroSize.Md,
+                                            icon = Icons.Default.LockReset,
+                                            text = "Set up new 4-digit PIN"
+                                        )
+                                    }
+                                }
+                            }
+
+                            HeroInput(
+                                value = username,
+                                onValueChange = { username = it },
+                                label = { Text("Account Username") },
+                                leadingIcon = { Icon(Icons.Default.AccountCircle, null, tint = HeroUITheme.colors.accent) },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .testTag("password_input")
+                                    .testTag("username_input"),
+                                singleLine = true,
+                                shape = HeroUITheme.radius.md
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = when {
-                                    isAuthenticating -> "Verifying…"
-                                    password.length == SecurityHelper.PIN_LENGTH -> "✓ PIN ready — verifying automatically"
-                                    else -> "${password.length}/${SecurityHelper.PIN_LENGTH} digits (numbers only)"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = when {
-                                    isAuthenticating -> MaterialTheme.colorScheme.primary
-                                    password.length == SecurityHelper.PIN_LENGTH -> MaterialTheme.colorScheme.primary
-                                    else -> MaterialTheme.colorScheme.outline
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "${SecurityHelper.PIN_LENGTH}-Digit Security PIN",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = HeroUITheme.colors.foreground
+                                    )
+                                    if (password.length == SecurityHelper.PIN_LENGTH) {
+                                        HeroChip(
+                                            text = "PIN Ready",
+                                            color = HeroColor.Success,
+                                            variant = HeroChipVariant.Flat
+                                        )
+                                    }
                                 }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                PinPadEntry(
+                                    pin = password,
+                                    onPinChange = { password = it },
+                                    onPinComplete = { completed -> attemptLogin(completed) },
+                                    isMasked = true,
+                                    isError = loginError.isNotEmpty(),
+                                    errorMessage = loginError.ifEmpty { null },
+                                    isEnabled = !isAuthenticating,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("password_input")
+                                )
+                            }
+
+                            HeroButton(
+                                onClick = { attemptLogin(password) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("submit_login_button"),
+                                color = HeroColor.Primary,
+                                variant = HeroButtonVariant.Solid,
+                                size = HeroSize.Lg,
+                                icon = Icons.Default.Login,
+                                text = if (isAuthenticating) "Authorizing…" else "Sign In",
+                                enabled = !isAuthenticating
                             )
+
+                            if (canOfferBiometric) {
+                                HeroButton(
+                                    onClick = { launchBiometric(biometricTargetUser!!) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("biometric_login_button"),
+                                    color = HeroColor.Success,
+                                    variant = HeroButtonVariant.Flat,
+                                    size = HeroSize.Lg,
+                                    icon = Icons.Default.Fingerprint,
+                                    text = "Sign In with Fingerprint"
+                                )
+                            }
+
+                            if (isBiometricAvailable && lastUser != null) {
+                                HeroButton(
+                                    onClick = {
+                                        suppressedBiometric.value = true
+                                        username = ""
+                                        password = ""
+                                        loginError = ""
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("switch_user_button"),
+                                    color = HeroColor.Default,
+                                    variant = HeroButtonVariant.Light,
+                                    size = HeroSize.Sm,
+                                    icon = Icons.Default.PersonOutline,
+                                    text = "Sign in as someone else"
+                                )
+                            }
                         }
-
-                        // Manual sign-in is retained as an explicit, discoverable action
-                        // (Redundancy over a hidden auto-submit) and doubles as the
-                        // retry affordance after an error.
-                        ExpressiveButton(
-                            onClick = { attemptLogin(password) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("submit_login_button"),
-                            label = if (isAuthenticating) "Authorizing…" else "Sign In",
-                            icon = Icons.Default.Login,
-                            variant = ExpressiveButtonVariant.FILLED,
-                            size = ExpressiveButtonSize.L,
-                            enabled = !isAuthenticating,
-                        )
-
                     }
                 }
-
-                // Secondary actions: side-by-side on tablets/desktop, stacked full-width on phones.
-                val secondaryActions = buildList {
-                    // Fingerprint is the PRIMARY path, so it is promoted to the first
-                    // action and given the highest-emphasis variant (Von Restorff
-                    // effect: the visually distinct option is the one remembered).
-                    if (canOfferBiometric) {
-                        add(
-                            ExpressiveAction(
-                                label = "Sign in with fingerprint",
-                                icon = Icons.Default.Fingerprint,
-                                variant = ExpressiveButtonVariant.FILLED,
-                                size = ExpressiveButtonSize.L,
-                                testTag = "biometric_login_button",
-                                onClick = { launchBiometric(biometricTargetUser!!) }
+            } else {
+                // =========================================================================
+                // HeroUI v3 Streamlined Single-Column Responsive Layout for Phones & Registers
+                // =========================================================================
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 480.dp)
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 20.dp)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    // Header Brand
+                    Surface(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .tactileBounce()
+                            .clickable {
+                                logoTapCount++
+                                if (logoTapCount >= 5) {
+                                    logoTapCount = 0
+                                    showLogoUnlockDialog = true
+                                }
+                            },
+                        shape = HeroUITheme.radius.xl,
+                        color = HeroUITheme.colors.accent,
+                        shadowElevation = 6.dp
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "SP",
+                                color = HeroUITheme.colors.accentForeground,
+                                style = MaterialTheme.typography.displaySmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = (-0.5).sp
+                                )
                             )
+                        }
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = storeConfig?.storeName ?: "StorePoint POS",
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = HeroUITheme.colors.foreground,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        HeroChip(
+                            text = "SECURE TERMINAL ACCESS",
+                            color = HeroColor.Primary,
+                            variant = HeroChipVariant.Flat
                         )
                     }
 
-                    // Escape hatch: a failed sensor or a different staff member must
-                    // never strand the user on a screen with no way forward.
-                    if (isBiometricAvailable && lastUser != null) {
-                        add(
-                            ExpressiveAction(
-                                label = "Sign in as someone else",
-                                icon = Icons.Default.PersonOutline,
-                                variant = ExpressiveButtonVariant.TEXT,
-                                size = ExpressiveButtonSize.S,
-                                testTag = "switch_user_button",
+                    // Scan Badge Hero Card
+                    HeroCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        backgroundColor = HeroUITheme.colors.surface,
+                        borderColor = HeroUITheme.colors.border
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                "Scan ID Badge for Instant Login",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = HeroUITheme.colors.accent
+                            )
+                            Text(
+                                "Tap below to scan employee barcode ID badge via camera scanner.",
+                                style = MaterialTheme.typography.bodySmall,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                color = HeroUITheme.colors.muted
+                            )
+                            HeroButton(
+                                onClick = { showScanner = true },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("scan_badge_login_button"),
+                                color = HeroColor.Primary,
+                                variant = HeroButtonVariant.Solid,
+                                size = HeroSize.Md,
+                                icon = Icons.Default.QrCodeScanner,
+                                text = "Tap to Scan Badge"
+                            )
+                        }
+                    }
+
+                    // Divider
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HeroDivider(modifier = Modifier.weight(1f), color = HeroUITheme.colors.border)
+                        Text(
+                            "OR ENTER PIN",
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = HeroUITheme.colors.muted,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.2.sp
+                        )
+                        HeroDivider(modifier = Modifier.weight(1f), color = HeroUITheme.colors.border)
+                    }
+
+                    // Credentials HeroCard
+                    HeroCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shakeOnTrigger(trigger = shakeTrigger),
+                        backgroundColor = HeroUITheme.colors.surface,
+                        borderColor = HeroUITheme.colors.border
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            if (pendingResetUsers.any { it.username.equals(username.trim(), ignoreCase = true) }) {
+                                HeroCard(
+                                    modifier = Modifier.fillMaxWidth().testTag("pin_reset_banner"),
+                                    backgroundColor = HeroUITheme.colors.warning.copy(alpha = 0.12f),
+                                    borderColor = HeroUITheme.colors.warning.copy(alpha = 0.3f)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            "This account still uses an old 6-digit PIN.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = HeroUITheme.colors.foreground
+                                        )
+                                        HeroButton(
+                                            onClick = onPinResetNavigate,
+                                            modifier = Modifier.fillMaxWidth().testTag("pin_reset_start_button"),
+                                            color = HeroColor.Warning,
+                                            variant = HeroButtonVariant.Flat,
+                                            size = HeroSize.Md,
+                                            icon = Icons.Default.LockReset,
+                                            text = "Set up new 4-digit PIN"
+                                        )
+                                    }
+                                }
+                            }
+
+                            HeroInput(
+                                value = username,
+                                onValueChange = { username = it },
+                                label = { Text("Account Username") },
+                                leadingIcon = { Icon(Icons.Default.AccountCircle, null, tint = HeroUITheme.colors.accent) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("username_input"),
+                                singleLine = true,
+                                shape = HeroUITheme.radius.md
+                            )
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    "${SecurityHelper.PIN_LENGTH}-Digit Security PIN",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = HeroUITheme.colors.foreground
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                PinPadEntry(
+                                    pin = password,
+                                    onPinChange = { password = it },
+                                    onPinComplete = { completed -> attemptLogin(completed) },
+                                    isMasked = true,
+                                    isError = loginError.isNotEmpty(),
+                                    errorMessage = loginError.ifEmpty { null },
+                                    isEnabled = !isAuthenticating,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("password_input")
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = when {
+                                        isAuthenticating -> "Verifying…"
+                                        password.length == SecurityHelper.PIN_LENGTH -> "✓ PIN ready — verifying automatically"
+                                        else -> "${password.length}/${SecurityHelper.PIN_LENGTH} digits"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = when {
+                                        isAuthenticating -> HeroUITheme.colors.accent
+                                        password.length == SecurityHelper.PIN_LENGTH -> HeroUITheme.colors.success
+                                        else -> HeroUITheme.colors.muted
+                                    }
+                                )
+                            }
+
+                            HeroButton(
+                                onClick = { attemptLogin(password) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("submit_login_button"),
+                                color = HeroColor.Primary,
+                                variant = HeroButtonVariant.Solid,
+                                size = HeroSize.Lg,
+                                icon = Icons.Default.Login,
+                                text = if (isAuthenticating) "Authorizing…" else "Sign In",
+                                enabled = !isAuthenticating
+                            )
+                        }
+                    }
+
+                    // Secondary action buttons
+                    if (canOfferBiometric) {
+                        HeroButton(
+                            onClick = { launchBiometric(biometricTargetUser!!) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("biometric_login_button"),
+                            color = HeroColor.Success,
+                            variant = HeroButtonVariant.Flat,
+                            size = HeroSize.Md,
+                            icon = Icons.Default.Fingerprint,
+                            text = "Sign in with fingerprint"
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (isBiometricAvailable && lastUser != null) {
+                            HeroButton(
                                 onClick = {
-                                    // Suppress the auto-prompt for this composition so
-                                    // the cashier can type a different username.
                                     suppressedBiometric.value = true
                                     username = ""
                                     password = ""
                                     loginError = ""
-                                }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("switch_user_button"),
+                                color = HeroColor.Default,
+                                variant = HeroButtonVariant.Bordered,
+                                size = HeroSize.Sm,
+                                icon = Icons.Default.PersonOutline,
+                                text = "Switch User"
                             )
+                        }
+                        HeroButton(
+                            onClick = onAboutNavigate,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("about_storepoint_button"),
+                            color = HeroColor.Default,
+                            variant = HeroButtonVariant.Bordered,
+                            size = HeroSize.Sm,
+                            icon = Icons.Default.Info,
+                            text = "About"
                         )
                     }
-
-                    add(
-                        ExpressiveAction(
-                            label = "About & Privacy",
-                            icon = Icons.Default.Info,
-                            variant = ExpressiveButtonVariant.OUTLINED,
-                            size = ExpressiveButtonSize.M,
-                            testTag = "about_storepoint_button",
-                            onClick = onAboutNavigate
-                        )
-                    )
                 }
-
-                ExpressiveActionRow(
-                    actions = secondaryActions,
-                    stackBelowWidth = 480.dp
-                )
             }
         }
     }

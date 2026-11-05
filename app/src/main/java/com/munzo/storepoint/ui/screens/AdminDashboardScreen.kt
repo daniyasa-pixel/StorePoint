@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -42,6 +43,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.grid.items
 import com.munzo.storepoint.data.*
 import com.munzo.storepoint.ui.theme.*
+import com.munzo.storepoint.ui.theme.HeroUITheme
+import com.munzo.storepoint.ui.components.*
 import androidx.compose.ui.platform.LocalConfiguration
 import com.munzo.storepoint.ui.StorePointViewModel
 import com.munzo.storepoint.ui.KioskStatusBar
@@ -95,6 +98,7 @@ fun AdminDashboardScreen(
     var productForVariants by remember { mutableStateOf<Product?>(null) }
 
     var showCategoryDialog by remember { mutableStateOf(false) }
+    var editingCategory by remember { mutableStateOf<Category?>(null) }
     var showUserDialog by remember { mutableStateOf(false) }
     var editingUser by remember { mutableStateOf<User?>(null) }
     var showBulkProductionDialog by remember { mutableStateOf(false) }
@@ -209,7 +213,7 @@ fun AdminDashboardScreen(
             // Sized in Scaffold bottomBar for dynamic auto-adjusting height when navigation/status bars are toggled!
             if (windowLayout == WindowLayout.Compact) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    HeroDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                     val primaryTabs = tabs.take(4)
                     val moreTabs = tabs.drop(4)
                     NavigationBar(
@@ -252,14 +256,16 @@ fun AdminDashboardScreen(
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
         ) {
             if (windowLayout != WindowLayout.Compact) {
-                // Tablet / expanded widths: keep the expressive pill carousel.
-                ExpressiveScrollablePillTabs(
+                // Tablet / expanded widths: HeroUI Segmented Navigation Tabs
+                HeroSegmentedTabs(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 6.dp),
-                    tabs = tabs,
-                    activeTabId = activeTab,
-                    onTabSelected = { activeTab = it }
+                    items = tabs.map { it.first },
+                    selectedItem = activeTab,
+                    onItemSelected = { activeTab = it },
+                    labelProvider = { id -> tabs.find { it.first == id }?.second ?: id },
+                    iconProvider = { id -> tabs.find { it.first == id }?.third ?: Icons.Default.Circle }
                 )
             }
 
@@ -300,14 +306,23 @@ fun AdminDashboardScreen(
                         productForVariants = it
                     }, viewModel = viewModel)
                     "suppliers" -> SuppliersAndPurchasesTab(viewModel = viewModel)
-                    "categories" -> CategoriesTab(categories, onDelete = { id ->
-                        val item = categories.find { it.id == id }
-                        deleteConfirmName = item?.name ?: "Category #$id"
-                        deleteConfirmId = id
-                        deleteConfirmType = "category"
-                    }, onAddClick = {
-                        showCategoryDialog = true
-                    })
+                    "categories" -> CategoriesTab(
+                        categories = categories,
+                        onDelete = { id ->
+                            val item = categories.find { it.id == id }
+                            deleteConfirmName = item?.name ?: "Category #$id"
+                            deleteConfirmId = id
+                            deleteConfirmType = "category"
+                        },
+                        onAddClick = {
+                            editingCategory = null
+                            showCategoryDialog = true
+                        },
+                        onEditClick = {
+                            editingCategory = it
+                            showCategoryDialog = true
+                        }
+                    )
                     "users" -> UsersTab(
                         users = users,
                         onDelete = { name ->
@@ -332,7 +347,8 @@ fun AdminDashboardScreen(
                                 role = usr.role,
                                 barcodeId = usr.barcodeId
                             )
-                        }
+                        },
+                        viewModel = viewModel
                     )
                     "calendar" -> CalendarTab(viewModel = viewModel)
                     "security" -> SecurityTab(viewModel)
@@ -418,7 +434,7 @@ fun AdminDashboardScreen(
                 onSubmit = { name, categoryId, price, stock, barcode, expirationDate,
                              hasStick10s, priceStick10s, hasStick20s, priceStick20s, hasReam, priceReam, hasMasterCase, priceMasterCase,
                              hasCustomUom, customUomName, customUomMultiplier, customUomPrice,
-                             barcode10s, barcode20s, barcodeReam, barcodeMasterCase, barcodeCustomUom, cost ->
+                             barcode10s, barcode20s, barcodeReam, barcodeMasterCase, barcodeCustomUom, cost, baseUom, trackInventory ->
                     val prod = (editingProduct ?: Product(
                         name = name,
                         categoryId = categoryId,
@@ -426,7 +442,9 @@ fun AdminDashboardScreen(
                         stockCount = stock,
                         barcode = barcode,
                         expirationDate = expirationDate,
-                        cost = cost
+                        cost = cost,
+                        baseUom = baseUom,
+                        trackInventory = trackInventory
                     )).copy(
                         name = name,
                         categoryId = categoryId,
@@ -451,7 +469,9 @@ fun AdminDashboardScreen(
                         barcodeReam = barcodeReam,
                         barcodeMasterCase = barcodeMasterCase,
                         barcodeCustomUom = barcodeCustomUom,
-                        cost = cost
+                        cost = cost,
+                        baseUom = baseUom,
+                        trackInventory = trackInventory
                     )
                     viewModel.saveProduct(prod)
                     showProductDialog = false
@@ -480,37 +500,166 @@ fun AdminDashboardScreen(
             )
         }
 
-        // 2) CATEGORY CREATE DIALOG
+        // 2) CATEGORY CREATE & EDIT DIALOG
         if (showCategoryDialog) {
-            var categoryNameInput by remember { mutableStateOf("") }
+            var categoryNameInput by remember { mutableStateOf(editingCategory?.name ?: "") }
+            var selectedColor by remember { mutableStateOf(editingCategory?.colorAccent?.ifBlank { "#2563EB" } ?: "#2563EB") }
+            var selectedIcon by remember { mutableStateOf(editingCategory?.iconBadge?.ifBlank { "folder" } ?: "folder") }
+
             AlertDialog(
                 onDismissRequest = { showCategoryDialog = false },
                 confirmButton = {
-                    ExpressiveButton(
+                    HeroButton(
                         onClick = {
                             if (categoryNameInput.isNotBlank()) {
-                                viewModel.saveCategory(Category(name = categoryNameInput.trim()))
+                                viewModel.saveCategory(
+                                    Category(
+                                        id = editingCategory?.id ?: 0,
+                                        name = categoryNameInput.trim(),
+                                        colorAccent = selectedColor,
+                                        iconBadge = selectedIcon
+                                    )
+                                )
                                 showCategoryDialog = false
                             }
                         },
                         modifier = Modifier.testTag("category_submit"),
-                        label = "Save",
-                        variant = ExpressiveButtonVariant.FILLED,
-                        size = ExpressiveButtonSize.M,
+                        text = "Save Category",
+                        color = HeroColor.Primary,
+                        variant = HeroButtonVariant.Solid,
+                        size = HeroSize.Md
                     )
                 },
                 dismissButton = {
                     TextButton(onClick = { showCategoryDialog = false }) { Text("Cancel") }
                 },
-                title = { Text("Add Category Folder") },
+                title = { Text(if (editingCategory == null) "Add Category Folder" else "Edit Category Details") },
                 text = {
-                    OutlinedTextField(
-                        value = categoryNameInput,
-                        onValueChange = { categoryNameInput = it },
-                        label = { Text("Category Name") },
-                        modifier = Modifier.fillMaxWidth().testTag("category_name_input"),
-                        singleLine = true
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        HeroInput(
+                            value = categoryNameInput,
+                            onValueChange = { categoryNameInput = it },
+                            label = { Text("Category Name") },
+                            modifier = Modifier.fillMaxWidth().testTag("category_name_input"),
+                            singleLine = true
+                        )
+
+                        // Color Accent Picker
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Color Accent:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .testTag("category_color_picker"),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CATEGORY_COLOR_PRESETS.forEach { (hex, label) ->
+                                    val isSelected = selectedColor.equals(hex, ignoreCase = true)
+                                    val chipColor = parseCategoryColor(hex)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = chipColor,
+                                        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.5.dp, MaterialTheme.colorScheme.onSurface) else null,
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .testTag("category_color_chip_$hex")
+                                            .clickable { selectedColor = hex }
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            if (isSelected) {
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = label,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Icon Badge Picker
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Icon Badge:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .testTag("category_icon_picker"),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CATEGORY_ICON_PRESETS.forEach { (iconKey, label) ->
+                                    val isSelected = selectedIcon.equals(iconKey, ignoreCase = true)
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { selectedIcon = iconKey },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = getCategoryIconVector(iconKey),
+                                                contentDescription = label,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                        modifier = Modifier.testTag("category_icon_chip_$iconKey")
+                                    )
+                                }
+                            }
+                        }
+
+                        // Live Preview Card
+                        val previewColor = parseCategoryColor(selectedColor, MaterialTheme.colorScheme.primary)
+                        val previewIcon = getCategoryIconVector(selectedIcon)
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = previewColor.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, previewColor.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = previewColor,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = previewIcon,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Column {
+                                    Text(
+                                        text = if (categoryNameInput.isBlank()) "Category Preview" else categoryNameInput,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        text = "Color: $selectedColor • Icon: $selectedIcon",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             )
         }        // 3) USER REGISTER DIALOG
@@ -528,27 +677,27 @@ fun AdminDashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ExpressiveButton(
+                        HeroButton(
                             onClick = {
                                 val pinToSave = if (inputPin.isNotEmpty()) inputPin else (editingUser?.pinHash ?: "")
                                 if (inputUsername.isBlank()) {
                                     Toast.makeText(context, "Username cannot be empty.", Toast.LENGTH_SHORT).show()
-                                    return@ExpressiveButton
+                                    return@HeroButton
                                 }
                                 if (editingUser == null && !SecurityHelper.isValidPin(inputPin)) {
                                     Toast.makeText(context, "A full ${SecurityHelper.PIN_LENGTH}-digit security PIN is required.", Toast.LENGTH_SHORT).show()
-                                    return@ExpressiveButton
+                                    return@HeroButton
                                 }
                                 if (inputPin.isNotEmpty() && !SecurityHelper.isValidPin(inputPin)) {
                                     Toast.makeText(context, "PIN must be exactly ${SecurityHelper.PIN_LENGTH} digits.", Toast.LENGTH_SHORT).show()
-                                    return@ExpressiveButton
+                                    return@HeroButton
                                 }
                                 // Enforce the same weak-PIN policy the self-service
                                 // reset wizard applies, so an admin cannot create a
                                 // credential the user would be refused elsewhere.
                                 if (inputPin.isNotEmpty() && SecurityHelper.isWeakPin(inputPin)) {
                                     Toast.makeText(context, "That PIN is too easy to guess. ${SecurityHelper.pinPolicyHint()}", Toast.LENGTH_LONG).show()
-                                    return@ExpressiveButton
+                                    return@HeroButton
                                 }
 
                                 // Hash here rather than storing a plaintext PIN, and
@@ -571,21 +720,23 @@ fun AdminDashboardScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("user_submit"),
-                            label = if (editingUser != null) "Save Changes" else "Add Staff User",
+                            text = if (editingUser != null) "Save Changes" else "Add Staff User",
                             icon = if (editingUser != null) Icons.Default.Save else Icons.Default.PersonAdd,
-                            variant = ExpressiveButtonVariant.FILLED,
-                            size = ExpressiveButtonSize.M,
+                            color = HeroColor.Primary,
+                            variant = HeroButtonVariant.Solid,
+                            size = HeroSize.Md
                         )
 
-                        ExpressiveButton(
+                        HeroButton(
                             onClick = { showUserDialog = false },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("user_cancel"),
-                            label = "Cancel",
+                            text = "Cancel",
                             icon = Icons.Default.Close,
-                            variant = ExpressiveButtonVariant.TEXT,
-                            size = ExpressiveButtonSize.M,
+                            color = HeroColor.Default,
+                            variant = HeroButtonVariant.Light,
+                            size = HeroSize.Md
                         )
                     }
                 },
@@ -601,7 +752,7 @@ fun AdminDashboardScreen(
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
+                        HeroInput(
                             value = inputUsername,
                             onValueChange = { inputUsername = it },
                             label = { Text("Username") },
@@ -655,7 +806,7 @@ fun AdminDashboardScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            OutlinedTextField(
+                            HeroInput(
                                 value = inputBarcodeId,
                                 onValueChange = { inputBarcodeId = it },
                                 label = { Text("Staff Badge Barcode ID") },
@@ -707,22 +858,25 @@ fun AdminDashboardScreen(
                         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Privilege Role:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                FilterChip(
-                                    selected = inputRole == "ADMIN",
+                                HeroChip(
+                                    text = "Admin",
+                                    variant = if (inputRole == "ADMIN") HeroChipVariant.Solid else HeroChipVariant.Flat,
+                                    color = if (inputRole == "ADMIN") HeroColor.Primary else HeroColor.Default,
                                     onClick = { inputRole = "ADMIN" },
-                                    label = { Text("Admin") },
                                     modifier = Modifier.testTag("role_chip_admin")
                                 )
-                                FilterChip(
-                                    selected = inputRole == "CASHIER",
+                                HeroChip(
+                                    text = "Cashier",
+                                    variant = if (inputRole == "CASHIER") HeroChipVariant.Solid else HeroChipVariant.Flat,
+                                    color = if (inputRole == "CASHIER") HeroColor.Primary else HeroColor.Default,
                                     onClick = { inputRole = "CASHIER" },
-                                    label = { Text("Cashier") },
                                     modifier = Modifier.testTag("role_chip_cashier")
                                 )
-                                FilterChip(
-                                    selected = inputRole == "INVENTORY",
+                                HeroChip(
+                                    text = "Inventory",
+                                    variant = if (inputRole == "INVENTORY") HeroChipVariant.Solid else HeroChipVariant.Flat,
+                                    color = if (inputRole == "INVENTORY") HeroColor.Primary else HeroColor.Default,
                                     onClick = { inputRole = "INVENTORY" },
-                                    label = { Text("Inventory") },
                                     modifier = Modifier.testTag("role_chip_inventory")
                                 )
                             }
@@ -834,7 +988,7 @@ fun ProductsTab(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ExpressiveButton(
+                        HeroButton(
                             onClick = {
                                 isStockCheckMode = !isStockCheckMode
                                 if (!isStockCheckMode) {
@@ -844,30 +998,30 @@ fun ProductsTab(
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("toggle_stock_check_btn"),
-                            label = if (isStockCheckMode) "Exit Audit" else "Stock Audit",
+                            text = if (isStockCheckMode) "Exit Audit" else "Stock Audit",
                             icon = if (isStockCheckMode) Icons.Default.Close else Icons.Default.Inventory,
-                            variant = ExpressiveButtonVariant.TONAL,
-                            size = ExpressiveButtonSize.M,
-                            containerColor = if (isStockCheckMode) MaterialTheme.colorScheme.errorContainer else null,
-                            contentColor = if (isStockCheckMode) MaterialTheme.colorScheme.onErrorContainer else null,
+                            color = if (isStockCheckMode) HeroColor.Danger else HeroColor.Default,
+                            variant = if (isStockCheckMode) HeroButtonVariant.Solid else HeroButtonVariant.Flat,
+                            size = HeroSize.Md
                         )
 
                         if (!isStockCheckMode) {
                             FilledTonalIconButton(
                                 onClick = { viewModel.shareInventoryViaQuickShare(context) },
-                                modifier = Modifier.size(48.dp).testTag("admin_catalog_quick_share_btn_compact")
+                                modifier = Modifier.size(48.dp).clip(HeroUITheme.radius.md).testTag("admin_catalog_quick_share_btn_compact")
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = "Quick Share")
                             }
-                            ExpressiveButton(
+                            HeroButton(
                                 onClick = onAddClick,
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("add_product_button"),
-                                label = "New Product",
+                                text = "New Product",
                                 icon = Icons.Default.Add,
-                                variant = ExpressiveButtonVariant.FILLED,
-                                size = ExpressiveButtonSize.M,
+                                color = HeroColor.Primary,
+                                variant = HeroButtonVariant.Solid,
+                                size = HeroSize.Md
                             )
                         }
                     }
@@ -893,7 +1047,7 @@ fun ProductsTab(
                     }
                     
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ExpressiveButton(
+                        HeroButton(
                             onClick = {
                                 isStockCheckMode = !isStockCheckMode
                                 if (!isStockCheckMode) {
@@ -901,12 +1055,11 @@ fun ProductsTab(
                                 }
                             },
                             modifier = Modifier.testTag("toggle_stock_check_btn"),
-                            label = if (isStockCheckMode) "Exit Audit" else "Stock Check Mode",
+                            text = if (isStockCheckMode) "Exit Audit" else "Stock Check Mode",
                             icon = if (isStockCheckMode) Icons.Default.Close else Icons.Default.Inventory,
-                            variant = ExpressiveButtonVariant.TONAL,
-                            size = ExpressiveButtonSize.M,
-                            containerColor = if (isStockCheckMode) MaterialTheme.colorScheme.errorContainer else null,
-                            contentColor = if (isStockCheckMode) MaterialTheme.colorScheme.onErrorContainer else null,
+                            color = if (isStockCheckMode) HeroColor.Danger else HeroColor.Default,
+                            variant = if (isStockCheckMode) HeroButtonVariant.Solid else HeroButtonVariant.Flat,
+                            size = HeroSize.Md
                         )
 
                         if (!isStockCheckMode) {
@@ -918,13 +1071,14 @@ fun ProductsTab(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Quick Share", style = MaterialTheme.typography.labelMedium)
                             }
-                            ExpressiveButton(
+                            HeroButton(
                                 onClick = onAddClick,
                                 modifier = Modifier.testTag("add_product_button"),
-                                label = "New Product",
+                                text = "New Product",
                                 icon = Icons.Default.Add,
-                                variant = ExpressiveButtonVariant.FILLED,
-                                size = ExpressiveButtonSize.M,
+                                color = HeroColor.Primary,
+                                variant = HeroButtonVariant.Solid,
+                                size = HeroSize.Md
                             )
                         }
                     }
@@ -935,7 +1089,7 @@ fun ProductsTab(
         // DYNAMIC VIEW CHANGER
         if (isStockCheckMode) {
             // STOCKCHECK INTEGRATED COCKPIT
-            Card(
+            HeroCard(
                 modifier = Modifier.fillMaxWidth().glassPanel(cornerRadius = 24.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = Color.Transparent
@@ -1006,7 +1160,7 @@ fun ProductsTab(
                                             Text("Share Report", style = MaterialTheme.typography.labelSmall)
                                         }
 
-                                        ExpressiveButton(
+                                        HeroButton(
                                             onClick = {
                                                 var syncedCount = 0
                                                 auditedItems.forEach { (id, checkedCount) ->
@@ -1023,10 +1177,11 @@ fun ProductsTab(
                                                 }
                                             },
                                             modifier = Modifier.weight(1f).testTag("audit_sync_all_btn"),
-                                            label = "Correct All",
+                                            text = "Correct All",
                                             icon = Icons.Default.Sync,
-                                            variant = ExpressiveButtonVariant.FILLED,
-                                            size = ExpressiveButtonSize.XS,
+                                            color = HeroColor.Success,
+                                            variant = HeroButtonVariant.Solid,
+                                            size = HeroSize.Sm
                                         )
                                     }
                                 }
@@ -1131,7 +1286,7 @@ fun ProductsTab(
                                 }.take(5)
                             }
 
-                            OutlinedTextField(
+                            HeroInput(
                                 value = manualAuditInput,
                                 onValueChange = {
                                     manualAuditInput = it
@@ -1213,7 +1368,7 @@ fun ProductsTab(
                         val discrepancySize = totalCheckedSize - perfectMatchSize
 
                         // Stats Card 1: Audited
-                        Card(
+                        HeroCard(
                             modifier = Modifier.weight(1f),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -1225,7 +1380,7 @@ fun ProductsTab(
                         }
 
                         // Stats Card 2: Perfect Matches
-                        Card(
+                        HeroCard(
                             modifier = Modifier.weight(1f),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -1237,7 +1392,7 @@ fun ProductsTab(
                         }
 
                         // Stats Card 3: Discrepancies
-                        Card(
+                        HeroCard(
                             modifier = Modifier.weight(1f),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -1265,7 +1420,7 @@ fun ProductsTab(
             ) {
                 if (auditedItems.isEmpty()) {
                     item {
-                        Card(
+                        HeroCard(
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         ) {
@@ -1290,7 +1445,7 @@ fun ProductsTab(
                             val variance = physicalQty - systemQty
                             val isMatch = variance == 0
 
-                            Card(
+                            HeroCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .glassPanel(cornerRadius = 16.dp),
@@ -1457,7 +1612,7 @@ fun ProductsTab(
                         val isLowStock = item.stockCount in 1..5
                         val isOutOfStock = item.stockCount <= 0
 
-                        Card(
+                        HeroCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 4.dp, vertical = 3.dp)
@@ -1566,7 +1721,7 @@ fun ProductsTab(
                                     )
                                 }
 
-                                HorizontalDivider(
+                                HeroDivider(
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                                 )
 

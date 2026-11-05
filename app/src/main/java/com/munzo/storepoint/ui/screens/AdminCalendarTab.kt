@@ -4,22 +4,19 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.EventNote
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +29,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.munzo.storepoint.ui.StorePointViewModel
+import com.munzo.storepoint.ui.theme.HeroUITheme
+import com.munzo.storepoint.ui.components.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,10 +42,18 @@ fun CalendarTab(viewModel: StorePointViewModel) {
     val config by viewModel.storeConfig.collectAsState()
     val curr = config?.currencySymbol ?: "₱"
 
+    val todayCalendar = java.util.Calendar.getInstance()
+    val currentYear = todayCalendar.get(java.util.Calendar.YEAR)
+    val currentMonth = todayCalendar.get(java.util.Calendar.MONTH) + 1
+    val currentDay = todayCalendar.get(java.util.Calendar.DAY_OF_MONTH)
+    val todayDateStr = String.format("%04d-%02d-%02d", currentYear, currentMonth, currentDay)
+
     // Calendar state
-    var selectedYear by remember { mutableStateOf(2026) }
-    var selectedMonth by remember { mutableStateOf(6) } // June
-    var selectedDay by remember { mutableStateOf<Int?>(17) } // Default selected day
+    var selectedYear by remember { mutableStateOf(currentYear) }
+    var selectedMonth by remember { mutableStateOf(currentMonth) }
+    var selectedDay by remember { mutableStateOf<Int?>(currentDay) }
+    var statusFilter by remember { mutableStateOf("All") } // "All", "Unpaid", "Paid"
+    var searchQuery by remember { mutableStateOf("") }
 
     // Dialog state
     var showAddDialog by remember { mutableStateOf(false) }
@@ -51,8 +61,8 @@ fun CalendarTab(viewModel: StorePointViewModel) {
     // Forms
     var newTitle by remember { mutableStateOf("") }
     var newAmount by remember { mutableStateOf("") }
-    var newCategory by remember { mutableStateOf("Supplier") }
-    var newPriority by remember { mutableStateOf("Medium") }
+    var newCategory by remember { mutableStateOf("Distributor Credit") }
+    var newPriority by remember { mutableStateOf("Medium") } // "Low", "Medium", "Critical"
     var newPayMethod by remember { mutableStateOf("CASH") }
 
     // Date computation
@@ -78,7 +88,7 @@ fun CalendarTab(viewModel: StorePointViewModel) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Store Payables Ledger",
+                    "Store Payables & Bill Calendar",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
@@ -86,7 +96,7 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    "Schedule Rent, Utilities, Salaries & Re-orders",
+                    "Schedule Rent, Meralco/Water Overheads & Distributor Credit",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -94,15 +104,12 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
-            Button(
+            HeroButton(
                 onClick = { showAddDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                text = "Add Bill",
+                icon = Icons.Default.Add,
                 modifier = Modifier.testTag("add_schedule_btn")
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Add Bill", maxLines = 1)
-            }
+            )
         }
 
         val configuration = androidx.compose.ui.platform.LocalConfiguration.current
@@ -110,7 +117,7 @@ fun CalendarTab(viewModel: StorePointViewModel) {
 
         @Composable
         fun CalendarGridCard(modifier: Modifier) {
-            Card(
+            HeroCard(
                 modifier = modifier,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -193,6 +200,7 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                             if (day != null) {
                                 val dateStr = String.format("%04d-%02d-%02d", selectedYear, selectedMonth, day)
                                 val hasPaymentDue = items.any { it.dueDate == dateStr && !it.isPaid }
+                                val hasCriticalDue = items.any { it.dueDate == dateStr && !it.isPaid && (it.priority.equals("Critical", ignoreCase = true) || it.priority.equals("High", ignoreCase = true)) }
                                 val hasPaidPayment = items.any { it.dueDate == dateStr && it.isPaid }
                                 val isSelected = selectedDay == day
 
@@ -203,14 +211,15 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                                         .background(
                                             when {
                                                 isSelected -> MaterialTheme.colorScheme.primaryContainer
-                                                hasPaymentDue -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                                                hasCriticalDue -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
+                                                hasPaymentDue -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
                                                 hasPaidPayment -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
                                                 else -> Color.Transparent
                                             }
                                         )
                                         .border(
                                             width = if (isSelected) 2.dp else if (hasPaymentDue) 1.5.dp else 0.dp,
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else if (hasPaymentDue) MaterialTheme.colorScheme.error else Color.Transparent,
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else if (hasCriticalDue) MaterialTheme.colorScheme.error else if (hasPaymentDue) MaterialTheme.colorScheme.error.copy(alpha = 0.7f) else Color.Transparent,
                                             shape = RoundedCornerShape(8.dp)
                                         )
                                         .clickable { selectedDay = day },
@@ -223,6 +232,7 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                                             fontWeight = if (isSelected || hasPaymentDue) FontWeight.Bold else FontWeight.Normal,
                                             color = when {
                                                 isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
+                                                hasCriticalDue -> MaterialTheme.colorScheme.error
                                                 hasPaymentDue -> MaterialTheme.colorScheme.error
                                                 else -> MaterialTheme.colorScheme.onSurface
                                             }
@@ -230,9 +240,9 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                                         if (hasPaymentDue) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(4.dp)
+                                                    .size(5.dp)
                                                     .clip(CircleShape)
-                                                    .background(Color.Red)
+                                                    .background(if (hasCriticalDue) Color.Red else Color(0xFFF59E0B))
                                             )
                                         }
                                     }
@@ -248,22 +258,22 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                     Text("Indicator Legends", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(11.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.error))
+                            Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color.Red))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Unpaid", style = MaterialTheme.typography.labelSmall)
+                            Text("Unpaid Due", style = MaterialTheme.typography.labelSmall)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                            Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF10B981)))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Paid", style = MaterialTheme.typography.labelSmall)
+                            Text("Settled/Paid", style = MaterialTheme.typography.labelSmall)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).border(1.dp, MaterialTheme.colorScheme.primary).background(MaterialTheme.colorScheme.primaryContainer))
+                            Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Chosen", style = MaterialTheme.typography.labelSmall)
+                            Text("Active Focus", style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
@@ -273,8 +283,17 @@ fun CalendarTab(viewModel: StorePointViewModel) {
         @Composable
         fun ScheduleListCard(modifier: Modifier) {
             val filterDateStr = selectedDay?.let { String.format("%04d-%02d-%02d", selectedYear, selectedMonth, it) }
+            val q = searchQuery.trim().lowercase()
+
             val filteredItems = items.filter { item ->
-                filterDateStr == null || item.dueDate == filterDateStr
+                val dateMatch = filterDateStr == null || item.dueDate == filterDateStr
+                val statusMatch = when (statusFilter) {
+                    "Unpaid" -> !item.isPaid
+                    "Paid" -> item.isPaid
+                    else -> true
+                }
+                val queryMatch = q.isEmpty() || item.title.lowercase().contains(q) || item.category.lowercase().contains(q)
+                dateMatch && statusMatch && queryMatch
             }
 
             Column(
@@ -287,14 +306,46 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (selectedDay != null) "Schedules for $monthName $selectedDay, $selectedYear" else "All Scheduled Sinking Funds",
+                        text = if (selectedDay != null) "Schedules for $monthName $selectedDay, $selectedYear" else "All Scheduled Store Overheads",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     
                     if (selectedDay != null) {
                         TextButton(onClick = { selectedDay = null }) {
-                            Text("Clear Date Filter", style = MaterialTheme.typography.labelSmall)
+                            Text("Show All Dates", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+
+                // Filter chips: All, Unpaid, Paid
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf("All", "Unpaid", "Paid").forEach { statusOption ->
+                        FilterChip(
+                            selected = statusFilter == statusOption,
+                            onClick = { statusFilter = statusOption },
+                            label = { Text(statusOption) }
+                        )
+                    }
+
+                    val unpaidCount = items.count { !it.isPaid }
+                    if (unpaidCount > 0) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier.padding(start = 4.dp)
+                        ) {
+                            Text(
+                                text = "$unpaidCount Unpaid",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
                         }
                     }
                 }
@@ -308,7 +359,7 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                             Icon(Icons.Default.EventNote, "Empty", modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                             Spacer(modifier = Modifier.height(8.dp))
                             Text("No Scheduled Payments Registered", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
-                            Text("Tap 'Add Bill' at top right to log a due standard.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Tap 'Add Bill' at top right to log upcoming rent, utilities, or credit.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 } else {
@@ -317,14 +368,22 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(filteredItems) { item ->
-                            val isPastDue = !item.isPaid
+                            val isPastDue = !item.isPaid && item.dueDate < todayDateStr
+                            val isCritical = item.priority.equals("Critical", ignoreCase = true) || item.priority.equals("High", ignoreCase = true)
                             
-                            Card(
+                            HeroCard(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
                                     containerColor = if (item.isPaid) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface
                                 ),
-                                border = BorderStroke(1.dp, if (isPastDue) MaterialTheme.colorScheme.error.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant)
+                                border = BorderStroke(
+                                    width = if (isCritical && !item.isPaid) 1.5.dp else 1.dp,
+                                    color = when {
+                                        isPastDue -> MaterialTheme.colorScheme.error
+                                        isCritical && !item.isPaid -> Color(0xFFEF4444)
+                                        else -> MaterialTheme.colorScheme.outlineVariant
+                                    }
+                                )
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -343,10 +402,13 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                                                 color = if (item.isPaid) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
                                             )
                                             
-                                            val (badgeBg, badgeText) = when (item.priority) {
-                                                "High" -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
-                                                "Medium" -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
-                                                else -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+                                            val (badgeBg, badgeText) = when {
+                                                item.priority.equals("Critical", ignoreCase = true) || item.priority.equals("High", ignoreCase = true) ->
+                                                    Color(0xFFFEE2E2) to Color(0xFFDC2626)
+                                                item.priority.equals("Medium", ignoreCase = true) ->
+                                                    Color(0xFFFEF3C7) to Color(0xFFD97706)
+                                                else ->
+                                                    Color(0xFFF1F5F9) to Color(0xFF475569)
                                             }
                                             Box(
                                                 modifier = Modifier
@@ -355,11 +417,27 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                                             ) {
                                                 Text(
-                                                    item.priority,
+                                                    item.priority.uppercase(),
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = badgeText,
                                                     fontWeight = FontWeight.Bold
                                                 )
+                                            }
+
+                                            if (isPastDue) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(MaterialTheme.colorScheme.errorContainer)
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        "OVERDUE",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.error,
+                                                        fontWeight = FontWeight.Black
+                                                    )
+                                                }
                                             }
                                         }
 
@@ -384,7 +462,7 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                                         verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Text(
-                                            text = "$curr${String.format("%.2f", item.amount)}",
+                                            text = "$curr${String.format(Locale.getDefault(), "%.2f", item.amount)}",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = if (item.isPaid) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary
@@ -393,18 +471,18 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                             IconButton(
                                                 onClick = { viewModel.togglePaymentScheduleStatus(item) },
-                                                modifier = Modifier.size(36.dp)
+                                                modifier = Modifier.size(36.dp).testTag("toggle_bill_paid_${item.id}")
                                             ) {
                                                 Icon(
                                                     imageVector = if (item.isPaid) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                                                     contentDescription = "Toggle Paid",
-                                                    tint = if (item.isPaid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                                    tint = if (item.isPaid) Color(0xFF10B981) else MaterialTheme.colorScheme.outline
                                                 )
                                             }
 
                                             IconButton(
                                                 onClick = { viewModel.deletePaymentSchedule(item) },
-                                                modifier = Modifier.size(36.dp)
+                                                modifier = Modifier.size(36.dp).testTag("delete_bill_${item.id}")
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Delete,
@@ -445,27 +523,27 @@ fun CalendarTab(viewModel: StorePointViewModel) {
     if (showAddDialog) {
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text("Schedule Upcoming Store Bill", fontWeight = FontWeight.Bold) },
+            title = { Text("Schedule Store Bill / Overhead", fontWeight = FontWeight.Bold) },
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    OutlinedTextField(
+                    HeroInput(
                         value = newTitle,
                         onValueChange = { newTitle = it },
-                        label = { Text("Bill Description / Vendor Name") },
-                        placeholder = { Text("e.g. Meralco Rent, Coca-Cola Deliveries") },
-                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Bill Description / Vendor Name *") },
+                        placeholder = { Text("e.g. Meralco Electric, Water Bill, Store Rent") },
+                        modifier = Modifier.fillMaxWidth().testTag("bill_title_input"),
                         singleLine = true
                     )
 
-                    OutlinedTextField(
+                    HeroInput(
                         value = newAmount,
                         onValueChange = { newAmount = it },
-                        label = { Text("Amount Due ($curr)") },
+                        label = { Text("Amount Due ($curr) *") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("bill_amount_input"),
                         singleLine = true
                     )
 
@@ -474,41 +552,39 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("Low", "Medium", "High").forEach { item ->
+                        listOf("Low", "Medium", "Critical").forEach { item ->
                             val isSelected = newPriority == item
                             FilterChip(
                                 selected = isSelected,
                                 onClick = { newPriority = item },
-                                label = { Text(item) }
+                                label = { Text(item) },
+                                modifier = Modifier.testTag("priority_chip_$item")
                             )
                         }
                     }
 
-                    Text("Category Type:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    Text("Overhead Category:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            listOf("Supplier", "Utilities", "Rent").forEach { item ->
+                            listOf(
+                                "Rent",
+                                "Electricity / Meralco",
+                                "Water",
+                                "Distributor Credit",
+                                "Salaries",
+                                "Taxes / Licenses",
+                                "Internet / Telco",
+                                "Other Overheads"
+                            ).forEach { item ->
                                 val isSelected = newCategory == item
                                 FilterChip(
                                     selected = isSelected,
                                     onClick = { newCategory = item },
-                                    label = { Text(item) }
-                                )
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            listOf("Salaries", "Taxes", "Replenishment").forEach { item ->
-                                val isSelected = newCategory == item
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { newCategory = item },
-                                    label = { Text(item) }
+                                    label = { Text(item) },
+                                    modifier = Modifier.testTag("category_chip_$item")
                                 )
                             }
                         }
@@ -519,7 +595,7 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("CASH" to "Cash Register", "GCASH" to "Store GCash Account").forEach { (code, label) ->
+                        listOf("CASH" to "Cash Register Drawer", "GCASH" to "Store GCash Account").forEach { (code, label) ->
                             val isSelected = newPayMethod == code
                             FilterChip(
                                 selected = isSelected,
@@ -531,14 +607,14 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                 }
             },
             confirmButton = {
-                Button(
+                HeroButton(
                     onClick = {
                         val amt = newAmount.toDoubleOrNull() ?: 0.0
                         if (newTitle.isNotBlank() && amt > 0) {
                             val activeDay = selectedDay ?: 1
                             val dateStr = String.format("%04d-%02d-%02d", selectedYear, selectedMonth, activeDay)
                             viewModel.addPaymentSchedule(
-                                title = newTitle,
+                                title = newTitle.trim(),
                                 amount = amt,
                                 dueDate = dateStr,
                                 category = newCategory,
@@ -550,10 +626,9 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                             newAmount = ""
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Text("Add Schedule")
-                }
+                    text = "Schedule Bill",
+                    modifier = Modifier.testTag("submit_bill_schedule_btn")
+                )
             },
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) {

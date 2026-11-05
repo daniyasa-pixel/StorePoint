@@ -21,6 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.munzo.storepoint.data.Product
 import com.munzo.storepoint.ui.theme.glassPanel
+import com.munzo.storepoint.ui.theme.HeroUITheme
+import com.munzo.storepoint.ui.components.*
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,7 +40,8 @@ fun ReceiveInventoryDialog(
     
     val uomOptions = remember(product) {
         val list = mutableListOf<Pair<String, Int>>()
-        list.add(Pair("Stick / Single (Base Unit, 1x)", 1))
+        val baseLabel = if (product.baseUom.isNotBlank()) product.baseUom else "pc"
+        list.add(Pair("Single / Base Unit ($baseLabel, 1x)", 1))
         if (product.hasStick10s) {
             list.add(Pair("10s Pack (10x)", 10))
         }
@@ -53,6 +56,11 @@ fun ReceiveInventoryDialog(
         }
         if (product.hasCustomUom) {
             list.add(Pair("${product.customUomName} (${product.customUomMultiplier}x)", product.customUomMultiplier))
+        }
+        if (!product.hasStick10s && !product.hasStick20s) {
+            list.add(Pair("Half-Dozen / 6-Pack (6x)", 6))
+            list.add(Pair("Dozen / 12-Pack (12x)", 12))
+            list.add(Pair("Case / Box / Carton (24x)", 24))
         }
         list.add(Pair("Custom Multiplier...", -1))
         list
@@ -115,7 +123,7 @@ fun ReceiveInventoryDialog(
                     )
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HeroDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 // Select UOM Dropdown Box
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -170,7 +178,7 @@ fun ReceiveInventoryDialog(
 
                 // If Custom Multiplier is chosen
                 if (currentOption.second == -1) {
-                    OutlinedTextField(
+                    HeroInput(
                         value = customMultiplierStr,
                         onValueChange = { customMultiplierStr = it.filter { char -> char.isDigit() } },
                         label = { Text("Custom Multiplier (Items per UOM)") },
@@ -182,7 +190,7 @@ fun ReceiveInventoryDialog(
                 }
 
                 // Quantity received field
-                OutlinedTextField(
+                HeroInput(
                     value = quantityStr,
                     onValueChange = { quantityStr = it.filter { char -> char.isDigit() } },
                     label = { Text("Quantity Received") },
@@ -193,7 +201,7 @@ fun ReceiveInventoryDialog(
                 )
 
                 // Total Cost paid field
-                OutlinedTextField(
+                HeroInput(
                     value = totalCostStr,
                     onValueChange = { totalCostStr = it.filter { char -> char.isDigit() || char == '.' } },
                     label = { Text("Total Cost Paid (Optional)") },
@@ -207,7 +215,7 @@ fun ReceiveInventoryDialog(
                 if (totalCost != null && totalCost > 0.0) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(
+                            HeroCheckbox(
                                 checked = payFromDrawer,
                                 onCheckedChange = { payFromDrawer = it },
                                 modifier = Modifier.testTag("pay_from_drawer_checkbox")
@@ -240,7 +248,7 @@ fun ReceiveInventoryDialog(
                 }
 
                 // Math dynamic breakdown card
-                Card(
+                HeroCard(
                     modifier = Modifier.fillMaxWidth().glassPanel(cornerRadius = 16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = Color.Transparent
@@ -271,14 +279,23 @@ fun ReceiveInventoryDialog(
                         
                         if (calculatedUnitCost != null) {
                             Text(
-                                text = "• Calculated Cost / Base Unit: $currencySymbol${String.format(Locale.getDefault(), "%.2f", calculatedUnitCost)}",
+                                text = "• Invoice Cost / Base Unit: $currencySymbol${String.format(Locale.getDefault(), "%.2f", calculatedUnitCost)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
+                            if (product.stockCount > 0 && product.cost > 0.0) {
+                                val wac = ((product.stockCount * product.cost) + (totalCost ?: 0.0)) / (product.stockCount + totalBaseUnits)
+                                Text(
+                                    text = "• Weighted Avg Cost (COGS): $currencySymbol${String.format(Locale.getDefault(), "%.2f", wac)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
                         } else {
                             Text(
-                                text = "• Calculated Cost / Base Unit: (Retains previous: $currencySymbol${String.format(Locale.getDefault(), "%.2f", product.cost)})",
+                                text = "• Current Cost / Base Unit (COGS): $currencySymbol${String.format(Locale.getDefault(), "%.2f", product.cost)} (Unchanged)",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -296,15 +313,15 @@ fun ReceiveInventoryDialog(
         },
         confirmButton = {
             val isShortageActive = payFromDrawer && totalCost != null && totalCost > drawerCash
-            Button(
+            HeroButton(
                 onClick = {
                     onConfirm(quantity, activeMultiplier, totalCost, payFromDrawer)
                 },
+                text = "Confirm Receive",
+                icon = Icons.Default.AddCircle,
                 enabled = quantity > 0 && activeMultiplier > 0 && !isShortageActive,
                 modifier = Modifier.testTag("restock_dialog_confirm_btn")
-            ) {
-                Text("Confirm Receive")
-            }
+            )
         },
         dismissButton = {
             TextButton(

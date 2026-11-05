@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import com.munzo.storepoint.ui.components.*
 
 @Composable
 fun ShimmerProductCard() {
@@ -31,7 +32,7 @@ fun ShimmerProductCard() {
     // The skeleton mirrors the real catalog card's intrinsic height (chip row +
     // 2-line title + price row) instead of an arbitrary fixed height, so the grid
     // does not jump when the real products replace the placeholders.
-    Card(
+    HeroCard(
         modifier = Modifier.fillMaxWidth().height(132.dp),
         // Must match the real catalog card's shape exactly, or tiles visibly change
         // corners as the skeleton is replaced by real products.

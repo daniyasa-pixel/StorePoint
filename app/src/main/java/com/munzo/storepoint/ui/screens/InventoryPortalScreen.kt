@@ -3,7 +3,9 @@ package com.munzo.storepoint.ui.screens
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -35,6 +37,8 @@ import com.munzo.storepoint.ui.components.ExpressiveWidthClass
 import com.munzo.storepoint.ui.components.rememberExpressiveWidthClass
 import com.munzo.storepoint.ui.layout.ScanSearchField
 import com.munzo.storepoint.ui.theme.*
+import com.munzo.storepoint.ui.theme.HeroUITheme
+import com.munzo.storepoint.ui.components.*
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +57,8 @@ fun InventoryPortalScreen(
     val curr = storeConfig?.currencySymbol ?: "₱"
     var selectedPortalTab by remember { mutableStateOf(0) } // 0: Price Checker, 1: Stocktake Audit, 2: Quick Share
     var showBulkProductionDialog by remember { mutableStateOf(false) }
+    var showReceiveDialogForProduct by remember { mutableStateOf<Product?>(null) }
+    var showProductPickerForReceive by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -103,40 +109,64 @@ fun InventoryPortalScreen(
                     val showLabels = widthClass != ExpressiveWidthClass.COMPACT
 
                     if (showLabels) {
+                        // Receive Stock Button
+                        HeroButton(
+                            onClick = { showProductPickerForReceive = true },
+                            modifier = Modifier.testTag("portal_receive_stock_btn"),
+                            text = "Receive Stock",
+                            icon = Icons.Default.AddBusiness,
+                            color = HeroColor.Primary,
+                            variant = HeroButtonVariant.Flat,
+                            size = HeroSize.Sm
+                        )
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
                         // Bulk Repackaging / BOM Production Dialog
-                        FilledTonalButton(
+                        HeroButton(
                             onClick = { showBulkProductionDialog = true },
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            ),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.testTag("portal_bulk_production_btn")
-                        ) {
-                            Icon(Icons.Default.PrecisionManufacturing, contentDescription = "Repackage / BOM", modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Repackage / BOM", style = MaterialTheme.typography.labelLarge)
-                        }
+                            modifier = Modifier.testTag("portal_bulk_production_btn"),
+                            text = "Repackage / BOM",
+                            icon = Icons.Default.PrecisionManufacturing,
+                            color = HeroColor.Primary,
+                            variant = HeroButtonVariant.Flat,
+                            size = HeroSize.Sm
+                        )
 
                         Spacer(modifier = Modifier.width(6.dp))
 
                         // Quick Share Action Button in TopBar (wide layouts)
-                        FilledTonalButton(
+                        HeroButton(
                             onClick = { viewModel.shareInventoryViaQuickShare(context) },
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer
-                            ),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.testTag("portal_quick_share_btn")
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = "Quick Share", modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Quick Share", style = MaterialTheme.typography.labelLarge)
-                        }
+                            modifier = Modifier.testTag("portal_quick_share_btn"),
+                            text = "Quick Share",
+                            icon = Icons.Default.Share,
+                            color = HeroColor.Default,
+                            variant = HeroButtonVariant.Bordered,
+                            size = HeroSize.Sm
+                        )
                     } else {
                         // Compact layouts: icon-only to avoid a cramped/clipped app bar
                         FilledTonalIconButton(
+                            onClick = { showProductPickerForReceive = true },
+                            modifier = Modifier.size(38.dp).clip(HeroUITheme.radius.md).testTag("portal_receive_stock_btn"),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = HeroUITheme.colors.accent.copy(alpha = 0.14f),
+                                contentColor = HeroUITheme.colors.accent
+                            )
+                        ) {
+                            Icon(Icons.Default.AddBusiness, contentDescription = "Receive Stock", modifier = Modifier.size(18.dp))
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        FilledTonalIconButton(
                             onClick = { showBulkProductionDialog = true },
-                            modifier = Modifier.size(40.dp).testTag("portal_bulk_production_btn")
+                            modifier = Modifier.size(38.dp).clip(HeroUITheme.radius.md).testTag("portal_bulk_production_btn"),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = HeroUITheme.colors.surfaceSecondary,
+                                contentColor = HeroUITheme.colors.foreground
+                            )
                         ) {
                             Icon(Icons.Default.PrecisionManufacturing, contentDescription = "Repackage / BOM", modifier = Modifier.size(18.dp))
                         }
@@ -145,7 +175,11 @@ fun InventoryPortalScreen(
 
                         FilledTonalIconButton(
                             onClick = { viewModel.shareInventoryViaQuickShare(context) },
-                            modifier = Modifier.size(40.dp).testTag("portal_quick_share_btn")
+                            modifier = Modifier.size(38.dp).clip(HeroUITheme.radius.md).testTag("portal_quick_share_btn"),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = HeroUITheme.colors.surfaceSecondary,
+                                contentColor = HeroUITheme.colors.foreground
+                            )
                         ) {
                             Icon(Icons.Default.Share, contentDescription = "Quick Share", modifier = Modifier.size(18.dp))
                         }
@@ -197,38 +231,34 @@ fun InventoryPortalScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                            Text(
-                                text = "Auditor: ${activeUser?.username?.uppercase() ?: "STAFF"}",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+                    HeroChip(
+                        text = "Auditor: ${activeUser?.username?.uppercase() ?: "STAFF"}",
+                        variant = HeroChipVariant.Flat,
+                        color = HeroColor.Primary
+                    )
 
-                    ExpressiveSegmentedTabs(
-                        items = listOf(
-                            "Price Check" to Icons.Default.QrCodeScanner,
-                            "Stocktake" to Icons.Default.FactCheck,
-                            "Quick Share" to Icons.Default.Share
-                        ),
-                        selectedIndex = selectedPortalTab,
-                        onTabSelected = { selectedPortalTab = it },
+                    HeroSegmentedTabs(
+                        items = listOf("Price Check", "Stocktake", "Quick Share"),
+                        selectedItem = when (selectedPortalTab) {
+                            0 -> "Price Check"
+                            1 -> "Stocktake"
+                            else -> "Quick Share"
+                        },
+                        onItemSelected = { item ->
+                            selectedPortalTab = when (item) {
+                                "Price Check" -> 0
+                                "Stocktake" -> 1
+                                else -> 2
+                            }
+                        },
+                        labelProvider = { it },
+                        iconProvider = { item ->
+                            when (item) {
+                                "Price Check" -> Icons.Default.QrCodeScanner
+                                "Stocktake" -> Icons.Default.FactCheck
+                                else -> Icons.Default.Share
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth().testTag("portal_segmented_tabs")
                     )
                 }
@@ -238,38 +268,34 @@ fun InventoryPortalScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                            Text(
-                                text = "Auditor: ${activeUser?.username?.uppercase() ?: "STAFF"}",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+                    HeroChip(
+                        text = "Auditor: ${activeUser?.username?.uppercase() ?: "STAFF"}",
+                        variant = HeroChipVariant.Flat,
+                        color = HeroColor.Primary
+                    )
 
-                    ExpressiveSegmentedTabs(
-                        items = listOf(
-                            "Price Check" to Icons.Default.QrCodeScanner,
-                            "Stocktake Audit" to Icons.Default.FactCheck,
-                            "Quick Share" to Icons.Default.Share
-                        ),
-                        selectedIndex = selectedPortalTab,
-                        onTabSelected = { selectedPortalTab = it },
+                    HeroSegmentedTabs(
+                        items = listOf("Price Check", "Stocktake Audit", "Quick Share"),
+                        selectedItem = when (selectedPortalTab) {
+                            0 -> "Price Check"
+                            1 -> "Stocktake Audit"
+                            else -> "Quick Share"
+                        },
+                        onItemSelected = { item ->
+                            selectedPortalTab = when (item) {
+                                "Price Check" -> 0
+                                "Stocktake Audit" -> 1
+                                else -> 2
+                            }
+                        },
+                        labelProvider = { it },
+                        iconProvider = { item ->
+                            when (item) {
+                                "Price Check" -> Icons.Default.QrCodeScanner
+                                "Stocktake Audit" -> Icons.Default.FactCheck
+                                else -> Icons.Default.Share
+                            }
+                        },
                         modifier = Modifier.testTag("portal_segmented_tabs")
                     )
                 }
@@ -281,13 +307,107 @@ fun InventoryPortalScreen(
                 label = "portal_content"
             ) { tabIndex ->
                 when (tabIndex) {
-                    0 -> InventoryPriceCheckerTab(products = products, categories = categories, curr = curr, viewModel = viewModel)
-                    1 -> InventoryStocktakeAuditTab(products = products, categories = categories, curr = curr, viewModel = viewModel)
+                    0 -> InventoryPriceCheckerTab(
+                        products = products,
+                        categories = categories,
+                        curr = curr,
+                        viewModel = viewModel,
+                        onReceiveProduct = { showReceiveDialogForProduct = it }
+                    )
+                    1 -> InventoryStocktakeAuditTab(
+                        products = products,
+                        categories = categories,
+                        curr = curr,
+                        viewModel = viewModel,
+                        onReceiveProduct = { showReceiveDialogForProduct = it }
+                    )
                     2 -> InventoryQuickShareHubTab(viewModel = viewModel, totalProducts = products.size, totalCategories = categories.size)
                 }
             }
         }
         }
+    }
+
+    if (showReceiveDialogForProduct != null) {
+        val prod = showReceiveDialogForProduct!!
+        val drawerCash = viewModel.getCurrentDrawerCash()
+        ReceiveInventoryDialog(
+            product = prod,
+            currencySymbol = curr,
+            drawerCash = drawerCash,
+            onDismiss = { showReceiveDialogForProduct = null },
+            onConfirm = { quantity, multiplier, totalCost, payFromDrawer ->
+                viewModel.restockProductWithUom(
+                    product = prod,
+                    quantity = quantity,
+                    multiplier = multiplier,
+                    totalCost = totalCost,
+                    payFromDrawer = payFromDrawer,
+                    onPayoutError = { err ->
+                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                    }
+                )
+                showReceiveDialogForProduct = null
+            }
+        )
+    }
+
+    if (showProductPickerForReceive) {
+        var pickerQuery by remember { mutableStateOf("") }
+        val pickerFiltered = remember(pickerQuery, products) {
+            if (pickerQuery.isBlank()) products.take(30)
+            else products.filter {
+                it.name.contains(pickerQuery, ignoreCase = true) ||
+                it.barcode.contains(pickerQuery, ignoreCase = true)
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { showProductPickerForReceive = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.AddBusiness, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Select Product to Receive Stock", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HeroInput(
+                        value = pickerQuery,
+                        onValueChange = { pickerQuery = it },
+                        label = { Text("Search product name or barcode") },
+                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("receive_picker_search_input")
+                    )
+                    LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(pickerFiltered) { item ->
+                            HeroCard(
+                                onClick = {
+                                    showProductPickerForReceive = false
+                                    showReceiveDialogForProduct = item
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(item.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                        Text("Stock: ${item.stockCount} ${item.baseUom} • Barcode: ${item.barcode.ifEmpty { "N/A" }}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    }
+                                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showProductPickerForReceive = false }) { Text("Close") }
+            }
+        )
     }
 
     if (showBulkProductionDialog) {
@@ -306,16 +426,21 @@ private fun InventoryPriceCheckerTab(
     products: List<Product>,
     categories: List<Category>,
     curr: String,
-    viewModel: StorePointViewModel
+    viewModel: StorePointViewModel,
+    onReceiveProduct: (Product) -> Unit
 ) {
     val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     var showScanner by remember { mutableStateOf(false) }
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
+    var selectedStockFilter by remember { mutableStateOf("ALL") }
 
-    val filteredProducts = remember(query, products) {
-        if (query.isBlank()) products.take(20)
-        else products.filter {
+    val outOfStockCount = remember(products) { products.count { it.stockCount <= 0 } }
+    val lowStockCount = remember(products) { products.count { it.stockCount in 1..5 } }
+    val inStockCount = remember(products) { products.count { it.stockCount > 5 } }
+
+    val filteredProducts = remember(query, selectedStockFilter, products) {
+        val searched = if (query.isBlank()) products else products.filter {
             it.name.contains(query, ignoreCase = true) ||
             it.barcode.contains(query, ignoreCase = true) ||
             it.barcode10s.contains(query, ignoreCase = true) ||
@@ -324,6 +449,13 @@ private fun InventoryPriceCheckerTab(
             it.barcodeMasterCase.contains(query, ignoreCase = true) ||
             it.barcodeCustomUom.contains(query, ignoreCase = true)
         }
+        val baseList = when (selectedStockFilter) {
+            "OUT_OF_STOCK" -> searched.filter { it.stockCount <= 0 }
+            "LOW_STOCK" -> searched.filter { it.stockCount in 1..5 }
+            "IN_STOCK" -> searched.filter { it.stockCount > 5 }
+            else -> searched
+        }
+        if (query.isBlank() && selectedStockFilter == "ALL") baseList.take(25) else baseList
     }
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -336,7 +468,7 @@ private fun InventoryPriceCheckerTab(
         ) {
             BoxWithConstraints(modifier = Modifier.weight(1f)) {
             val searchCopy = ScanSearchField.copyFor(maxWidth)
-            OutlinedTextField(
+            HeroInput(
                 value = query,
                 onValueChange = { query = it },
                 label = { Text(searchCopy.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -404,7 +536,7 @@ private fun InventoryPriceCheckerTab(
             val prod = selectedProduct!!
             val catName = categories.find { it.id == prod.categoryId }?.name ?: "Uncategorized"
 
-            Card(
+            HeroCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .expressiveCard(cornerRadius = 24.dp)
@@ -486,7 +618,7 @@ private fun InventoryPriceCheckerTab(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             uomOptions.filter { it.multiplier > 1 }.forEach { uom ->
-                                Card(
+                                HeroCard(
                                     modifier = Modifier.weight(1f),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                                 ) {
@@ -499,8 +631,58 @@ private fun InventoryPriceCheckerTab(
                             }
                         }
                     }
+
+                    // Receive / Restock Quick Action Button
+                    HeroButton(
+                        onClick = { onReceiveProduct(prod) },
+                        modifier = Modifier.fillMaxWidth().testTag("price_check_receive_stock_btn"),
+                        text = "Receive / Restock Item",
+                        icon = Icons.Default.AddBusiness,
+                        color = HeroColor.Primary,
+                        variant = HeroButtonVariant.Solid,
+                        size = HeroSize.Md
+                    )
                 }
             }
+        }
+
+        // Real-Time Stock Auditing Status Chips & Safety Threshold Indicators
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            FilterChip(
+                selected = selectedStockFilter == "ALL",
+                onClick = { selectedStockFilter = "ALL" },
+                label = { Text("All (${products.size})") },
+                leadingIcon = { Icon(Icons.Default.List, null, modifier = Modifier.size(14.dp)) }
+            )
+            FilterChip(
+                selected = selectedStockFilter == "LOW_STOCK",
+                onClick = { selectedStockFilter = "LOW_STOCK" },
+                label = { Text("Low Stock Alert ($lowStockCount)") },
+                leadingIcon = { Icon(Icons.Default.Warning, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            )
+            FilterChip(
+                selected = selectedStockFilter == "OUT_OF_STOCK",
+                onClick = { selectedStockFilter = "OUT_OF_STOCK" },
+                label = { Text("Out of Stock ($outOfStockCount)") },
+                leadingIcon = { Icon(Icons.Default.ErrorOutline, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.error) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            )
+            FilterChip(
+                selected = selectedStockFilter == "IN_STOCK",
+                onClick = { selectedStockFilter = "IN_STOCK" },
+                label = { Text("In Stock ($inStockCount)") },
+                leadingIcon = { Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary) }
+            )
         }
 
         // Product Catalog List for Quick Price Inspection
@@ -515,7 +697,7 @@ private fun InventoryPriceCheckerTab(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(filteredProducts) { item ->
-                Card(
+                HeroCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .expressiveCard(cornerRadius = 18.dp)
@@ -534,7 +716,33 @@ private fun InventoryPriceCheckerTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(item.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(item.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                val badgeColor = when {
+                                    item.stockCount <= 0 -> MaterialTheme.colorScheme.errorContainer
+                                    item.stockCount in 1..5 -> MaterialTheme.colorScheme.secondaryContainer
+                                    else -> MaterialTheme.colorScheme.primaryContainer
+                                }
+                                val badgeText = when {
+                                    item.stockCount <= 0 -> "OUT OF STOCK"
+                                    item.stockCount in 1..5 -> "LOW STOCK"
+                                    else -> "IN STOCK"
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = badgeColor
+                                ) {
+                                    Text(
+                                        text = badgeText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
                             Text(
                                 text = "Barcode: ${item.barcode.ifEmpty { "N/A" }} • Stock: ${item.stockCount} ${item.baseUom}",
                                 style = MaterialTheme.typography.labelSmall,
@@ -566,7 +774,8 @@ private fun InventoryStocktakeAuditTab(
     products: List<Product>,
     categories: List<Category>,
     curr: String,
-    viewModel: StorePointViewModel
+    viewModel: StorePointViewModel,
+    onReceiveProduct: (Product) -> Unit
 ) {
     val context = LocalContext.current
     val auditedItems = remember { mutableStateMapOf<Int, Int>() }
@@ -620,7 +829,7 @@ private fun InventoryStocktakeAuditTab(
         ) {
             BoxWithConstraints(modifier = Modifier.weight(1f)) {
             val searchCopy = ScanSearchField.copyFor(maxWidth, hasSiblingField = true)
-            OutlinedTextField(
+            HeroInput(
                 value = auditQuery,
                 onValueChange = { auditQuery = it },
                 label = { Text(searchCopy.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -636,7 +845,7 @@ private fun InventoryStocktakeAuditTab(
             )
             }
 
-            Button(
+            HeroButton(
                 onClick = {
                     if (auditQuery.isNotBlank()) {
                         val match = products.find {
@@ -655,12 +864,12 @@ private fun InventoryStocktakeAuditTab(
                     }
                 },
                 modifier = Modifier.height(56.dp).testTag("audit_add_btn"),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Count")
-            }
+                text = "Count",
+                icon = Icons.Default.Add,
+                color = HeroColor.Primary,
+                variant = HeroButtonVariant.Solid,
+                size = HeroSize.Md
+            )
         }
 
         // Scanner Dialog
@@ -705,7 +914,7 @@ private fun InventoryStocktakeAuditTab(
                     else Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ExpressiveButton(
+                    HeroButton(
                         onClick = {
                             var synced = 0
                             auditedItems.forEach { (id, physicalCount) ->
@@ -722,19 +931,21 @@ private fun InventoryStocktakeAuditTab(
                             }
                         },
                         modifier = Modifier.testTag("audit_sync_btn"),
-                        label = "Sync All",
+                        text = "Sync All",
                         icon = Icons.Default.Sync,
-                        variant = ExpressiveButtonVariant.FILLED,
-                        size = ExpressiveButtonSize.M,
+                        color = HeroColor.Success,
+                        variant = HeroButtonVariant.Solid,
+                        size = HeroSize.Md
                     )
 
-                    ExpressiveButton(
+                    HeroButton(
                         onClick = { auditedItems.clear() },
                         modifier = Modifier.testTag("audit_clear_btn"),
-                        label = "Clear",
+                        text = "Clear",
                         icon = Icons.Default.Clear,
-                        variant = ExpressiveButtonVariant.OUTLINED,
-                        size = ExpressiveButtonSize.M,
+                        color = HeroColor.Danger,
+                        variant = HeroButtonVariant.Bordered,
+                        size = HeroSize.Md
                     )
                 }
             }
@@ -759,7 +970,7 @@ private fun InventoryStocktakeAuditTab(
         ) {
             if (auditedItems.isEmpty()) {
                 item {
-                    Card(
+                    HeroCard(
                         modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                         shape = RoundedCornerShape(20.dp)
@@ -789,7 +1000,7 @@ private fun InventoryStocktakeAuditTab(
                         val variance = physicalCount - systemCount
                         val isMatch = variance == 0
 
-                        Card(
+                        HeroCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .glassPanel(cornerRadius = 16.dp),
@@ -870,6 +1081,13 @@ private fun InventoryStocktakeAuditTab(
                                         ) {
                                             Icon(Icons.Default.Check, contentDescription = "Sync", tint = MaterialTheme.colorScheme.primary)
                                         }
+
+                                        IconButton(
+                                            onClick = { onReceiveProduct(item) },
+                                            modifier = Modifier.size(32.dp).background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(8.dp))
+                                        ) {
+                                            Icon(Icons.Default.AddBusiness, contentDescription = "Restock", tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(16.dp))
+                                        }
                                     }
                                 }
                             }
@@ -897,7 +1115,7 @@ private fun InventoryQuickShareHubTab(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Card(
+        HeroCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .expressiveCard(cornerRadius = 24.dp),
@@ -936,7 +1154,7 @@ private fun InventoryQuickShareHubTab(
                     textAlign = TextAlign.Center
                 )
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                HeroDivider(modifier = Modifier.padding(vertical = 4.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -958,24 +1176,36 @@ private fun InventoryQuickShareHubTab(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Button(
+                HeroButton(
                     onClick = { viewModel.shareInventoryViaQuickShare(context) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
                         .testTag("hub_quick_share_button"),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Share Inventory via Quick Share", fontWeight = FontWeight.Bold)
-                }
+                    text = "Share Inventory via Quick Share",
+                    icon = Icons.Default.Share,
+                    color = HeroColor.Primary,
+                    variant = HeroButtonVariant.Solid,
+                    size = HeroSize.Lg
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                HeroButton(
+                    onClick = { viewModel.shareStockSheetCsv(context) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("hub_share_stock_sheet_csv_button"),
+                    text = "Export Stock Sheet (CSV / Excel)",
+                    icon = Icons.Default.Description,
+                    color = HeroColor.Default,
+                    variant = HeroButtonVariant.Bordered,
+                    size = HeroSize.Lg
+                )
             }
         }
 
         // Informational Security Notice
-        Card(
+        HeroCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
             shape = RoundedCornerShape(16.dp)

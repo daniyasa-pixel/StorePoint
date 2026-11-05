@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.munzo.storepoint.data.StorePointRepository.WalletType
 import com.munzo.storepoint.data.WalletLedgerEntry
 import com.munzo.storepoint.ui.StorePointViewModel
+import com.munzo.storepoint.ui.components.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -90,7 +91,7 @@ fun WalletReloadCard(
     )
     val currentLabel = walletOptions.first { it.second == selectedWallet }.first
 
-    Card(
+    HeroCard(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -196,7 +197,7 @@ fun WalletReloadCard(
                             "This increases the float StorePoint sells from and is recorded in the wallet ledger.",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    OutlinedTextField(
+                    HeroInput(
                         value = amountInput,
                         onValueChange = { input ->
                             amountInput = input.filter { it.isDigit() || it == '.' }
@@ -209,7 +210,7 @@ fun WalletReloadCard(
                         enabled = !isSaving,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    OutlinedTextField(
+                    HeroInput(
                         value = referenceInput,
                         onValueChange = { referenceInput = it },
                         label = { Text("Reference (optional)") },
@@ -331,7 +332,14 @@ private fun WalletHistoryDialog(
                     )
                 }
 
-                else -> Column {
+                else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val totalInflow = list.filter { it.delta > 0 }.sumOf { it.delta }
+                    val totalOutflow = list.filter { it.delta < 0 }.sumOf { kotlin.math.abs(it.delta) }
+                    val totalFeeProfit = list.sumOf { entry ->
+                        val feeMatch = Regex("""Fee Profit:\s*₱?([\d.]+)""").find(entry.notes)
+                        feeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                    }
+
                     derivedBalance?.let {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -353,9 +361,52 @@ private fun WalletHistoryDialog(
                             }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+
+                    // Digital Float Ledger Summary (Inflows, Outflows, Service Fee Profits)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                "LEDGER RECONCILIATION SUMMARY",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Total Inflows (Reloads/Cash-In):", style = MaterialTheme.typography.bodySmall)
+                                Text("+$curr${String.format(Locale.getDefault(), "%.2f", totalInflow)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Total Outflows (Disbursed/Sales):", style = MaterialTheme.typography.bodySmall)
+                                Text("-$curr${String.format(Locale.getDefault(), "%.2f", totalOutflow)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                            }
+                            if (totalFeeProfit > 0.0) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Accumulated Fee Profits:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                                    Text("+$curr${String.format(Locale.getDefault(), "%.2f", totalFeeProfit)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.tertiary)
+                                }
+                            }
+                        }
+                    }
+
                     LazyColumn(
-                        modifier = Modifier.heightIn(max = 320.dp),
+                        modifier = Modifier.heightIn(max = 280.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         items(list, key = { it.id }) { entry ->

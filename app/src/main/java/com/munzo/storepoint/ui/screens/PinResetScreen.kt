@@ -57,6 +57,7 @@ import com.munzo.storepoint.ui.theme.ExpressiveOtpPinInput
 import com.munzo.storepoint.ui.theme.PinPadEntry
 import com.munzo.storepoint.ui.theme.shakeOnTrigger
 import com.munzo.storepoint.util.SecurityHelper
+import com.munzo.storepoint.ui.components.*
 
 /**
  * Progressive disclosure: the reset task is chunked into small, single-purpose steps.
@@ -188,7 +189,7 @@ fun PinResetScreen(
         ) {
             ResetHeader(step = step, username = username)
 
-            Card(
+            HeroCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .shakeOnTrigger(trigger = shakeTrigger),
@@ -406,7 +407,7 @@ private fun VerifyStep(
                 }
             }
         } else {
-            OutlinedTextField(
+            HeroInput(
                 value = username,
                 onValueChange = onUsernameChange,
                 label = { Text("Account Username") },
