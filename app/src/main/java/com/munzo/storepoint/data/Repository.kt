@@ -21,6 +21,8 @@ class StorePointRepository(private val db: AppDatabase) {
     object WalletEntryType {
         const val RELOAD = "RELOAD"
         const val CONSUMED = "CONSUMED"
+        const val INFLOW = "INFLOW"
+        const val OUTFLOW = "OUTFLOW"
         const val RECONCILE = "RECONCILE"
         const val OPENING_BALANCE = "OPENING_BALANCE"
     }
@@ -32,14 +34,14 @@ class StorePointRepository(private val db: AppDatabase) {
         }
 
         /**
-         * Maps a UI-facing wallet label ("Smart", "TNT", "Globe/TM") to its canonical key.
+         * Maps a UI-facing wallet label ("Smart", "TNT", "Globe/TM", "DITO") to its canonical key.
          *
          * The load networks are matched before the generic "TM" catch so a "Globe/TM"
          * label resolves to GLOBE rather than being swallowed by a looser rule.
          */
         fun canonicalWalletType(label: String): String = when {
             label.contains("gCash", ignoreCase = true) -> WalletType.GCASH
-            label.contains("smart", ignoreCase = true) || label.contains("tnt", ignoreCase = true) -> WalletType.SMART
+            label.contains("smart", ignoreCase = true) || label.contains("tnt", ignoreCase = true) || label.contains("dito", ignoreCase = true) -> WalletType.SMART
             label.contains("globe", ignoreCase = true) || label.contains("tm", ignoreCase = true) -> WalletType.GLOBE
             else -> WalletType.GCASH
         }
@@ -256,7 +258,10 @@ class StorePointRepository(private val db: AppDatabase) {
         gcashDelta: Double = 0.0,
         smartLoadDelta: Double = 0.0,
         globeLoadDelta: Double = 0.0,
-        customerName: String = ""
+        customerName: String = "",
+        gcashNotes: String? = null,
+        smartLoadNotes: String? = null,
+        globeLoadNotes: String? = null
     ): Transaction = withContext(Dispatchers.IO) {
         val timestamp = System.currentTimeMillis()
         var createdTransactionId = 0
@@ -338,9 +343,9 @@ class StorePointRepository(private val db: AppDatabase) {
                     "INSERT INTO transaction_items (transactionId, productId, productName, price, quantity, cost, uomName) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     arrayOf<Any?>(createdTransactionId, product.id, productName, normItemPrice, item.quantity, normItemCost, uomName)
                 )
-                // Deduct physical inventory only for genuine catalog products (id > 0).
-                // Digital retailing services (GCash Cash-In/Out, Load, Maya) have synthetic id <= 0.
-                if (product.id > 0) {
+                // Deduct physical inventory only for genuine catalog products (id > 0) with inventory tracking enabled.
+                // Digital retailing services (GCash Cash-In/Out, Load, Maya) and non-tracked items bypass stock deduction.
+                if (product.id > 0 && product.trackInventory) {
                     val effectiveQty = item.quantity * item.multiplier
                     db.openHelper.writableDatabase.execSQL(
                         "UPDATE products SET stockCount = stockCount - ? WHERE id = ? AND stockCount >= ?",
@@ -357,13 +362,45 @@ class StorePointRepository(private val db: AppDatabase) {
                 }
             }
 
+            var resolvedGcashNotes = gcashNotes
+            var resolvedSmartNotes = smartLoadNotes
+            var resolvedGlobeNotes = globeLoadNotes
+
+            if (resolvedGcashNotes == null || resolvedSmartNotes == null || resolvedGlobeNotes == null) {
+                for (ci in cartItems) {
+                    val pName = ci.product.name
+                    val feeMatch = """Fee:\s*([\d.]+)""".toRegex(RegexOption.IGNORE_CASE).find(pName)
+                    val feeAmt = feeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                    val amtMatch = """(?:Amt|Amount):\s*([\d.]+)""".toRegex(RegexOption.IGNORE_CASE).find(pName)
+                    val principalAmt = amtMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+                    if (pName.contains("GCash", ignoreCase = true) || pName.contains("Maya", ignoreCase = true)) {
+                        if (resolvedGcashNotes == null) {
+                            val action = if (pName.contains("Cash Out", ignoreCase = true)) "Cash-Out" else "Cash-In"
+                            val svc = if (pName.contains("Maya", ignoreCase = true)) "Maya" else "GCash"
+                            resolvedGcashNotes = "Fee Profit: ₱${String.format(java.util.Locale.US, "%.2f", feeAmt)} | $svc $action ₱${String.format(java.util.Locale.US, "%.2f", principalAmt)}"
+                        }
+                    }
+                    if (pName.contains("Load", ignoreCase = true)) {
+                        val isSmartOrDito = pName.contains("Smart", ignoreCase = true) || pName.contains("TNT", ignoreCase = true) || pName.contains("DITO", ignoreCase = true)
+                        val netProfit = feeAmt + (principalAmt * 0.02)
+                        val profitStr = "Fee Profit: ₱${String.format(java.util.Locale.US, "%.2f", netProfit)} (Markup: ₱${String.format(java.util.Locale.US, "%.2f", feeAmt)} + 2% Rebate) | Load ₱${String.format(java.util.Locale.US, "%.2f", principalAmt)}"
+                        if (isSmartOrDito && resolvedSmartNotes == null) {
+                            resolvedSmartNotes = profitStr
+                        } else if (!isSmartOrDito && resolvedGlobeNotes == null) {
+                            resolvedGlobeNotes = profitStr
+                        }
+                    }
+                }
+            }
+
             // M4: Persist the GCash wallet delta in the same transaction.
             if (gcashDelta != 0.0) {
                 db.openHelper.writableDatabase.execSQL(
                     "UPDATE store_config SET gcashBalance = gcashBalance + ? WHERE id = 1",
                     arrayOf<Any?>(gcashDelta)
                 )
-                logWalletConsumptionSync(WalletType.GCASH, gcashDelta, cashierUsername, createdTransactionId)
+                logWalletConsumptionSync(WalletType.GCASH, gcashDelta, cashierUsername, createdTransactionId, resolvedGcashNotes)
             }
 
             // Persist Smart Load wallet delta
@@ -372,7 +409,7 @@ class StorePointRepository(private val db: AppDatabase) {
                     "UPDATE store_config SET smartLoadBalance = smartLoadBalance + ? WHERE id = 1",
                     arrayOf<Any?>(smartLoadDelta)
                 )
-                logWalletConsumptionSync(WalletType.SMART, smartLoadDelta, cashierUsername, createdTransactionId)
+                logWalletConsumptionSync(WalletType.SMART, smartLoadDelta, cashierUsername, createdTransactionId, resolvedSmartNotes)
             }
 
             // Persist Globe Load wallet delta
@@ -381,7 +418,7 @@ class StorePointRepository(private val db: AppDatabase) {
                     "UPDATE store_config SET globeLoadBalance = globeLoadBalance + ? WHERE id = 1",
                     arrayOf<Any?>(globeLoadDelta)
                 )
-                logWalletConsumptionSync(WalletType.GLOBE, globeLoadDelta, cashierUsername, createdTransactionId)
+                logWalletConsumptionSync(WalletType.GLOBE, globeLoadDelta, cashierUsername, createdTransactionId, resolvedGlobeNotes)
             }
         }
 
@@ -694,7 +731,9 @@ class StorePointRepository(private val db: AppDatabase) {
         walletType: String,
         delta: Double,
         cashierUsername: String,
-        transactionId: Int
+        transactionId: Int,
+        customNotes: String? = null,
+        customType: String? = null
     ) {
         val balanceColumn = when (walletType) {
             WalletType.GCASH -> "gcashBalance"
@@ -707,16 +746,18 @@ class StorePointRepository(private val db: AppDatabase) {
         ).use { cursor ->
             if (cursor.moveToFirst()) cursor.getDouble(0) else 0.0
         }
+        val resolvedType = customType ?: if (delta > 0) WalletEntryType.INFLOW else WalletEntryType.CONSUMED
+        val resolvedNotes = customNotes ?: if (delta > 0) "Digital float cash-in inflow" else "Customer load sale"
         walletLedgerDao.insertWalletEntryBlocking(
             WalletLedgerEntry(
                 walletType = walletType,
                 timestamp = System.currentTimeMillis(),
                 actorUsername = cashierUsername,
-                type = WalletEntryType.CONSUMED,
+                type = resolvedType,
                 delta = roundMoney(delta),
                 balanceAfter = roundMoney(balanceAfter),
                 reference = "TX-$transactionId",
-                notes = "Customer load sale"
+                notes = resolvedNotes
             )
         )
     }
@@ -904,6 +945,10 @@ class StorePointRepository(private val db: AppDatabase) {
         return productVariantDao.insertVariant(variant)
     }
 
+    suspend fun updateVariantStock(id: Int, newStock: Int) {
+        productVariantDao.updateVariantStock(id, newStock)
+    }
+
     suspend fun deleteProductVariant(id: Int) {
         productVariantDao.deleteVariant(id)
     }
@@ -1007,6 +1052,10 @@ class StorePointRepository(private val db: AppDatabase) {
 
     suspend fun markPurchaseOrderReceived(id: Int, status: String, receivedDate: Long, paymentStatus: String) {
         purchaseOrderDao.markPurchaseOrderReceived(id, status, receivedDate, paymentStatus)
+    }
+
+    suspend fun updatePurchaseOrderStatus(id: Int, status: String) {
+        purchaseOrderDao.updatePurchaseOrderStatus(id, status)
     }
 
     /**
@@ -1278,6 +1327,10 @@ class StorePointRepository(private val db: AppDatabase) {
     }
 
     val allInventoryMovements: Flow<List<InventoryMovementEntity>> = inventoryMovementDao.getAllMovements()
+
+    suspend fun logInventoryMovement(movement: InventoryMovementEntity): Long = withContext(Dispatchers.IO) {
+        inventoryMovementDao.insertMovement(movement)
+    }
 
     suspend fun getInventoryMovementsForProduct(productId: Int): List<InventoryMovementEntity> = withContext(Dispatchers.IO) {
         inventoryMovementDao.getMovementsForProductSync(productId)

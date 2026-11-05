@@ -292,6 +292,9 @@ interface ProductVariantDao {
     @Update
     suspend fun updateVariant(variant: ProductVariant)
 
+    @Query("UPDATE product_variants SET stockCount = :newStock WHERE id = :id")
+    suspend fun updateVariantStock(id: Int, newStock: Int)
+
     @Query("DELETE FROM product_variants WHERE id = :id")
     suspend fun deleteVariant(id: Int)
 
@@ -386,6 +389,9 @@ interface PurchaseOrderDao {
 
     @Query("UPDATE purchase_orders SET status = :status, receivedDate = :receivedDate, paymentStatus = :paymentStatus WHERE id = :id")
     suspend fun markPurchaseOrderReceived(id: Int, status: String, receivedDate: Long, paymentStatus: String)
+
+    @Query("UPDATE purchase_orders SET status = :status WHERE id = :id")
+    suspend fun updatePurchaseOrderStatus(id: Int, status: String)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPurchaseOrderItem(item: PurchaseOrderItem)

@@ -51,7 +51,9 @@ data class User(
 @Entity(tableName = "categories")
 data class Category(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val name: String
+    val name: String,
+    val colorAccent: String = "",
+    val iconBadge: String = ""
 )
 
 @Entity(
@@ -98,7 +100,8 @@ data class Product(
     val barcodeReam: String = "",
     val barcodeMasterCase: String = "",
     val barcodeCustomUom: String = "",
-    val baseUom: String = "pc"
+    val baseUom: String = "pc",
+    val trackInventory: Boolean = true
 )
 
 @Entity(
@@ -125,7 +128,8 @@ data class ProductVariant(
     val price: Double,
     val cost: Double = 0.0,
     val barcode: String = "",
-    val isDefault: Boolean = false
+    val isDefault: Boolean = false,
+    val stockCount: Int = 0
 )
 
 @Entity(
