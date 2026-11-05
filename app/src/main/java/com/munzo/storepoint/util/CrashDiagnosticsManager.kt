@@ -1,4 +1,4 @@
-﻿package com.munzo.storepoint.util
+package com.munzo.storepoint.util
 
 import android.app.ActivityManager
 import android.content.Context
@@ -54,12 +54,20 @@ object CrashDiagnosticsManager {
         }
     }
 
-    private fun recordCrash(context: Context, throwable: Throwable) {
+    fun logException(context: Context, throwable: Throwable) {
+        recordCrash(context, throwable)
+    }
+
+    fun recordCrashToFile(file: File, throwable: Throwable, cashier: String = currentCashier): CrashRecord {
         val sw = StringWriter()
         throwable.printStackTrace(PrintWriter(sw))
         val stackTrace = sw.toString()
 
-        val deviceInfo = "Model: ${Build.MANUFACTURER} ${Build.MODEL}, SDK: ${Build.VERSION.SDK_INT} (Android ${Build.VERSION.RELEASE})"
+        val devManufacturer = try { Build.MANUFACTURER ?: "Generic" } catch (_: Throwable) { "Generic" }
+        val devModel = try { Build.MODEL ?: "Terminal" } catch (_: Throwable) { "Terminal" }
+        val devSdk = try { Build.VERSION.SDK_INT } catch (_: Throwable) { 0 }
+        val devRelease = try { Build.VERSION.RELEASE ?: "" } catch (_: Throwable) { "" }
+        val deviceInfo = "Model: $devManufacturer $devModel, SDK: $devSdk (Android $devRelease)"
 
         val record = JSONObject().apply {
             put("timestamp", System.currentTimeMillis())
@@ -68,10 +76,9 @@ object CrashDiagnosticsManager {
             put("message", throwable.localizedMessage ?: "No error message provided")
             put("stackTrace", stackTrace)
             put("deviceInfo", deviceInfo)
-            put("activeCashier", currentCashier)
+            put("activeCashier", cashier)
         }
 
-        val file = File(context.filesDir, CRASH_FILE_NAME)
         val array = if (file.exists()) {
             try {
                 JSONArray(file.readText(Charsets.UTF_8))
@@ -92,10 +99,24 @@ object CrashDiagnosticsManager {
         }
 
         file.writeText(trimmedArray.toString(2), Charsets.UTF_8)
+
+        return CrashRecord(
+            timestamp = record.getLong("timestamp"),
+            dateFormatted = record.getString("dateFormatted"),
+            exceptionName = record.getString("exceptionName"),
+            message = record.getString("message"),
+            stackTrace = stackTrace,
+            deviceInfo = deviceInfo,
+            activeCashier = cashier
+        )
     }
 
-    fun getCrashLogs(context: Context): List<CrashRecord> {
+    private fun recordCrash(context: Context, throwable: Throwable) {
         val file = File(context.filesDir, CRASH_FILE_NAME)
+        recordCrashToFile(file, throwable, currentCashier)
+    }
+
+    fun parseCrashLogs(file: File): List<CrashRecord> {
         if (!file.exists()) return emptyList()
 
         return try {
@@ -121,6 +142,11 @@ object CrashDiagnosticsManager {
         }
     }
 
+    fun getCrashLogs(context: Context): List<CrashRecord> {
+        val file = File(context.filesDir, CRASH_FILE_NAME)
+        return parseCrashLogs(file)
+    }
+
     fun clearCrashLogs(context: Context) {
         val file = File(context.filesDir, CRASH_FILE_NAME)
         if (file.exists()) {
@@ -128,38 +154,35 @@ object CrashDiagnosticsManager {
         }
     }
 
-    fun generateDiagnosticsReport(context: Context): String {
+    fun formatDiagnosticsReport(
+        deviceManufacturer: String = "Generic",
+        deviceModel: String = "POS Terminal",
+        deviceCode: String = "generic",
+        androidRelease: String = "14",
+        apiLevel: Int = 34,
+        fingerprint: String = "generic/storepoint/pos",
+        ramAvailMb: Long = 2048,
+        ramTotalMb: Long = 4096,
+        isLowMemory: Boolean = false,
+        storageFreeMb: Long = 10240,
+        crashes: List<CrashRecord> = emptyList()
+    ): String {
         val sb = StringBuilder()
         sb.append("=== STOREPOINT POS SYSTEM DIAGNOSTICS ===\n")
         sb.append("Generated: ${formatDate(Date())}\n\n")
 
         // Hardware & OS
         sb.append("--- HARDWARE & OS ---\n")
-        sb.append("Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})\n")
-        sb.append("Android Version: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
-        sb.append("Build Fingerprint: ${Build.FINGERPRINT}\n\n")
+        sb.append("Device: $deviceManufacturer $deviceModel ($deviceCode)\n")
+        sb.append("Android Version: $androidRelease (API $apiLevel)\n")
+        sb.append("Build Fingerprint: $fingerprint\n\n")
 
-        // Memory
+        // Memory & Storage
         sb.append("--- MEMORY & STORAGE ---\n")
-        val actManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-        if (actManager != null) {
-            val memInfo = ActivityManager.MemoryInfo()
-            actManager.getMemoryInfo(memInfo)
-            val availMb = memInfo.availMem / (1024 * 1024)
-            val totalMb = memInfo.totalMem / (1024 * 1024)
-            sb.append("RAM: $availMb MB available / $totalMb MB total (Low Mem: ${memInfo.lowMemory})\n")
-        }
-
-        try {
-            val stat = StatFs(context.filesDir.path)
-            val availStorageMb = (stat.availableBlocksLong * stat.blockSizeLong) / (1024 * 1024)
-            sb.append("Internal App Storage Free: $availStorageMb MB\n\n")
-        } catch (e: Exception) {
-            sb.append("Storage info unavailable\n\n")
-        }
+        sb.append("RAM: $ramAvailMb MB available / $ramTotalMb MB total (Low Mem: $isLowMemory)\n")
+        sb.append("Internal App Storage Free: $storageFreeMb MB\n\n")
 
         // Recent Crashes
-        val crashes = getCrashLogs(context)
         sb.append("--- CRASH HISTORY (${crashes.size} incidents recorded) ---\n")
         if (crashes.isEmpty()) {
             sb.append("No uncaught exceptions logged. System health is optimal.\n")
@@ -174,6 +197,61 @@ object CrashDiagnosticsManager {
         }
 
         return sb.toString()
+    }
+
+    fun generateDiagnosticsReport(context: Context): String {
+        var devManufacturer = "Generic"
+        var devModel = "POS Terminal"
+        var devCode = "generic"
+        var androidRelease = "14"
+        var apiLevel = 34
+        var fingerprint = "generic/storepoint/pos"
+
+        try {
+            devManufacturer = Build.MANUFACTURER ?: "Generic"
+            devModel = Build.MODEL ?: "POS Terminal"
+            devCode = Build.DEVICE ?: "generic"
+            androidRelease = Build.VERSION.RELEASE ?: "14"
+            apiLevel = Build.VERSION.SDK_INT
+            fingerprint = Build.FINGERPRINT ?: "generic/storepoint/pos"
+        } catch (_: Throwable) {}
+
+        var ramAvailMb = 2048L
+        var ramTotalMb = 4096L
+        var isLowMem = false
+
+        try {
+            val actManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            if (actManager != null) {
+                val memInfo = ActivityManager.MemoryInfo()
+                actManager.getMemoryInfo(memInfo)
+                ramAvailMb = memInfo.availMem / (1024 * 1024)
+                ramTotalMb = memInfo.totalMem / (1024 * 1024)
+                isLowMem = memInfo.lowMemory
+            }
+        } catch (_: Throwable) {}
+
+        var storageFreeMb = 0L
+        try {
+            val stat = StatFs(context.filesDir.path)
+            storageFreeMb = (stat.availableBlocksLong * stat.blockSizeLong) / (1024 * 1024)
+        } catch (_: Throwable) {}
+
+        val crashes = getCrashLogs(context)
+
+        return formatDiagnosticsReport(
+            deviceManufacturer = devManufacturer,
+            deviceModel = devModel,
+            deviceCode = devCode,
+            androidRelease = androidRelease,
+            apiLevel = apiLevel,
+            fingerprint = fingerprint,
+            ramAvailMb = ramAvailMb,
+            ramTotalMb = ramTotalMb,
+            isLowMemory = isLowMem,
+            storageFreeMb = storageFreeMb,
+            crashes = crashes
+        )
     }
 
     fun shareDiagnosticsReport(context: Context) {

@@ -50,6 +50,22 @@ object DatabaseBackupManager {
         fileDateFormat.format(date)
     }
 
+    private fun base64Encode(bytes: ByteArray): String {
+        return try {
+            Base64.encodeToString(bytes, Base64.NO_WRAP)
+        } catch (_: Throwable) {
+            java.util.Base64.getEncoder().encodeToString(bytes)
+        }
+    }
+
+    private fun base64Decode(str: String): ByteArray {
+        return try {
+            Base64.decode(str, Base64.DEFAULT)
+        } catch (_: Throwable) {
+            java.util.Base64.getDecoder().decode(str.trim())
+        }
+    }
+
     // =========================================================================
     // M2: Optional backup-at-rest encryption (Encrypt-then-MAC):
     //   • AES-256-CBC ciphertext, wrapped with an HMAC-SHA256 tag,
@@ -96,10 +112,10 @@ object DatabaseBackupManager {
             val envelope = JSONObject()
             envelope.put("enc", 1)
             envelope.put("iterations", backupPbkdf2Iterations)
-            envelope.put("salt", Base64.encodeToString(salt, Base64.NO_WRAP))
-            envelope.put("iv", Base64.encodeToString(iv, Base64.NO_WRAP))
-            envelope.put("mac", Base64.encodeToString(tag, Base64.NO_WRAP))
-            envelope.put("data", Base64.encodeToString(ciphertext, Base64.NO_WRAP))
+            envelope.put("salt", base64Encode(salt))
+            envelope.put("iv", base64Encode(iv))
+            envelope.put("mac", base64Encode(tag))
+            envelope.put("data", base64Encode(ciphertext))
             Result.success(envelope.toString())
         } catch (e: Exception) {
             Result.failure(Exception("Backup encryption failed: ${e.localizedMessage}"))
@@ -116,10 +132,10 @@ object DatabaseBackupManager {
                 return@withContext Result.failure(Exception("A backup password is required to restore this file."))
             }
 
-            val salt = Base64.decode(root.getString("salt"), Base64.DEFAULT)
-            val iv = Base64.decode(root.getString("iv"), Base64.DEFAULT)
-            val expectedTag = Base64.decode(root.getString("mac"), Base64.DEFAULT)
-            val ciphertext = Base64.decode(root.getString("data"), Base64.DEFAULT)
+            val salt = base64Decode(root.getString("salt"))
+            val iv = base64Decode(root.getString("iv"))
+            val expectedTag = base64Decode(root.getString("mac"))
+            val ciphertext = base64Decode(root.getString("data"))
             val (encKey, macKey) = deriveBackupKeys(passphrase, salt)
 
             val mac = Mac.getInstance("HmacSHA256")
@@ -985,7 +1001,8 @@ object DatabaseBackupManager {
         val transactionsCount: Int,
         val usersCount: Int,
         val checksum: String,
-        val file: File
+        val file: File,
+        val isEncrypted: Boolean = false
     )
 
     fun getPersistentBackupDirectory(context: Context): File {
@@ -1071,10 +1088,11 @@ object DatabaseBackupManager {
                 stream.bufferedReader(Charsets.UTF_8).readText()
             }
             val root = JSONObject(content)
+            val isEncrypted = root.optInt("enc", 0) == 1
             val dateTime = root.optString("dateTime", formatDate(Date(file.lastModified())))
             val checksum = root.optString("checksum", "")
 
-            var storeName = "StorePoint Store"
+            var storeName = if (isEncrypted) "Encrypted Vault Backup" else "StorePoint Store"
             var prodCount = 0
             var txCount = 0
             var userCount = 0
@@ -1102,7 +1120,8 @@ object DatabaseBackupManager {
                 transactionsCount = txCount,
                 usersCount = userCount,
                 checksum = checksum,
-                file = file
+                file = file,
+                isEncrypted = isEncrypted
             )
         } catch (e: Exception) {
             Log.w(TAG, "Error peeking backup metadata for ${file.name}: ${e.message}")

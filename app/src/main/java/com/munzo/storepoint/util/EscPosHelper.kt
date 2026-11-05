@@ -10,6 +10,8 @@ import androidx.core.content.ContextCompat
 import com.munzo.storepoint.data.StoreConfig
 import com.munzo.storepoint.data.Transaction
 import com.munzo.storepoint.data.TransactionItem
+import com.munzo.storepoint.data.ReturnTransaction
+import com.munzo.storepoint.data.ReturnItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -54,6 +56,10 @@ object EscPosHelper {
     val CMD_FEED_LINES = byteArrayOf(0x1B, 0x64, 0x05) // ESC d 5 (Feed 5 lines for manual tear bar)
     val LF = byteArrayOf(0x0A) // Line Feed
 
+    // Barcode command constants
+    val CMD_BARCODE_HRI_BELOW = byteArrayOf(0x1D, 0x48, 0x02) // GS H 2 (HRI characters printed below)
+    val CMD_BARCODE_FONT_A = byteArrayOf(0x1D, 0x66, 0x00) // GS f 0 (Font A for HRI characters)
+
     data class DiscoveredBluetoothPrinter(
         val name: String,
         val macAddress: String,
@@ -97,6 +103,52 @@ object EscPosHelper {
     }
 
     /**
+     * Builds ESC/POS barcode bytes for standard 1D thermal receipt printing.
+     * Uses Code 128 (Format 2: GS k 73 n) or Code 39 (GS k 69 n).
+     */
+    fun buildBarcodeEscPos(
+        data: String,
+        isCode128: Boolean = true,
+        height: Int = 50,
+        width: Int = 2
+    ): ByteArray {
+        val clean = data.trim().filter { it.isLetterOrDigit() || it == '-' }
+        if (clean.isBlank()) return byteArrayOf()
+
+        val out = ByteArrayOutputStream()
+        // Center alignment
+        out.write(CMD_ALIGN_CENTER)
+        // Select HRI character print position (2 = below barcode)
+        out.write(CMD_BARCODE_HRI_BELOW)
+        // Select HRI font (0 = Font A)
+        out.write(CMD_BARCODE_FONT_A)
+        // Set barcode height in dots
+        out.write(byteArrayOf(0x1D, 0x68, height.coerceIn(20, 255).toByte()))
+        // Set barcode module width
+        out.write(byteArrayOf(0x1D, 0x77, width.coerceIn(1, 4).toByte()))
+
+        if (isCode128) {
+            // Code 128 Format 2 (GS k 73 n) with Code Set B prefix {B (0x7B, 0x42)
+            val asciiBytes = clean.toByteArray(Charsets.US_ASCII)
+            val payload = ByteArrayOutputStream()
+            payload.write(0x7B) // '{'
+            payload.write(0x42) // 'B'
+            payload.write(asciiBytes)
+            val bytes = payload.toByteArray()
+
+            out.write(byteArrayOf(0x1D, 0x6B, 73, bytes.size.toByte()))
+            out.write(bytes)
+        } else {
+            // Code 39 Format 2 (GS k 69 n)
+            val asciiBytes = clean.uppercase(Locale.US).toByteArray(Charsets.US_ASCII)
+            out.write(byteArrayOf(0x1D, 0x6B, 69, asciiBytes.size.toByte()))
+            out.write(asciiBytes)
+        }
+        out.write(LF)
+        return out.toByteArray()
+    }
+
+    /**
      * Builds a complete, formatted ESC/POS receipt for thermal printers (58mm XP-58 or 80mm width).
      * Automatically handles manual tear-bar feeding without cut-code corruption for XP-58 Plus.
      */
@@ -106,7 +158,12 @@ object EscPosHelper {
         items: List<TransactionItem>,
         is80mm: Boolean = false,
         kickDrawerOnPrint: Boolean = true,
-        hasAutoCutter: Boolean = is80mm
+        hasAutoCutter: Boolean = is80mm,
+        customHeader: String? = null,
+        customFooter: String? = null,
+        storeTin: String? = null,
+        storeAddress: String? = null,
+        printBarcode: Boolean = true
     ): ByteArray {
         val out = ByteArrayOutputStream()
         val totalCols = if (is80mm) 48 else 32
@@ -131,6 +188,17 @@ object EscPosHelper {
         out.write("$storeName\n".toByteArray(Charsets.US_ASCII))
         out.write(CMD_FONT_NORMAL)
         out.write(CMD_BOLD_OFF)
+
+        if (!storeAddress.isNullOrBlank()) {
+            out.write("${sanitizeForEscPos(storeAddress, curr)}\n".toByteArray(Charsets.US_ASCII))
+        }
+        if (!storeTin.isNullOrBlank()) {
+            val tinStr = if (storeTin.contains("TIN", ignoreCase = true)) storeTin else "VAT Reg. TIN: $storeTin"
+            out.write("${sanitizeForEscPos(tinStr, curr)}\n".toByteArray(Charsets.US_ASCII))
+        }
+        if (!customHeader.isNullOrBlank()) {
+            out.write("${sanitizeForEscPos(customHeader, curr)}\n".toByteArray(Charsets.US_ASCII))
+        }
         out.write("Official POS Sales Receipt\n".toByteArray(Charsets.US_ASCII))
         out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
 
@@ -197,10 +265,21 @@ object EscPosHelper {
         out.write("$changeStr\n".toByteArray(Charsets.US_ASCII))
         out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
 
+        // Barcode printing
+        if (printBarcode && transaction.id > 0) {
+            val barcodeData = "TX-${transaction.id}"
+            out.write(buildBarcodeEscPos(barcodeData, isCode128 = true, height = 45, width = if (is80mm) 2 else 2))
+            out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+        }
+
         // Footer (Centered)
         out.write(CMD_ALIGN_CENTER)
-        out.write("Thank you for your business!\n".toByteArray(Charsets.US_ASCII))
-        out.write("Please come again.\n".toByteArray(Charsets.US_ASCII))
+        if (!customFooter.isNullOrBlank()) {
+            out.write("${sanitizeForEscPos(customFooter, curr)}\n".toByteArray(Charsets.US_ASCII))
+        } else {
+            out.write("Thank you for your business!\n".toByteArray(Charsets.US_ASCII))
+            out.write("Please come again.\n".toByteArray(Charsets.US_ASCII))
+        }
 
         // Paper Finish: Cut if auto-cutter is present; otherwise feed lines past tear-bar (XP-58 Plus)
         if (hasAutoCutter) {
@@ -208,6 +287,275 @@ object EscPosHelper {
             out.write(CMD_PAPER_CUT)
         } else {
             // XP-58 Plus manual tear bar: feed 5 lines so receipt text clears the tear blade
+            out.write(CMD_FEED_LINES)
+            out.write("\n\n".toByteArray(Charsets.US_ASCII))
+        }
+
+        return out.toByteArray()
+    }
+
+    /**
+     * Builds an official thermal return/refund slip in ESC/POS format.
+     */
+    fun buildRefundReceiptEscPos(
+        storeConfig: StoreConfig,
+        returnTransaction: ReturnTransaction,
+        items: List<ReturnItem>,
+        is80mm: Boolean = false,
+        kickDrawerOnPrint: Boolean = false,
+        hasAutoCutter: Boolean = is80mm,
+        customHeader: String? = null,
+        customFooter: String? = null,
+        storeTin: String? = null,
+        storeAddress: String? = null,
+        printBarcode: Boolean = true
+    ): ByteArray {
+        val out = ByteArrayOutputStream()
+        val totalCols = if (is80mm) 48 else 32
+        val curr = safeCurrencySymbol(storeConfig.currencySymbol)
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        val storeName = sanitizeForEscPos(storeConfig.storeName, curr)
+
+        // Initialize Printer & Select Standard Code Page (CP437)
+        out.write(CMD_INIT)
+        out.write(CMD_CODEPAGE_CP437)
+
+        // Cash Drawer Kick Pulse (if cash refund payout enabled)
+        if (kickDrawerOnPrint) {
+            out.write(CMD_DRAWER_KICK_PIN2)
+            out.write(CMD_DRAWER_KICK_PIN5)
+        }
+
+        // Header: Store Name (Centered, Large, Bold)
+        out.write(CMD_ALIGN_CENTER)
+        out.write(CMD_FONT_LARGE)
+        out.write(CMD_BOLD_ON)
+        out.write("$storeName\n".toByteArray(Charsets.US_ASCII))
+        out.write(CMD_FONT_NORMAL)
+        out.write(CMD_BOLD_OFF)
+
+        if (!storeAddress.isNullOrBlank()) {
+            out.write("${sanitizeForEscPos(storeAddress, curr)}\n".toByteArray(Charsets.US_ASCII))
+        }
+        if (!storeTin.isNullOrBlank()) {
+            val tinStr = if (storeTin.contains("TIN", ignoreCase = true)) storeTin else "VAT Reg. TIN: $storeTin"
+            out.write("${sanitizeForEscPos(tinStr, curr)}\n".toByteArray(Charsets.US_ASCII))
+        }
+        if (!customHeader.isNullOrBlank()) {
+            out.write("${sanitizeForEscPos(customHeader, curr)}\n".toByteArray(Charsets.US_ASCII))
+        }
+
+        out.write("*** RETURN / REFUND VOUCHER ***\n".toByteArray(Charsets.US_ASCII))
+        out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+
+        // Transaction Meta (Left Aligned)
+        out.write(CMD_ALIGN_LEFT)
+        out.write("Return Slip #: ${returnTransaction.id}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Original Sale #: ${returnTransaction.originalTransactionId}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Date: ${sdf.format(Date(returnTransaction.timestamp))}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Cashier: ${sanitizeForEscPos(returnTransaction.cashierUsername, curr)}\n".toByteArray(Charsets.US_ASCII))
+        if (returnTransaction.customerName.isNotBlank()) {
+            out.write("Customer: ${sanitizeForEscPos(returnTransaction.customerName, curr)}\n".toByteArray(Charsets.US_ASCII))
+        }
+        out.write("Refund Tender: ${sanitizeForEscPos(returnTransaction.refundMethod, curr)}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Return Reason: ${sanitizeForEscPos(returnTransaction.returnReason, curr)}\n".toByteArray(Charsets.US_ASCII))
+        if (returnTransaction.notes.isNotBlank()) {
+            out.write("Notes: ${sanitizeForEscPos(returnTransaction.notes, curr)}\n".toByteArray(Charsets.US_ASCII))
+        }
+        out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+
+        // Column Header
+        val colHeader = if (is80mm) {
+            padColumns("RETURNED ITEM", "QTY", "UNIT", "REFUND", totalCols)
+        } else {
+            padColumns("ITEM", "QTY", "REFUND", totalCols)
+        }
+        out.write(CMD_BOLD_ON)
+        out.write("$colHeader\n".toByteArray(Charsets.US_ASCII))
+        out.write(CMD_BOLD_OFF)
+        out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+
+        // Items
+        items.forEach { item ->
+            val sanitizedName = sanitizeForEscPos(item.productName, curr)
+            val conditionStr = if (item.restockToInventory) "[Restocked]" else "[Damaged/Write-Off]"
+            val unitStr = "$curr${String.format(Locale.US, "%.2f", item.unitPrice)}"
+            val refundStr = "$curr${String.format(Locale.US, "%.2f", item.refundAmount)}"
+
+            if (is80mm) {
+                val line = padColumns(sanitizedName, "${item.quantity}", unitStr, refundStr, totalCols)
+                out.write("$line\n".toByteArray(Charsets.US_ASCII))
+                out.write("  $conditionStr\n".toByteArray(Charsets.US_ASCII))
+            } else {
+                if (sanitizedName.length > 14) {
+                    out.write("$sanitizedName\n".toByteArray(Charsets.US_ASCII))
+                    val subLine = padColumns("  $conditionStr", "${item.quantity}", refundStr, totalCols)
+                    out.write("$subLine\n".toByteArray(Charsets.US_ASCII))
+                } else {
+                    val line = padColumns(sanitizedName, "${item.quantity}", refundStr, totalCols)
+                    out.write("$line\n".toByteArray(Charsets.US_ASCII))
+                    out.write("  $conditionStr\n".toByteArray(Charsets.US_ASCII))
+                }
+            }
+        }
+
+        out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+
+        // Total Refunded
+        val totalRefundStr = "$curr${String.format(Locale.US, "%.2f", returnTransaction.totalRefundAmount)}"
+        val totalLine = padColumns("TOTAL REFUNDED:", totalRefundStr, totalCols)
+        out.write(CMD_BOLD_ON)
+        out.write(CMD_FONT_LARGE)
+        out.write("$totalLine\n".toByteArray(Charsets.US_ASCII))
+        out.write(CMD_FONT_NORMAL)
+        out.write(CMD_BOLD_OFF)
+        out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+
+        // Barcode
+        if (printBarcode && returnTransaction.id > 0) {
+            val barcodeData = "REF-${returnTransaction.id}"
+            out.write(buildBarcodeEscPos(barcodeData, isCode128 = true, height = 45, width = if (is80mm) 2 else 2))
+            out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+        }
+
+        // Footer
+        out.write(CMD_ALIGN_CENTER)
+        if (!customFooter.isNullOrBlank()) {
+            out.write("${sanitizeForEscPos(customFooter, curr)}\n".toByteArray(Charsets.US_ASCII))
+        } else {
+            out.write("REFUND PROCESSED AT CASHIER REGISTER\n".toByteArray(Charsets.US_ASCII))
+            out.write("Authorized Supervisor Audit Copy\n".toByteArray(Charsets.US_ASCII))
+        }
+        out.write("\n".toByteArray(Charsets.US_ASCII))
+
+        // Cut / Tear Bar Feed
+        if (hasAutoCutter) {
+            out.write(CMD_PAPER_CUT)
+        } else {
+            out.write(CMD_FEED_LINES)
+            out.write("\n\n".toByteArray(Charsets.US_ASCII))
+        }
+
+        return out.toByteArray()
+    }
+
+    /**
+     * Builds an official Cash-In / Cash-Out thermal drawer slip in ESC/POS format
+     * for logging petty cash insertions and operational cash disbursements.
+     */
+    fun buildDrawerSlipEscPos(
+        storeConfig: StoreConfig,
+        drawerTransaction: com.munzo.storepoint.data.DrawerTransaction,
+        balanceBefore: Double? = null,
+        balanceAfter: Double? = null,
+        is80mm: Boolean = false,
+        kickDrawerOnPrint: Boolean = true,
+        hasAutoCutter: Boolean = is80mm,
+        customHeader: String? = null,
+        storeTin: String? = null,
+        printBarcode: Boolean = true
+    ): ByteArray {
+        val out = ByteArrayOutputStream()
+        val totalCols = if (is80mm) 48 else 32
+        val curr = safeCurrencySymbol(storeConfig.currencySymbol)
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        val storeName = sanitizeForEscPos(storeConfig.storeName, curr)
+        val isCashIn = drawerTransaction.amount >= 0.0
+
+        // Initialize Printer & Select Standard Code Page (CP437)
+        out.write(CMD_INIT)
+        out.write(CMD_CODEPAGE_CP437)
+
+        // Cash Drawer Kick Pulse (if enabled)
+        if (kickDrawerOnPrint) {
+            out.write(CMD_DRAWER_KICK_PIN2)
+            out.write(CMD_DRAWER_KICK_PIN5)
+        }
+
+        // Header: Store Name (Centered, Large, Bold)
+        out.write(CMD_ALIGN_CENTER)
+        out.write(CMD_FONT_LARGE)
+        out.write(CMD_BOLD_ON)
+        out.write("$storeName\n".toByteArray(Charsets.US_ASCII))
+        out.write(CMD_FONT_NORMAL)
+        out.write(CMD_BOLD_OFF)
+
+        if (!storeTin.isNullOrBlank()) {
+            val tinFormatted = if (storeTin.contains("TIN", ignoreCase = true)) storeTin else "VAT Reg. TIN: $storeTin"
+            out.write("${sanitizeForEscPos(tinFormatted, curr)}\n".toByteArray(Charsets.US_ASCII))
+        }
+        if (!customHeader.isNullOrBlank()) {
+            out.write("${sanitizeForEscPos(customHeader, curr)}\n".toByteArray(Charsets.US_ASCII))
+        }
+
+        out.write(CMD_BOLD_ON)
+        val slipTitle = if (isCashIn) {
+            "*** CASH-IN / FLOAT INSERTION ***\n"
+        } else {
+            "*** CASH-OUT / DRAWER PAYOUT ***\n"
+        }
+        out.write(slipTitle.toByteArray(Charsets.US_ASCII))
+        out.write(CMD_BOLD_OFF)
+        out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+
+        // Transaction Meta (Left Aligned)
+        out.write(CMD_ALIGN_LEFT)
+        out.write("Slip #: DRW-${drawerTransaction.id}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Session #: #SES-${drawerTransaction.sessionId}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Date: ${sdf.format(Date(drawerTransaction.timestamp))}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Cashier: ${sanitizeForEscPos(drawerTransaction.cashierUsername, curr)}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Action: ${sanitizeForEscPos(drawerTransaction.type, curr)}\n".toByteArray(Charsets.US_ASCII))
+        out.write("Reason: ${sanitizeForEscPos(drawerTransaction.reason, curr)}\n".toByteArray(Charsets.US_ASCII))
+        out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+
+        // Amount Display (Large & Bold)
+        val absAmount = Math.abs(drawerTransaction.amount)
+        val amountStr = "$curr${String.format(Locale.US, "%.2f", absAmount)}"
+        val amountLabel = if (isCashIn) "CASH INFLOW:" else "CASH DISBURSED:"
+        out.write(CMD_ALIGN_RIGHT)
+        out.write(CMD_BOLD_ON)
+        out.write(CMD_FONT_LARGE)
+        out.write(padColumns(amountLabel, amountStr, totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(CMD_FONT_NORMAL)
+        out.write(CMD_BOLD_OFF)
+
+        // Drawer Ledger Before & After
+        if (balanceBefore != null && balanceAfter != null) {
+            out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(padColumns("Drawer Before:", "$curr${String.format(Locale.US, "%.2f", balanceBefore)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            val signStr = if (isCashIn) "+$amountStr" else "-$amountStr"
+            out.write(padColumns("Adjustment:", signStr, totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(CMD_BOLD_ON)
+            out.write(padColumns("New Drawer Balance:", "$curr${String.format(Locale.US, "%.2f", balanceAfter)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(CMD_BOLD_OFF)
+        }
+
+        out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+
+        // Barcode
+        if (printBarcode && drawerTransaction.id > 0) {
+            val barcodeData = "DRW-${drawerTransaction.id}"
+            out.write(buildBarcodeEscPos(barcodeData, isCode128 = true, height = 45, width = if (is80mm) 2 else 2))
+            out.write(dividerLine(totalCols).toByteArray(Charsets.US_ASCII))
+        }
+
+        // Signatures (Cashier and Supervisor)
+        out.write(CMD_ALIGN_CENTER)
+        out.write("Petty Cash / Drawer Audit Copy\n\n".toByteArray(Charsets.US_ASCII))
+        out.write(padColumns("Cashier Signature", "Manager Signature", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+        out.write(padColumns("_________________", "_________________", totalCols).toByteArray(Charsets.US_ASCII))
+        out.write(LF)
+
+        // Paper Cut / Feed Lines
+        if (hasAutoCutter) {
+            out.write("\n\n".toByteArray(Charsets.US_ASCII))
+            out.write(CMD_PAPER_CUT)
+        } else {
             out.write(CMD_FEED_LINES)
             out.write("\n\n".toByteArray(Charsets.US_ASCII))
         }
@@ -346,6 +694,14 @@ object EscPosHelper {
         return out.toByteArray()
     }
 
+    data class DrawerBalancingSummary(
+        val startingFloat: Double = 0.0,
+        val cashSales: Double = 0.0,
+        val cashIn: Double = 0.0,
+        val cashOut: Double = 0.0,
+        val cashRefunds: Double = 0.0
+    )
+
     /**
      * Builds a detailed Shift Handover & Dual Drawer/Wallet Reconciliation thermal receipt.
      */
@@ -353,8 +709,10 @@ object EscPosHelper {
         storeConfig: StoreConfig,
         reconciliation: com.munzo.storepoint.data.ShiftReconciliation,
         startTime: Long,
+        formulaSummary: DrawerBalancingSummary? = null,
         is80mm: Boolean = false,
-        hasAutoCutter: Boolean = is80mm
+        hasAutoCutter: Boolean = is80mm,
+        printBarcode: Boolean = true
     ): ByteArray {
         val totalCols = if (is80mm) 48 else 32
         val out = ByteArrayOutputStream()
@@ -402,6 +760,23 @@ object EscPosHelper {
         out.write(divider.toByteArray(Charsets.US_ASCII))
 
         // Cash Balancing Summary
+        if (formulaSummary != null) {
+            out.write(CMD_BOLD_ON)
+            out.write("DRAWER FORMULA BREAKDOWN\n".toByteArray(Charsets.US_ASCII))
+            out.write(CMD_BOLD_OFF)
+            out.write(padColumns(" Starting Float:", "$curr${String.format(Locale.US, "%.2f", formulaSummary.startingFloat)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(padColumns(" (+) Cash Sales:", "+$curr${String.format(Locale.US, "%.2f", formulaSummary.cashSales)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(padColumns(" (+) Cash In:", "+$curr${String.format(Locale.US, "%.2f", formulaSummary.cashIn)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(padColumns(" (-) Cash Out:", "-$curr${String.format(Locale.US, "%.2f", formulaSummary.cashOut)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(padColumns(" (-) Cash Refunds:", "-$curr${String.format(Locale.US, "%.2f", formulaSummary.cashRefunds)}", totalCols).toByteArray(Charsets.US_ASCII))
+            out.write(LF)
+            out.write(divider.toByteArray(Charsets.US_ASCII))
+        }
+
         out.write(padColumns("Total Counted Cash:", "$curr${String.format(Locale.US, "%.2f", reconciliation.totalCountedCash)}", totalCols).toByteArray(Charsets.US_ASCII))
         out.write(LF)
         out.write(padColumns("Expected Cash Ledger:", "$curr${String.format(Locale.US, "%.2f", reconciliation.expectedCash)}", totalCols).toByteArray(Charsets.US_ASCII))
@@ -452,6 +827,13 @@ object EscPosHelper {
             out.write("Approved by: ${sanitizeForEscPos(reconciliation.managerUsername, curr)}\n".toByteArray(Charsets.US_ASCII))
             val cleanReason = sanitizeForEscPos(reconciliation.discrepancyReason.take(60), curr)
             out.write("Reason: $cleanReason\n".toByteArray(Charsets.US_ASCII))
+            out.write(divider.toByteArray(Charsets.US_ASCII))
+        }
+
+        // Barcode
+        if (printBarcode && reconciliation.sessionId > 0) {
+            val barcodeData = "SES-${reconciliation.sessionId}"
+            out.write(buildBarcodeEscPos(barcodeData, isCode128 = true, height = 45, width = if (is80mm) 2 else 2))
             out.write(divider.toByteArray(Charsets.US_ASCII))
         }
 

@@ -40,6 +40,52 @@ object DigitalServicesHelper {
         RegexOption.IGNORE_CASE
     )
 
+    fun getUssdCodeForNetwork(network: String): String = when {
+        network.equals("Smart", ignoreCase = true) || network.equals("TNT", ignoreCase = true) -> "*123#"
+        network.equals("Globe", ignoreCase = true) || network.equals("TM", ignoreCase = true) -> "*143#"
+        network.equals("DITO", ignoreCase = true) -> "*185#"
+        else -> "*123#"
+    }
+
+    fun getSmsCommand(
+        service: String,
+        network: String,
+        mobileNumber: String,
+        amount: Double
+    ): String {
+        val amtInt = amount.toInt()
+        val cleanNumber = mobileNumber.replace("+63", "0").filter { it.isDigit() }
+        return when {
+            service.equals("Load", ignoreCase = true) -> {
+                when {
+                    network.equals("Smart", ignoreCase = true) || network.equals("TNT", ignoreCase = true) ->
+                        "PASALOAD $cleanNumber $amtInt"
+                    network.equals("Globe", ignoreCase = true) || network.equals("TM", ignoreCase = true) ->
+                        "SHARE $amtInt"
+                    network.equals("DITO", ignoreCase = true) ->
+                        "PASALOAD $cleanNumber $amtInt"
+                    else -> "LOAD $cleanNumber $amtInt"
+                }
+            }
+            service.equals("GCash", ignoreCase = true) -> "SEND ₱${String.format(java.util.Locale.US, "%.2f", amount)} to $cleanNumber"
+            service.equals("Maya", ignoreCase = true) -> "SEND ₱${String.format(java.util.Locale.US, "%.2f", amount)} to $cleanNumber"
+            else -> "SEND $amount to $cleanNumber"
+        }
+    }
+
+    fun launchSms(context: Context, recipientNumber: String, messageText: String = "") {
+        val uri = Uri.parse("smsto:" + Uri.encode(recipientNumber))
+        val intent = Intent(Intent.ACTION_SENDTO, uri).apply {
+            putExtra("sms_body", messageText)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Cannot open SMS app: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun parseItem(productName: String): PendingDigitalService? {
         val trimmed = productName.trim()
         val match = DIGITAL_REGEX.find(trimmed)
@@ -89,7 +135,7 @@ object DigitalServicesHelper {
         val feeMatch = Regex("""Fee:\s*([0-9.]+)""", RegexOption.IGNORE_CASE).find(trimmed)
         val fee = feeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
 
-        val netMatch = listOf("Smart", "TNT", "Globe", "TM").firstOrNull { trimmed.contains(it, ignoreCase = true) } ?: ""
+        val netMatch = listOf("Smart", "TNT", "Globe", "TM", "DITO").firstOrNull { trimmed.contains(it, ignoreCase = true) } ?: ""
 
         return PendingDigitalService(
             rawName = productName,

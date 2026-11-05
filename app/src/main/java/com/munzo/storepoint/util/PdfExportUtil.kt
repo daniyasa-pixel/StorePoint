@@ -10,8 +10,10 @@ import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.munzo.storepoint.data.CashierSession
 import com.munzo.storepoint.data.Product
 import com.munzo.storepoint.data.StoreConfig
+import com.munzo.storepoint.data.StorePointRepository
 import com.munzo.storepoint.data.Transaction
 import com.munzo.storepoint.data.TransactionItem
 import java.io.File
@@ -24,7 +26,7 @@ object PdfExportUtil {
 
     private val df = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
-    private fun formatDate(date: Date): String = synchronized(df) {
+    fun formatDate(date: Date): String = synchronized(df) {
         df.format(date)
     }
 
@@ -42,6 +44,81 @@ object PdfExportUtil {
             Toast.makeText(context, "Error sharing file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         }
     }
+
+    // =========================================================================
+    // CSV EXPORT ENGINE
+    // =========================================================================
+
+    fun buildSalesSummaryCsv(transactions: List<Transaction>): String {
+        val sb = java.lang.StringBuilder()
+        sb.append("Transaction ID,Timestamp,Date Time,Cashier,Customer,Payment Method,Subtotal,Tax Amount,Total Amount,Status\n")
+        transactions.forEach { t ->
+            val dateStr = formatDate(Date(t.timestamp))
+            sb.append("#${t.id},${t.timestamp},\"$dateStr\",${t.cashierUsername},\"${t.customerName.replace("\"", "\"\"")}\",${t.paymentMethod},${String.format(Locale.US, "%.2f", t.subtotal)},${String.format(Locale.US, "%.2f", t.taxAmount)},${String.format(Locale.US, "%.2f", t.totalAmount)},${t.status}\n")
+        }
+        return sb.toString()
+    }
+
+    fun exportSalesSummaryCsv(context: Context, storeConfig: StoreConfig, transactions: List<Transaction>) {
+        try {
+            val csvContent = buildSalesSummaryCsv(transactions)
+            val file = File(context.cacheDir, "storepoint_sales_summary.csv")
+            file.writeText(csvContent, Charsets.UTF_8)
+            shareFile(context, file, "text/csv")
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to export Sales CSV: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun buildRegisterJournalCsv(sessions: List<CashierSession>): String {
+        val sb = java.lang.StringBuilder()
+        sb.append("Session ID,Cashier Username,Start Time,End Time,Starting Cash,Ending Cash,Status\n")
+        sessions.forEach { s ->
+            val startStr = formatDate(Date(s.startTime))
+            val endStr = if (s.endTime != null) formatDate(Date(s.endTime)) else "ACTIVE"
+            val endCashStr = if (s.endingCash != null) String.format(Locale.US, "%.2f", s.endingCash) else "N/A"
+            sb.append("#${s.id},${s.cashierUsername},\"$startStr\",\"$endStr\",${String.format(Locale.US, "%.2f", s.startingCash)},$endCashStr,${s.status}\n")
+        }
+        return sb.toString()
+    }
+
+    fun exportDailyRegisterJournalCsv(context: Context, storeConfig: StoreConfig, sessions: List<CashierSession>) {
+        try {
+            val csvContent = buildRegisterJournalCsv(sessions)
+            val file = File(context.cacheDir, "storepoint_register_journal.csv")
+            file.writeText(csvContent, Charsets.UTF_8)
+            shareFile(context, file, "text/csv")
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to export Register Journal CSV: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun buildInventoryValuationCsv(products: List<Product>): String {
+        val sb = java.lang.StringBuilder()
+        sb.append("Product ID,Barcode,Product Name,Stock Count,Base UOM,Cost Price,Retail Price,Total Cost Valuation,Total Retail Valuation,Projected Profit,Track Inventory\n")
+        products.forEach { p ->
+            val totalCost = StorePointRepository.roundMoney(p.cost * p.stockCount)
+            val totalRetail = StorePointRepository.roundMoney(p.price * p.stockCount)
+            val potentialProfit = StorePointRepository.roundMoney((p.price - p.cost) * p.stockCount)
+            sb.append("#${p.id},\"${p.barcode}\",\"${p.name.replace("\"", "\"\"")}\",${p.stockCount},\"${p.baseUom}\",${String.format(Locale.US, "%.2f", p.cost)},${String.format(Locale.US, "%.2f", p.price)},${String.format(Locale.US, "%.2f", totalCost)},${String.format(Locale.US, "%.2f", totalRetail)},${String.format(Locale.US, "%.2f", potentialProfit)},${p.trackInventory}\n")
+        }
+        return sb.toString()
+    }
+
+    fun exportInventoryValuationCsv(context: Context, storeConfig: StoreConfig, products: List<Product>) {
+        try {
+            val csvContent = buildInventoryValuationCsv(products)
+            val file = File(context.cacheDir, "storepoint_inventory_valuation.csv")
+            file.writeText(csvContent, Charsets.UTF_8)
+            shareFile(context, file, "text/csv")
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to export Inventory Valuation CSV: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // =========================================================================
+    // PDF EXPORT ENGINE
+    // =========================================================================
 
     /**
      * Generates a printable POS Receipt as PDF and triggers the sharing interface.
@@ -99,84 +176,71 @@ object PdfExportUtil {
             canvas.drawText("Tx ID: #STP-${transaction.id}", (width / 2).toFloat(), y, paintText)
             y += 15f
 
-            // Draw Separator Line
+            // Divider line
             paintText.textAlign = Paint.Align.LEFT
-            canvas.drawText("----------------------------------------", 10f, y, paintText)
-            y += 12f
-
-            // Table Header
-            paintBold.textAlign = Paint.Align.LEFT
-            canvas.drawText("Item Details", 15f, y, paintBold)
-            paintBold.textAlign = Paint.Align.RIGHT
-            canvas.drawText("Qty   Price", (width - 15).toFloat(), y, paintBold)
+            canvas.drawLine(15f, y, (width - 15).toFloat(), y, paintBold)
             y += 15f
 
-            canvas.drawText("----------------------------------------", 10f, y, paintText)
+            // Items header
+            canvas.drawText("ITEM", 15f, y, paintBold)
+            canvas.drawText("QTY", 180f, y, paintBold)
+            canvas.drawText("TOTAL", 240f, y, paintBold)
+            y += 10f
+            canvas.drawLine(15f, y, (width - 15).toFloat(), y, paintText)
             y += 15f
 
-            // Draw Items
-            paintText.textAlign = Paint.Align.LEFT
+            // Line Items
             for (item in items) {
-                val nameText = if (item.productName.length > 20) item.productName.substring(0, 18) + ".." else item.productName
-                canvas.drawText(nameText, 15f, y, paintText)
-                
-                val rightText = "${item.quantity} x ${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", item.price)}"
-                paintText.textAlign = Paint.Align.RIGHT
-                canvas.drawText(rightText, (width - 15).toFloat(), y, paintText)
-                paintText.textAlign = Paint.Align.LEFT
-                y += 20f
+                val itemName = if (item.productName.length > 20) item.productName.substring(0, 18) + ".." else item.productName
+                canvas.drawText(itemName, 15f, y, paintText)
+                canvas.drawText("${item.quantity} ${item.uomName}", 180f, y, paintText)
+                val totalItemPrice = item.price * item.quantity
+                canvas.drawText(String.format(Locale.US, "%.2f", totalItemPrice), 240f, y, paintText)
+                y += 15f
             }
 
-            canvas.drawText("----------------------------------------", 10f, y, paintText)
-            y += 15f
-
-            // Summary Calculations
-            paintText.textAlign = Paint.Align.LEFT
-            canvas.drawText("VATable Sales (Net):", 30f, y, paintText)
-            paintText.textAlign = Paint.Align.RIGHT
-            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", transaction.subtotal)}", (width - 30).toFloat(), y, paintText)
-            y += 14f
-
-            paintText.textAlign = Paint.Align.LEFT
-            canvas.drawText("12% VAT (Inc.):", 30f, y, paintText)
-            paintText.textAlign = Paint.Align.RIGHT
-            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", transaction.taxAmount)}", (width - 30).toFloat(), y, paintText)
-            y += 14f
-
-            paintBold.textAlign = Paint.Align.LEFT
-            canvas.drawText("TOTAL AMOUNT (VAT Inc.):", 30f, y, paintBold)
-            paintBold.textAlign = Paint.Align.RIGHT
-            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", transaction.totalAmount)}", (width - 30).toFloat(), y, paintBold)
+            y += 5f
+            canvas.drawLine(15f, y, (width - 15).toFloat(), y, paintText)
             y += 18f
 
-            paintText.textAlign = Paint.Align.LEFT
-            canvas.drawText("Paid via ${transaction.paymentMethod}:", 30f, y, paintText)
-            paintText.textAlign = Paint.Align.RIGHT
-            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", transaction.cashPaid)}", (width - 30).toFloat(), y, paintText)
-            y += 14f
+            // Summary Totals
+            canvas.drawText("Subtotal:", 140f, y, paintText)
+            canvas.drawText(String.format(Locale.US, "%.2f", transaction.subtotal), 240f, y, paintText)
+            y += 15f
 
-            paintText.textAlign = Paint.Align.LEFT
-            canvas.drawText("Change Returned:", 30f, y, paintText)
-            paintText.textAlign = Paint.Align.RIGHT
-            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", transaction.changeAmount)}", (width - 30).toFloat(), y, paintText)
-            y += 20f
+            if (transaction.taxAmount > 0) {
+                canvas.drawText("Tax (VAT):", 140f, y, paintText)
+                canvas.drawText(String.format(Locale.US, "%.2f", transaction.taxAmount), 240f, y, paintText)
+                y += 15f
+            }
 
-            // Thank you footer
+            canvas.drawText("TOTAL:", 140f, y, paintBold)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", transaction.totalAmount)}", 230f, y, paintBold)
+            y += 18f
+
+            canvas.drawText("Paid (${transaction.paymentMethod}):", 140f, y, paintText)
+            canvas.drawText(String.format(Locale.US, "%.2f", transaction.cashPaid), 240f, y, paintText)
+            y += 15f
+
+            canvas.drawText("Change:", 140f, y, paintText)
+            canvas.drawText(String.format(Locale.US, "%.2f", transaction.changeAmount), 240f, y, paintText)
+            y += 25f
+
+            // Footer
             paintText.textAlign = Paint.Align.CENTER
-            canvas.drawText("TY for shopping at ${storeConfig.storeName}!", (width / 2).toFloat(), y, paintText)
+            canvas.drawText("Thank you for your purchase!", (width / 2).toFloat(), y, paintText)
             y += 12f
-            canvas.drawText("Powered by StorePoint POS (Room DB)", (width / 2).toFloat(), y, paintText)
+            canvas.drawText("Powered by StorePoint POS", (width / 2).toFloat(), y, paintText)
 
             document.finishPage(page)
 
-            // Save PDF to cache and open it
             val file = File(context.cacheDir, "receipt_STP_${transaction.id}.pdf")
             FileOutputStream(file).use { fos ->
                 document.writeTo(fos)
             }
             shareFile(context, file)
         } catch (e: Exception) {
-            Toast.makeText(context, "Failed to write PDF: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Failed to generate Receipt PDF: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         } finally {
             try {
                 document.close()
@@ -238,125 +302,132 @@ object PdfExportUtil {
             // Title Header
             canvas.drawText("StorePoint POS Management System", 40f, y, paintTitle)
             y += 20f
-            canvas.drawText("Operational Analytics & Inventory Report - ${storeConfig.storeName}", 40f, y, paintSubtitle)
+            canvas.drawText("Executive Sales Performance & Operational Audit - ${storeConfig.storeName}", 40f, y, paintSubtitle)
             y += 12f
             canvas.drawText("Generated at: ${formatDate(Date())} | Currency: ${storeConfig.currencySymbol}", 40f, y, paintSubtitle)
             y += 30f
 
-        // Draw Section: Key Financial Metrics
-        canvas.drawText("1. OVERALL FINANCIAL METRICS", 40f, y, paintHeading)
-        y += 20f
+            // Section: Financial Performance
+            canvas.drawText("1. EXECUTIVE FINANCIAL PERFORMANCE", 40f, y, paintHeading)
+            y += 20f
 
-        val totalTransactionsCount = transactions.size
-        val totalRevenue = transactions.sumOf { it.totalAmount }
-        val taxCollected = transactions.sumOf { it.taxAmount }
-        val cashRevenue = transactions.filter { it.paymentMethod == "CASH" }.sumOf { it.totalAmount }
-        val cardRevenue = transactions.filter { it.paymentMethod == "CARD" }.sumOf { it.totalAmount }
+            val totalTransactionsCount = transactions.size
+            val totalRevenue = transactions.sumOf { it.totalAmount }
+            val taxCollected = transactions.sumOf { it.taxAmount }
+            val cashRevenue = transactions.filter { it.paymentMethod == "CASH" }.sumOf { it.totalAmount }
+            val gcashRevenue = transactions.filter { it.paymentMethod.contains("GCASH", ignoreCase = true) }.sumOf { it.totalAmount }
+            val mayaRevenue = transactions.filter { it.paymentMethod.contains("MAYA", ignoreCase = true) }.sumOf { it.totalAmount }
+            val avgBasket = if (totalTransactionsCount > 0) totalRevenue / totalTransactionsCount else 0.0
 
-        canvas.drawText("Total Transactions processed:", 50f, y, paintText)
-        canvas.drawText("$totalTransactionsCount transactions", 250f, y, paintBold)
-        y += 16f
+            canvas.drawText("Total Transactions Processed:", 50f, y, paintText)
+            canvas.drawText("$totalTransactionsCount transactions", 260f, y, paintBold)
+            y += 16f
 
-        canvas.drawText("Gross Revenue streams:", 50f, y, paintText)
-        canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", totalRevenue)}", 250f, y, paintBold)
-        y += 16f
+            canvas.drawText("Daily Gross Sales Revenue:", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", totalRevenue)}", 260f, y, paintBold)
+            y += 16f
 
-        canvas.drawText("Sales Tax (VAT) collected:", 50f, y, paintText)
-        canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", taxCollected)}", 250f, y, paintBold)
-        y += 16f
+            canvas.drawText("Average Basket Ticket Size:", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", avgBasket)}", 260f, y, paintBold)
+            y += 16f
 
-        canvas.drawText("Cash checkout revenue:", 50f, y, paintText)
-        canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", cashRevenue)}", 250f, y, paintBold)
-        y += 16f
+            canvas.drawText("Cash Settlements:", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", cashRevenue)}", 260f, y, paintBold)
+            y += 16f
 
-        canvas.drawText("Card checkout revenue:", 50f, y, paintText)
-        canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", cardRevenue)}", 250f, y, paintBold)
-        y += 30f
+            canvas.drawText("GCash Settlements:", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", gcashRevenue)}", 260f, y, paintBold)
+            y += 16f
 
-        // Draw Section: Inventory Auditing Block
-        canvas.drawText("2. STOCK AUDIT & PRODUCT AVAILABILITY", 40f, y, paintHeading)
-        y += 20f
+            canvas.drawText("Maya / Card Settlements:", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", mayaRevenue)}", 260f, y, paintBold)
+            y += 16f
 
-        val totalProductsInStore = productInventory.size
-        val totalStocksOnHand = productInventory.sumOf { it.stockCount }
-        val outOfStockItems = productInventory.filter { it.stockCount == 0 }
-        val lowStockItems = productInventory.filter { it.stockCount in 1..5 }
+            canvas.drawText("Tax (VAT) Collected:", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", taxCollected)}", 260f, y, paintBold)
+            y += 30f
 
-        canvas.drawText("Total registered Products catalog:", 50f, y, paintText)
-        canvas.drawText("$totalProductsInStore unique items", 250f, y, paintBold)
-        y += 16f
+            // Section: Stock Audit
+            canvas.drawText("2. STOCK AUDIT & PRODUCT AVAILABILITY", 40f, y, paintHeading)
+            y += 20f
 
-        canvas.drawText("Total cumulative Stock pieces:", 50f, y, paintText)
-        canvas.drawText("$totalStocksOnHand units on hand", 250f, y, paintBold)
-        y += 16f
+            val totalProductsInStore = productInventory.size
+            val totalStocksOnHand = productInventory.sumOf { it.stockCount }
+            val outOfStockItems = productInventory.filter { it.stockCount == 0 }
+            val lowStockItems = productInventory.filter { it.stockCount in 1..5 }
 
-        canvas.drawText("Out Of Stock Items (0 units):", 50f, y, paintText)
-        canvas.drawText("${outOfStockItems.size} products critical warning", 250f, y, if (outOfStockItems.isNotEmpty()) paintBold.apply { color = Color.RED } else paintBold)
-        paintBold.apply { color = Color.BLACK }
-        y += 16f
+            canvas.drawText("Total registered Products catalog:", 50f, y, paintText)
+            canvas.drawText("$totalProductsInStore unique items", 260f, y, paintBold)
+            y += 16f
 
-        canvas.drawText("Low Stock Warn levels (1-5 units):", 50f, y, paintText)
-        canvas.drawText("${lowStockItems.size} products flagged warning", 250f, y, paintBold)
-        y += 30f
+            canvas.drawText("Total cumulative Stock pieces:", 50f, y, paintText)
+            canvas.drawText("$totalStocksOnHand units on hand", 260f, y, paintBold)
+            y += 16f
 
-        // Table for critical status
-        canvas.drawText("3. REAL-TIME DETAILED STOCK REGISTER", 40f, y, paintHeading)
-        y += 20f
+            canvas.drawText("Out Of Stock Items (0 units):", 50f, y, paintText)
+            canvas.drawText("${outOfStockItems.size} products critical warning", 260f, y, if (outOfStockItems.isNotEmpty()) paintBold.apply { color = Color.RED } else paintBold)
+            paintBold.apply { color = Color.BLACK }
+            y += 16f
 
-        // Table Header
-        canvas.drawText("Product SKU / ID", 45f, y, paintBold)
-        canvas.drawText("Name Details", 140f, y, paintBold)
-        canvas.drawText("Price", 350f, y, paintBold)
-        canvas.drawText("Stock", 450f, y, paintBold)
-        canvas.drawText("Barcode", 510f, y, paintBold)
-        y += 8f
-        canvas.drawLine(40f, y, 555f, y, paintText)
-        y += 15f
+            canvas.drawText("Low Stock Warning (1-5 units):", 50f, y, paintText)
+            canvas.drawText("${lowStockItems.size} products flagged", 260f, y, paintBold)
+            y += 30f
 
-        val listToDraw = productInventory.take(15) // Limit to top 15 in summary page
-        for (product in listToDraw) {
-            val priceStr = "${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", product.price)}"
-            val stockStr = "${product.stockCount} left"
+            // Table Header
+            canvas.drawText("3. DETAILED PRODUCT CATALOG STATUS", 40f, y, paintHeading)
+            y += 20f
 
-            canvas.drawText("#${product.id}", 45f, y, paintText)
-            val pName = if (product.name.length > 25) product.name.substring(0, 23) + ".." else product.name
-            canvas.drawText(pName, 140f, y, paintText)
-            canvas.drawText(priceStr, 350f, y, paintText)
-            
-            if (product.stockCount == 0) {
-                paintBold.color = Color.RED
-                canvas.drawText("OUT OF STOCK", 450f, y, paintBold)
-                paintBold.color = Color.BLACK
-            } else {
-                canvas.drawText(stockStr, 450f, y, paintText)
-            }
-            
-            canvas.drawText(product.barcode.ifEmpty { "N/A" }, 510f, y, paintText)
-            y += 18f
-        }
-
-        if (productInventory.size > 15) {
-            canvas.drawText("(and ${productInventory.size - 15} more catalog entries preserved in local SQLite database)", 45f, y, paintSubtitle)
+            canvas.drawText("Product SKU / ID", 45f, y, paintBold)
+            canvas.drawText("Product Label", 150f, y, paintBold)
+            canvas.drawText("Price", 350f, y, paintBold)
+            canvas.drawText("Stock", 440f, y, paintBold)
+            canvas.drawText("Barcode", 510f, y, paintBold)
+            y += 8f
+            canvas.drawLine(40f, y, 555f, y, paintText)
             y += 15f
-        }
 
-        // Footer lines
-        y = 800f
-        canvas.drawLine(40f, y, 555f, y, paintText)
-        y += 15f
-        paintSubtitle.textAlign = Paint.Align.CENTER
-        canvas.drawText("Report produced cleanly as PDF. StorePoint POS - uznom (github.com/uznom).", (width / 2).toFloat(), y, paintSubtitle)
+            val listToDraw = productInventory.take(15)
+            for (product in listToDraw) {
+                val priceStr = "${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", product.price)}"
+                val stockStr = "${product.stockCount} ${product.baseUom}"
 
-        document.finishPage(page)
+                canvas.drawText("#${product.id}", 45f, y, paintText)
+                val pName = if (product.name.length > 25) product.name.substring(0, 23) + ".." else product.name
+                canvas.drawText(pName, 150f, y, paintText)
+                canvas.drawText(priceStr, 350f, y, paintText)
+                
+                if (product.stockCount == 0) {
+                    paintBold.color = Color.RED
+                    canvas.drawText("OUT OF STOCK", 440f, y, paintBold)
+                    paintBold.color = Color.BLACK
+                } else {
+                    canvas.drawText(stockStr, 440f, y, paintText)
+                }
+                
+                canvas.drawText(product.barcode.ifEmpty { "N/A" }, 510f, y, paintText)
+                y += 18f
+            }
 
-        try {
-            val file = File(context.cacheDir, "storepoint_operational_report.pdf")
+            if (productInventory.size > 15) {
+                canvas.drawText("(and ${productInventory.size - 15} more catalog entries in database)", 45f, y, paintSubtitle)
+            }
+
+            // Footer
+            y = 800f
+            canvas.drawLine(40f, y, 555f, y, paintText)
+            y += 15f
+            paintSubtitle.textAlign = Paint.Align.CENTER
+            canvas.drawText("StorePoint POS Management System - Confidential Store Report", (width / 2).toFloat(), y, paintSubtitle)
+
+            document.finishPage(page)
+
+            val file = File(context.cacheDir, "storepoint_sales_report.pdf")
             FileOutputStream(file).use { fos ->
                 document.writeTo(fos)
             }
             shareFile(context, file)
         } catch (e: Exception) {
-            Toast.makeText(context, "Failed to write Sales Report PDF: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Failed to generate Sales Report PDF: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         } finally {
             try {
                 document.close()
@@ -364,12 +435,253 @@ object PdfExportUtil {
                 android.util.Log.e("PdfExportUtil", "Error closing PdfDocument", e)
             }
         }
+    }
+
+    /**
+     * Exports Daily Register Journal Audit Report to PDF.
+     */
+    fun exportDailyRegisterJournalPdf(
+        context: Context,
+        storeConfig: StoreConfig,
+        sessions: List<CashierSession>
+    ) {
+        val document = PdfDocument()
+        try {
+            val width = 595
+            val height = 842
+            val pageInfo = PdfDocument.PageInfo.Builder(width, height, 1).create()
+            val page = document.startPage(pageInfo)
+            val canvas: Canvas = page.canvas
+
+            val paintTitle = Paint().apply {
+                color = Color.rgb(15, 23, 42)
+                textSize = 18f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            val paintSubtitle = Paint().apply {
+                color = Color.GRAY
+                textSize = 10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            }
+            val paintHeading = Paint().apply {
+                color = Color.rgb(51, 65, 85)
+                textSize = 13f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            val paintText = Paint().apply {
+                color = Color.BLACK
+                textSize = 10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            }
+            val paintBold = Paint().apply {
+                color = Color.BLACK
+                textSize = 10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+
+            var y = 50f
+            canvas.drawText("${storeConfig.storeName.uppercase()} - DAILY REGISTER JOURNAL AUDIT", 40f, y, paintTitle)
+            y += 18f
+            canvas.drawText("Generated at: ${formatDate(Date())} | Currency: ${storeConfig.currencySymbol}", 40f, y, paintSubtitle)
+            y += 28f
+
+            canvas.drawText("1. REGISTER SESSION SUMMARY", 40f, y, paintHeading)
+            y += 18f
+
+            val totalSessions = sessions.size
+            val activeSessions = sessions.count { it.status == "ACTIVE" }
+            val closedSessions = sessions.count { it.status != "ACTIVE" }
+            val totalStartFloat = sessions.sumOf { it.startingCash }
+            val totalEndCash = sessions.sumOf { it.endingCash ?: 0.0 }
+
+            canvas.drawText("Total Cashier Sessions:", 50f, y, paintText)
+            canvas.drawText("$totalSessions ($closedSessions closed, $activeSessions active)", 250f, y, paintBold)
+            y += 16f
+
+            canvas.drawText("Total Starting Floats Allocated:", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", totalStartFloat)}", 250f, y, paintBold)
+            y += 16f
+
+            canvas.drawText("Total Ending Drawer Cash Counted:", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", totalEndCash)}", 250f, y, paintBold)
+            y += 28f
+
+            canvas.drawText("2. CASHIER SHIFT AUDIT TRAIL", 40f, y, paintHeading)
+            y += 18f
+
+            canvas.drawText("Session", 45f, y, paintBold)
+            canvas.drawText("Cashier", 110f, y, paintBold)
+            canvas.drawText("Start Float", 210f, y, paintBold)
+            canvas.drawText("End Cash", 310f, y, paintBold)
+            canvas.drawText("Time Window", 410f, y, paintBold)
+            canvas.drawText("Status", 510f, y, paintBold)
+            y += 8f
+            canvas.drawLine(40f, y, 555f, y, paintText)
+            y += 16f
+
+            val displaySessions = sessions.take(18)
+            for (s in displaySessions) {
+                val startStr = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(s.startTime))
+                val endStr = if (s.endTime != null) SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(s.endTime)) else "Active"
+
+                canvas.drawText("#${s.id}", 45f, y, paintText)
+                canvas.drawText(s.cashierUsername, 110f, y, paintText)
+                canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", s.startingCash)}", 210f, y, paintText)
+                canvas.drawText(if (s.endingCash != null) "${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", s.endingCash)}" else "Pending", 310f, y, paintText)
+                canvas.drawText("$startStr-$endStr", 410f, y, paintText)
+                canvas.drawText(s.status, 510f, y, paintBold)
+                y += 18f
+            }
+
+            y = 800f
+            canvas.drawLine(40f, y, 555f, y, paintText)
+            y += 15f
+            paintSubtitle.textAlign = Paint.Align.CENTER
+            canvas.drawText("Daily Register Journal Audit - StorePoint POS", (width / 2).toFloat(), y, paintSubtitle)
+
+            document.finishPage(page)
+
+            val file = File(context.cacheDir, "storepoint_register_journal.pdf")
+            FileOutputStream(file).use { fos ->
+                document.writeTo(fos)
+            }
+            shareFile(context, file)
         } catch (e: Exception) {
-            Toast.makeText(context, "Failed to generate Sales Report PDF: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Failed to generate Register Journal PDF: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        } finally {
             try {
                 document.close()
-            } catch (ce: Exception) {
-                android.util.Log.e("PdfExportUtil", "Error closing PdfDocument", ce)
+            } catch (e: Exception) {
+                android.util.Log.e("PdfExportUtil", "Error closing PdfDocument", e)
+            }
+        }
+    }
+
+    /**
+     * Exports Inventory Valuation Audit Report to PDF.
+     */
+    fun exportInventoryValuationPdf(
+        context: Context,
+        storeConfig: StoreConfig,
+        products: List<Product>
+    ) {
+        val document = PdfDocument()
+        try {
+            val width = 595
+            val height = 842
+            val pageInfo = PdfDocument.PageInfo.Builder(width, height, 1).create()
+            val page = document.startPage(pageInfo)
+            val canvas: Canvas = page.canvas
+
+            val paintTitle = Paint().apply {
+                color = Color.rgb(15, 23, 42)
+                textSize = 18f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            val paintSubtitle = Paint().apply {
+                color = Color.GRAY
+                textSize = 10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            }
+            val paintHeading = Paint().apply {
+                color = Color.rgb(51, 65, 85)
+                textSize = 13f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            val paintText = Paint().apply {
+                color = Color.BLACK
+                textSize = 10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            }
+            val paintBold = Paint().apply {
+                color = Color.BLACK
+                textSize = 10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+
+            var y = 50f
+            canvas.drawText("${storeConfig.storeName.uppercase()} - INVENTORY VALUATION REPORT", 40f, y, paintTitle)
+            y += 18f
+            canvas.drawText("Generated at: ${formatDate(Date())} | Valuation Basis: WAC / COGS", 40f, y, paintSubtitle)
+            y += 28f
+
+            canvas.drawText("1. INVENTORY ASSET VALUATION SUMMARY", 40f, y, paintHeading)
+            y += 18f
+
+            val totalProducts = products.size
+            val totalUnits = products.sumOf { it.stockCount }
+            val totalCostValuation = StorePointRepository.roundMoney(products.sumOf { it.cost * it.stockCount })
+            val totalRetailValuation = StorePointRepository.roundMoney(products.sumOf { it.price * it.stockCount })
+            val potentialGrossProfit = StorePointRepository.roundMoney(totalRetailValuation - totalCostValuation)
+            val projectedMarginPct = if (totalRetailValuation > 0) (potentialGrossProfit / totalRetailValuation) * 100.0 else 0.0
+
+            canvas.drawText("Total Catalog SKUs:", 50f, y, paintText)
+            canvas.drawText("$totalProducts items ($totalUnits total units on hand)", 260f, y, paintBold)
+            y += 16f
+
+            canvas.drawText("Total Cost Valuation (COGS Asset):", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", totalCostValuation)}", 260f, y, paintBold)
+            y += 16f
+
+            canvas.drawText("Total Retail Valuation (Sales Potential):", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", totalRetailValuation)}", 260f, y, paintBold)
+            y += 16f
+
+            canvas.drawText("Projected Gross Profit / Margin:", 50f, y, paintText)
+            canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", potentialGrossProfit)} (${String.format(Locale.US, "%.1f", projectedMarginPct)}%)", 260f, y, paintBold)
+            y += 28f
+
+            canvas.drawText("2. DETAILED INVENTORY VALUATION REGISTER", 40f, y, paintHeading)
+            y += 18f
+
+            canvas.drawText("SKU", 45f, y, paintBold)
+            canvas.drawText("Product Label", 110f, y, paintBold)
+            canvas.drawText("Stock", 260f, y, paintBold)
+            canvas.drawText("Unit Cost", 330f, y, paintBold)
+            canvas.drawText("Retail", 410f, y, paintBold)
+            canvas.drawText("Total Asset Value", 480f, y, paintBold)
+            y += 8f
+            canvas.drawLine(40f, y, 555f, y, paintText)
+            y += 16f
+
+            val displayList = products.take(18)
+            for (p in displayList) {
+                val assetVal = StorePointRepository.roundMoney(p.cost * p.stockCount)
+                val pName = if (p.name.length > 22) p.name.substring(0, 20) + ".." else p.name
+
+                canvas.drawText("#${p.id}", 45f, y, paintText)
+                canvas.drawText(pName, 110f, y, paintText)
+                canvas.drawText("${p.stockCount} ${p.baseUom}", 260f, y, paintText)
+                canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", p.cost)}", 330f, y, paintText)
+                canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", p.price)}", 410f, y, paintText)
+                canvas.drawText("${storeConfig.currencySymbol}${String.format(Locale.US, "%.2f", assetVal)}", 480f, y, paintBold)
+                y += 18f
+            }
+
+            if (products.size > 18) {
+                canvas.drawText("(and ${products.size - 18} more items in full database)", 45f, y, paintSubtitle)
+            }
+
+            y = 800f
+            canvas.drawLine(40f, y, 555f, y, paintText)
+            y += 15f
+            paintSubtitle.textAlign = Paint.Align.CENTER
+            canvas.drawText("Inventory Valuation Audit Report - StorePoint POS", (width / 2).toFloat(), y, paintSubtitle)
+
+            document.finishPage(page)
+
+            val file = File(context.cacheDir, "storepoint_inventory_valuation.pdf")
+            FileOutputStream(file).use { fos ->
+                document.writeTo(fos)
+            }
+            shareFile(context, file)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to generate Inventory Valuation PDF: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        } finally {
+            try {
+                document.close()
+            } catch (e: Exception) {
+                android.util.Log.e("PdfExportUtil", "Error closing PdfDocument", e)
             }
         }
     }
@@ -384,21 +696,17 @@ object PdfExportUtil {
         }
         
         val cleaned = text.uppercase().filter { it.isLetterOrDigit() }.ifEmpty { "CASHIER" }
-        // Simple hashing or mapping of chars to binary stripes for a pseudo Code-39 or simple representation
-        // To make it look incredibly realistic and functional, let's map each char to 7 stripes.
-        val binaryStringBuilder = StringBuilder()
-        // Let's add a start trigger
+        val binaryStringBuilder = java.lang.StringBuilder()
         binaryStringBuilder.append("10110110") // Start guard
         for (char in cleaned) {
             val code = char.code
-            // Convert to a 7-bit binary representation
             for (i in 0..6) {
                 if (((code ushr i) and 1) == 1) {
-                    binaryStringBuilder.append("11") // thick bar
+                    binaryStringBuilder.append("11")
                 } else {
-                    binaryStringBuilder.append("1") // thin bar
+                    binaryStringBuilder.append("1")
                 }
-                binaryStringBuilder.append("0") // space
+                binaryStringBuilder.append("0")
             }
         }
         binaryStringBuilder.append("10110110") // End guard
@@ -427,33 +735,26 @@ object PdfExportUtil {
     ) {
         val document = PdfDocument()
         try {
-            val width = 250 // Custom card width in points (about 3.5 inches)
-            val height = 350 // Custom card height in points (about 4.8 inches)
+            val width = 250 // Custom card width in points
+            val height = 350 // Custom card height in points
             val pageInfo = PdfDocument.PageInfo.Builder(width, height, 1).create()
             val page = document.startPage(pageInfo)
             val canvas: Canvas = page.canvas
 
             val paintBorder = Paint().apply {
-                color = Color.rgb(30, 41, 59) // Slate 800
+                color = Color.rgb(30, 41, 59)
                 style = Paint.Style.STROKE
                 strokeWidth = 3f
             }
 
             val paintPrimaryBg = Paint().apply {
-                color = Color.rgb(30, 41, 59) // Slate 800 name area
+                color = Color.rgb(30, 41, 59)
                 style = Paint.Style.FILL
             }
 
             val paintRoleBadge = Paint().apply {
                 color = if (role.equals("ADMIN", ignoreCase = true)) Color.rgb(220, 38, 38) else Color.rgb(37, 99, 235)
                 style = Paint.Style.FILL
-            }
-
-            val paintTextDark = Paint().apply {
-                color = Color.BLACK
-                textSize = 12f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                textAlign = Paint.Align.CENTER
             }
 
             val paintTextLight = Paint().apply {
@@ -477,56 +778,57 @@ object PdfExportUtil {
                 textAlign = Paint.Align.CENTER
             }
 
+            val paintTextDark = Paint().apply {
+                color = Color.BLACK
+                textSize = 10f
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+            }
+
             val centerX = (width / 2).toFloat()
 
-            // 1) Outer Badge Frame with Rounded Corners
+            // Outer Frame
             val rectFrame = android.graphics.RectF(10f, 10f, (width - 10).toFloat(), (height - 10).toFloat())
             canvas.drawRoundRect(rectFrame, 16f, 16f, paintBorder)
 
             var y = 35f
-
-            // 2) Store Name & Subtitle
             canvas.drawText(storeConfig.storeName.uppercase(), centerX, y, paintHeader)
             y += 14f
             canvas.drawText("OFFICIAL EMPLOYEE ID", centerX, y, paintLabel)
             y += 20f
 
-            // 3) Photo/Avatar placeholder icon box
+            // Avatar placeholder box
             val avatarSize = 65f
             val avatarX = (width - avatarSize) / 2f
             val avatarPaint = Paint().apply {
-                color = Color.rgb(241, 245, 249) // Slate 100
+                color = Color.rgb(241, 245, 249)
                 style = Paint.Style.FILL
             }
             canvas.drawRoundRect(android.graphics.RectF(avatarX, y, avatarX + avatarSize, y + avatarSize), 10f, 10f, avatarPaint)
             
-            // Draw simple user silhouette in avatar box
             val iconPaint = Paint().apply {
-                color = Color.rgb(148, 163, 184) // Slate 400
+                color = Color.rgb(148, 163, 184)
                 style = Paint.Style.FILL
             }
-            // Head
             canvas.drawCircle(centerX, y + 25f, 12f, iconPaint)
-            // Shoulders
             canvas.drawArc(android.graphics.RectF(centerX - 20f, y + 40f, centerX + 20f, y + 70f), 180f, 180f, true, iconPaint)
-            
             y += avatarSize + 18f
 
-            // 4) Staff Username Block
+            // Username
             canvas.drawRect(25f, y, (width - 25).toFloat(), y + 35f, paintPrimaryBg)
             paintTextLight.textSize = 14f
             paintTextLight.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             canvas.drawText(username.uppercase(), centerX, y + 22f, paintTextLight)
             y += 45f
 
-            // 5) Role Badge
+            // Role
             canvas.drawRoundRect(50f, y, (width - 50).toFloat(), y + 20f, 6f, 6f, paintRoleBadge)
             paintTextLight.textSize = 9f
             paintTextLight.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             canvas.drawText(role.uppercase(), centerX, y + 13f, paintTextLight)
             y += 35f
 
-            // 6) Custom 1D Barcode Drawing representing the barcodeId code
+            // Barcode
             val targetBarcodeCode = barcodeId.ifEmpty { "CASHIER-${username.hashCode().coerceAtLeast(0) % 9999}" }
             val barcodeWidth = 180f
             val barcodeHeight = 40f
@@ -534,14 +836,8 @@ object PdfExportUtil {
             drawSimpleBarcode(canvas, targetBarcodeCode, barcodeX, y, barcodeWidth, barcodeHeight)
             y += 52f
 
-            // 7) Printed key text under barcode
-            paintTextDark.textSize = 10f
-            paintTextDark.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             canvas.drawText("* $targetBarcodeCode *", centerX, y, paintTextDark)
             y += 15f
-
-            // Security footer
-            paintLabel.textSize = 8f
             canvas.drawText("Secure scanning badge - StorePoint System", centerX, y, paintLabel)
 
             document.finishPage(page)

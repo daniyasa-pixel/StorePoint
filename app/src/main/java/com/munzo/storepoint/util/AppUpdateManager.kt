@@ -111,73 +111,94 @@ object AppUpdateManager {
             }
 
             val json = JSONObject(responseBody)
-
-            val tagName = json.optString("tag_name", "")
-            val releaseName = json.optString("name", tagName)
-            val releaseNotes = json.optString("body", "No release notes provided.")
-            val publishedAt = json.optString("published_at", "")
-
-            var downloadUrl = ""
-            var apkAssetName = ""
-            var assetSize: Long = 0
-            var checksumUrl = ""
-            var sumsUrl = ""
-
-            val assets = json.optJSONArray("assets")
-            if (assets != null) {
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name", "")
-                    val browserUrl = asset.optString("browser_download_url", "")
-                    val apiUrl = asset.optString("url", "")
-                    // For private repositories, asset API URL with octet-stream header must be used to authenticate
-                    val effectiveUrl = if (githubToken.isNotBlank() && apiUrl.isNotBlank()) apiUrl else browserUrl
-
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        val candidateIsSigned = name.contains("signed-release", ignoreCase = true)
-                        val currentIsSigned = apkAssetName.contains("signed-release", ignoreCase = true)
-                        if (downloadUrl.isEmpty() || (currentIsSigned && !candidateIsSigned)) {
-                            downloadUrl = effectiveUrl
-                            apkAssetName = name
-                            assetSize = asset.optLong("size", 0)
-                        }
-                    } else if (name.endsWith(".sha256", ignoreCase = true)) {
-                        checksumUrl = effectiveUrl
-                    } else if (name.equals("SHA256SUMS.txt", ignoreCase = true)) {
-                        sumsUrl = effectiveUrl
+            val info = parseReleaseJson(
+                json = json,
+                currentVersion = currentVersionName,
+                fetchChecksum = { chkUrl, sUrl, apkName ->
+                    when {
+                        chkUrl.isNotEmpty() -> fetchSha256(chkUrl)
+                        sUrl.isNotEmpty() && apkName.isNotEmpty() -> fetchChecksumFromSums(sUrl, apkName)
+                        else -> ""
                     }
                 }
-            }
-
-            if (downloadUrl.isEmpty()) {
-                downloadUrl = json.optString("html_url", "")
-            }
-
-            val isNewer = isVersionNewer(latestTag = tagName, currentVersion = currentVersionName)
-
-            // Fetch the SHA-256 digest so the APK payload can be verified before install.
-            val sha256Checksum = when {
-                checksumUrl.isNotEmpty() -> fetchSha256(checksumUrl)
-                sumsUrl.isNotEmpty() && apkAssetName.isNotEmpty() ->
-                    fetchChecksumFromSums(sumsUrl, apkAssetName)
-                else -> ""
-            }
-
-            Result.success(
-                AppUpdateInfo(
-                    latestVersionTag = tagName,
-                    releaseName = releaseName,
-                    releaseNotes = releaseNotes,
-                    downloadUrl = downloadUrl,
-                    isNewer = isNewer,
-                    publishedAt = publishedAt,
-                    assetSize = assetSize,
-                    sha256Checksum = sha256Checksum
-                )
             )
+            Result.success(info)
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * Parses a GitHub release JSON object into [AppUpdateInfo].
+     */
+    fun parseReleaseJson(
+        json: JSONObject,
+        currentVersion: String,
+        explicitChecksum: String = "",
+        fetchChecksum: (suspend (checksumUrl: String, sumsUrl: String, apkAssetName: String) -> String)? = null
+    ): AppUpdateInfo {
+        val tagName = json.optString("tag_name", "")
+        val releaseName = json.optString("name", tagName)
+        val releaseNotes = json.optString("body", "No release notes provided.")
+        val publishedAt = json.optString("published_at", "")
+
+        var downloadUrl = ""
+        var apkAssetName = ""
+        var assetSize: Long = 0
+        var checksumUrl = ""
+        var sumsUrl = ""
+
+        val assets = json.optJSONArray("assets")
+        if (assets != null) {
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val name = asset.optString("name", "")
+                val browserUrl = asset.optString("browser_download_url", "")
+                val apiUrl = asset.optString("url", "")
+                val effectiveUrl = if (githubToken.isNotBlank() && apiUrl.isNotBlank()) apiUrl else browserUrl
+
+                if (name.endsWith(".apk", ignoreCase = true)) {
+                    val candidateIsSigned = name.contains("signed-release", ignoreCase = true)
+                    val currentIsSigned = apkAssetName.contains("signed-release", ignoreCase = true)
+                    if (downloadUrl.isEmpty() || (currentIsSigned && !candidateIsSigned)) {
+                        downloadUrl = effectiveUrl
+                        apkAssetName = name
+                        assetSize = asset.optLong("size", 0)
+                    }
+                } else if (name.endsWith(".sha256", ignoreCase = true)) {
+                    checksumUrl = effectiveUrl
+                } else if (name.equals("SHA256SUMS.txt", ignoreCase = true)) {
+                    sumsUrl = effectiveUrl
+                }
+            }
+        }
+
+        if (downloadUrl.isEmpty()) {
+            downloadUrl = json.optString("html_url", "")
+        }
+
+        val isNewer = isVersionNewer(latestTag = tagName, currentVersion = currentVersion)
+
+        val sha256Checksum = if (explicitChecksum.isNotEmpty()) {
+            explicitChecksum
+        } else if (fetchChecksum != null) {
+            kotlinx.coroutines.runBlocking {
+                fetchChecksum(checksumUrl, sumsUrl, apkAssetName)
+            }
+        } else {
+            ""
+        }
+
+        return AppUpdateInfo(
+            latestVersionTag = tagName,
+            releaseName = releaseName,
+            releaseNotes = releaseNotes,
+            downloadUrl = downloadUrl,
+            isNewer = isNewer,
+            publishedAt = publishedAt,
+            assetSize = assetSize,
+            sha256Checksum = sha256Checksum
+        )
     }
 
     /**
@@ -308,7 +329,7 @@ object AppUpdateManager {
     /**
      * Computes the lowercase SHA-256 hex digest of a file.
      */
-    private fun sha256HexOfFile(file: File): String {
+    fun sha256HexOfFile(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         FileInputStream(file).use { input ->
             val buffer = ByteArray(65536)
