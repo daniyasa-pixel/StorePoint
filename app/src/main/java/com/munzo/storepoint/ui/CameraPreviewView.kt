@@ -1,4 +1,4 @@
-﻿package com.munzo.storepoint.ui
+package com.munzo.storepoint.ui
 
 import android.content.Context
 import android.util.Log
@@ -15,8 +15,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -39,6 +43,8 @@ fun BarcodeScannerDialog(
     products: List<Product> = emptyList(),
     title: String = "Camera Barcode Scanner",
     instruction: String = "Point your camera at a barcode. It will automatically decode and scan.",
+    continuous: Boolean = false,
+    lastScannedBarcode: String? = null,
     onBarcodeScanned: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -67,8 +73,11 @@ fun BarcodeScannerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close Scanner")
+            Button(
+                onClick = onDismiss,
+                shape = CircleShape
+            ) {
+                Text(if (continuous) "Done Scanning" else "Close Scanner")
             }
         },
         title = {
@@ -77,7 +86,17 @@ fun BarcodeScannerDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Default.Close, contentDescription = "Close")
                 }
@@ -89,7 +108,7 @@ fun BarcodeScannerDialog(
                     .fillMaxWidth()
                     .wrapContentHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
                     text = instruction,
@@ -100,16 +119,17 @@ fun BarcodeScannerDialog(
                 // 1) CameraX Box (Spacious Height for optimal scanning)
                 Box(
                     modifier = Modifier
-                        .height(280.dp)
+                        .height(260.dp)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(Color.Black)
-                        .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)),
+                        .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (hasCameraPermission) {
                         CameraPreview(
                             modifier = Modifier.fillMaxSize(),
+                            continuous = continuous,
                             onBarcodeScanned = onBarcodeScanned
                         )
                     } else {
@@ -136,11 +156,39 @@ fun BarcodeScannerDialog(
                     // Green Scan Line Animation Overlay
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.8f)
+                            .fillMaxWidth(0.85f)
                             .height(2.dp)
-                            .background(Color.Green)
+                            .background(Color(0xFF00E676))
                             .align(Alignment.Center)
                     )
+                }
+
+                // Continuous Scan Feedback Banner
+                if (!lastScannedBarcode.isNullOrBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "Last scanned: $lastScannedBarcode",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -150,12 +198,16 @@ fun BarcodeScannerDialog(
 @Composable
 fun CameraPreview(
     modifier: Modifier = Modifier,
+    continuous: Boolean = false,
+    debounceMs: Long = 1200L,
     onBarcodeScanned: (String) -> Unit
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     var isSuccessScanned by remember { mutableStateOf(false) }
+    var lastScannedTime by remember { mutableLongStateOf(0L) }
+    var lastScannedValue by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -195,7 +247,7 @@ fun CameraPreview(
                 imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { imageProxy ->
                     @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
                     val mediaImage = imageProxy.image
-                    if (mediaImage != null && !isSuccessScanned) {
+                    if (mediaImage != null && (!isSuccessScanned || continuous)) {
                         val image = com.google.mlkit.vision.common.InputImage.fromMediaImage(
                             mediaImage,
                             imageProxy.imageInfo.rotationDegrees
@@ -204,9 +256,19 @@ fun CameraPreview(
                             .addOnSuccessListener { barcodes ->
                                 for (barcode in barcodes) {
                                     val rawValue = barcode.rawValue
-                                    if (!rawValue.isNullOrEmpty() && !isSuccessScanned) {
-                                        isSuccessScanned = true
-                                        onBarcodeScanned(rawValue)
+                                    if (!rawValue.isNullOrEmpty()) {
+                                        if (continuous) {
+                                            val now = System.currentTimeMillis()
+                                            val delayRequired = if (rawValue == lastScannedValue) debounceMs else 750L
+                                            if (now - lastScannedTime >= delayRequired) {
+                                                lastScannedTime = now
+                                                lastScannedValue = rawValue
+                                                onBarcodeScanned(rawValue)
+                                            }
+                                        } else if (!isSuccessScanned) {
+                                            isSuccessScanned = true
+                                            onBarcodeScanned(rawValue)
+                                        }
                                         break
                                     }
                                 }

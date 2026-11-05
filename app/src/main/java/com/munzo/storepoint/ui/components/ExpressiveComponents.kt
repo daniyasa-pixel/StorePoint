@@ -650,15 +650,10 @@ fun ExpressiveSwitch(
         ),
         label = "switchBounce"
     )
-    Switch(
+    HeroSwitch(
         checked = checked,
         onCheckedChange = onCheckedChange,
         modifier = modifier.scale(bounce),
-        colors = SwitchDefaults.colors(
-            checkedTrackColor = MaterialTheme.colorScheme.primary,
-            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-            checkedIconColor = MaterialTheme.colorScheme.primary,
-        ),
     )
 }
 
@@ -678,14 +673,10 @@ fun ExpressiveCheckbox(
         ),
         label = "checkboxBounce"
     )
-    Checkbox(
+    HeroCheckbox(
         checked = checked,
         onCheckedChange = onCheckedChange,
         modifier = modifier.scale(bounce),
-        colors = CheckboxDefaults.colors(
-            checkedColor = MaterialTheme.colorScheme.primary,
-            checkmarkColor = MaterialTheme.colorScheme.onPrimary,
-        ),
     )
 }
 
@@ -757,7 +748,7 @@ fun ExpressiveDialog(
         label = "dialogScale"
     )
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest) {
-        androidx.compose.material3.Card(
+        HeroCard(
             modifier = modifier
                 .fillMaxWidth()
                 .scale(dialogScale),
@@ -901,7 +892,7 @@ fun ExpressiveGridTile(
         label = "gridTileScale"
     )
 
-    Card(
+    HeroCard(
         modifier = modifier
             .aspectRatio(1f)
             .scale(scale)

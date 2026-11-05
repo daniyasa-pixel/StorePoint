@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import com.munzo.storepoint.ui.components.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -681,7 +682,7 @@ fun KioskStatusBar(
                 }
             }
 
-            HorizontalDivider(
+            HeroDivider(
                 thickness = 0.8.dp,
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
             )

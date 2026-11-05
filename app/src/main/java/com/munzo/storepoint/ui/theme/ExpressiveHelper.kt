@@ -49,6 +49,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.munzo.storepoint.ui.components.HeroCard
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -799,7 +800,7 @@ fun ExpressiveMetricCard(
     icon: ImageVector? = null,
     accentColor: Color = MaterialTheme.colorScheme.primary
 ) {
-    Card(
+    HeroCard(
         modifier = modifier
             .tactileBounce()
             .expressiveGlassCard(cornerRadius = 24.dp, accentGlow = accentColor.copy(alpha = 0.2f), elevation = 3.dp)
