@@ -80,6 +80,50 @@ class ProductionBomEngineTest {
     }
 
     @Test
+    fun bulkCookingOilTo187_5mlPouches_conversionCalculations() {
+        // Source: 20L Cooking Oil (Cost: ₱1,200.00)
+        // Transformation: 1 container produces 100 pouches of 187.5ml
+        val rawUnitCost = 1200.00
+        val batchUsage = 1.0
+        val netYield = 100.0
+
+        val derivedCost = computeDerivedUnitCost(rawUnitCost, batchUsage, netYield)
+        // 1200.00 / 100 = 12.00 per pouch
+        assertEquals(12.00, derivedCost, 0.0)
+
+        // Selling price: ₱25.00 per pouch
+        val sellingPrice = 25.00
+        val (profit, marginPercent) = computeGrossProfitAndMargin(sellingPrice, derivedCost)
+
+        assertEquals(13.00, profit, 0.0)
+        // (13.00 / 25.00) * 100 = 52.0%
+        assertEquals(52.0, marginPercent, 0.0)
+    }
+
+    @Test
+    fun wholesaleSackToRetailBags_riceAndSugarRepackaging() {
+        // 50kg wholesale rice sack (Cost: ₱2,100.00) -> 50x 1kg consumer bags
+        val riceRawCost = 2100.00
+        val riceYield = 50.0
+        val riceDerivedCost = computeDerivedUnitCost(riceRawCost, 1.0, riceYield)
+        assertEquals(42.00, riceDerivedCost, 0.0)
+
+        val (riceProfit, riceMargin) = computeGrossProfitAndMargin(52.00, riceDerivedCost)
+        assertEquals(10.00, riceProfit, 0.0)
+        assertEquals(19.23, riceMargin, 0.01)
+
+        // 50kg wholesale refined sugar sack (Cost: ₱3,500.00) -> 100x 500g pouches
+        val sugarRawCost = 3500.00
+        val sugarYield = 100.0
+        val sugarDerivedCost = computeDerivedUnitCost(sugarRawCost, 1.0, sugarYield)
+        assertEquals(35.00, sugarDerivedCost, 0.0)
+
+        val (sugarProfit, sugarMargin) = computeGrossProfitAndMargin(45.00, sugarDerivedCost)
+        assertEquals(10.00, sugarProfit, 0.0)
+        assertEquals(22.22, sugarMargin, 0.01)
+    }
+
+    @Test
     fun derivedUnitCost_preventsDivisionByZero() {
         val cost = computeDerivedUnitCost(100.00, 1.0, 0.0)
         assertEquals(0.0, cost, 0.0)
@@ -193,11 +237,31 @@ class ProductionBomEngineTest {
             notes = "Produced from raw material SKU #101"
         )
 
+        val productionRun = ProductionLogEntity(
+            id = 1,
+            productionCode = "PRD-20261102-143000",
+            rawMaterialProductId = 101,
+            rawMaterialName = "20L Water Container",
+            rawMaterialQtyUsed = 2.0,
+            rawMaterialUnitCost = 50.00,
+            targetRetailProductId = 202,
+            targetRetailProductName = "Ice Water 500ml",
+            targetRetailQtyProduced = 80.0,
+            derivedRetailUnitCost = 1.25,
+            retailSellingPrice = 5.00,
+            wasteLossQty = 0.0,
+            operatorUsername = "operator_maria",
+            timestamp = 1700000000000L,
+            notes = "[Packaging: 500ml Ice Bag] Standard Ice water production"
+        )
+
         assertEquals("REPACK_RAW_DECREMENT", rawMovement.movementType)
         assertEquals(-2.0, rawMovement.quantityDelta, 0.0)
         assertEquals("REPACK_PRODUCED_INCREMENT", targetMovement.movementType)
         assertEquals(80.0, targetMovement.quantityDelta, 0.0)
         assertEquals(rawMovement.reference, targetMovement.reference)
+        assertEquals("PRD-20261102-143000", productionRun.productionCode)
+        assertEquals(1.25, productionRun.derivedRetailUnitCost, 0.0)
+        assertTrue(productionRun.notes.contains("[Packaging: 500ml Ice Bag]"))
     }
 }
-

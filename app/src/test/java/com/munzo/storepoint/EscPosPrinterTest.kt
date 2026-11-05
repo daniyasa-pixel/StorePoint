@@ -3,6 +3,8 @@ package com.munzo.storepoint
 import com.munzo.storepoint.data.StoreConfig
 import com.munzo.storepoint.data.Transaction
 import com.munzo.storepoint.data.TransactionItem
+import com.munzo.storepoint.data.ReturnTransaction
+import com.munzo.storepoint.data.ReturnItem
 import com.munzo.storepoint.util.EscPosHelper
 import org.junit.Assert.*
 import org.junit.Test
@@ -161,6 +163,238 @@ class EscPosPrinterTest {
             hasAutoCutter = true
         )
         assertTrue(containsSubsequence(zTicketCut, EscPosHelper.CMD_PAPER_CUT))
+    }
+
+    @Test
+    fun buildRefundReceiptEscPos_formats58mmCorrectly() {
+        val returnTx = ReturnTransaction(
+            id = 42,
+            originalTransactionId = 101,
+            timestamp = 1790937600000L,
+            cashierUsername = "cashier1",
+            totalRefundAmount = 75.0,
+            refundMethod = "CASH",
+            returnReason = "Defective / Spoiled",
+            customerName = "Juan",
+            notes = "Bottle cap broken"
+        )
+        val returnItems = listOf(
+            ReturnItem(
+                id = 1,
+                returnTransactionId = 42,
+                productId = 10,
+                productName = "Coca-Cola 1.5L",
+                quantity = 1,
+                unitPrice = 75.0,
+                refundAmount = 75.0,
+                uomName = "pc",
+                restockToInventory = false
+            )
+        )
+
+        val bytes = EscPosHelper.buildRefundReceiptEscPos(
+            storeConfig = sampleConfig,
+            returnTransaction = returnTx,
+            items = returnItems,
+            is80mm = false,
+            kickDrawerOnPrint = true,
+            hasAutoCutter = false
+        )
+
+        val receiptText = String(bytes, Charsets.US_ASCII)
+        assertTrue(receiptText.contains("StorePoint Sari-Sari Store"))
+        assertTrue(receiptText.contains("RETURN / REFUND VOUCHER"))
+        assertTrue(receiptText.contains("Return Slip #: 42"))
+        assertTrue(receiptText.contains("Original Sale #: 101"))
+        assertTrue(receiptText.contains("Coca-Cola 1.5L"))
+        assertTrue(receiptText.contains("[Damaged/Write-Off]"))
+        assertTrue(receiptText.contains("TOTAL REFUNDED:"))
+        assertTrue(receiptText.contains("P75.00"))
+
+        // Drawer kick bytes should be present
+        assertTrue(containsSubsequence(bytes, EscPosHelper.CMD_DRAWER_KICK_PIN2))
+        // Manual tear feed lines should be present, not auto-cut
+        assertFalse(containsSubsequence(bytes, EscPosHelper.CMD_PAPER_CUT))
+        assertTrue(containsSubsequence(bytes, EscPosHelper.CMD_FEED_LINES))
+    }
+
+    @Test
+    fun buildRefundReceiptEscPos_formats80mmWithAutoCutter() {
+        val returnTx = ReturnTransaction(
+            id = 55,
+            originalTransactionId = 202,
+            timestamp = 1790937600000L,
+            cashierUsername = "supervisor",
+            totalRefundAmount = 150.0,
+            refundMethod = "GCASH",
+            returnReason = "Wrong Item",
+            customerName = "Maria",
+            notes = "Customer exchange request"
+        )
+        val returnItems = listOf(
+            ReturnItem(
+                id = 2,
+                returnTransactionId = 55,
+                productId = 20,
+                productName = "Corned Beef 150g",
+                quantity = 2,
+                unitPrice = 75.0,
+                refundAmount = 150.0,
+                uomName = "can",
+                restockToInventory = true
+            )
+        )
+
+        val bytes = EscPosHelper.buildRefundReceiptEscPos(
+            storeConfig = sampleConfig,
+            returnTransaction = returnTx,
+            items = returnItems,
+            is80mm = true,
+            kickDrawerOnPrint = false,
+            hasAutoCutter = true
+        )
+
+        val receiptText = String(bytes, Charsets.US_ASCII)
+        assertTrue(receiptText.contains("Return Slip #: 55"))
+        assertTrue(receiptText.contains("[Restocked]"))
+        assertTrue(receiptText.contains("TOTAL REFUNDED:"))
+        assertTrue(receiptText.contains("P150.00"))
+        assertTrue(containsSubsequence(bytes, EscPosHelper.CMD_PAPER_CUT))
+    }
+
+    @Test
+    fun buildBarcodeEscPos_generatesCode128AndCode39Bytes() {
+        // 1. Code 128
+        val code128Bytes = EscPosHelper.buildBarcodeEscPos("TX-1001", isCode128 = true, height = 50, width = 2)
+        // Verify GS H 2 (HRI below barcode)
+        assertTrue(containsSubsequence(code128Bytes, byteArrayOf(0x1D, 0x48, 0x02)))
+        // Verify GS k 73 (Code 128)
+        assertTrue(containsSubsequence(code128Bytes, byteArrayOf(0x1D, 0x6B, 73)))
+        // Verify Code 128 subset B prefix '{B' (0x7B, 0x42)
+        assertTrue(containsSubsequence(code128Bytes, byteArrayOf(0x7B, 0x42)))
+        // Verify text payload
+        assertTrue(containsSubsequence(code128Bytes, "TX-1001".toByteArray(Charsets.US_ASCII)))
+
+        // 2. Code 39
+        val code39Bytes = EscPosHelper.buildBarcodeEscPos("TX-1001", isCode128 = false, height = 50, width = 2)
+        assertTrue(containsSubsequence(code39Bytes, byteArrayOf(0x1D, 0x6B, 69)))
+        assertTrue(containsSubsequence(code39Bytes, "TX-1001".toByteArray(Charsets.US_ASCII)))
+    }
+
+    @Test
+    fun buildReceiptEscPos_withCustomHeaderFooterTinAndBarcode() {
+        val bytes = EscPosHelper.buildReceiptEscPos(
+            storeConfig = sampleConfig,
+            transaction = sampleTx,
+            items = sampleItems,
+            is80mm = false,
+            kickDrawerOnPrint = true,
+            hasAutoCutter = false,
+            customHeader = "Welcome to Munzo Mart Branch 1",
+            customFooter = "Items can be exchanged within 7 days with receipt",
+            storeTin = "123-456-789-000",
+            storeAddress = "123 Rizal Street, Manila",
+            printBarcode = true
+        )
+
+        val receiptText = String(bytes, Charsets.US_ASCII)
+        assertTrue(receiptText.contains("StorePoint Sari-Sari Store"))
+        assertTrue(receiptText.contains("123 Rizal Street, Manila"))
+        assertTrue(receiptText.contains("VAT Reg. TIN: 123-456-789-000"))
+        assertTrue(receiptText.contains("Welcome to Munzo Mart Branch 1"))
+        assertTrue(receiptText.contains("Cashier: cashier1"))
+        assertTrue(receiptText.contains("Customer: Customer Juan"))
+        assertTrue(receiptText.contains("VATable Sales:"))
+        assertTrue(receiptText.contains("Items can be exchanged within 7 days with receipt"))
+
+        // Verify barcode TX-101 presence
+        assertTrue(containsSubsequence(bytes, "TX-101".toByteArray(Charsets.US_ASCII)))
+        assertTrue(containsSubsequence(bytes, byteArrayOf(0x1D, 0x6B, 73)))
+    }
+
+    @Test
+    fun buildDrawerSlipEscPos_cashInPettyCash_formats58mmAndKicksDrawer() {
+        val drawerTx = com.munzo.storepoint.data.DrawerTransaction(
+            id = 1,
+            sessionId = 10,
+            timestamp = 1790937600000L,
+            cashierUsername = "cashier1",
+            amount = 500.0,
+            type = "CASH_IN",
+            reason = "Petty cash float injection"
+        )
+
+        val slipBytes = EscPosHelper.buildDrawerSlipEscPos(
+            storeConfig = sampleConfig,
+            drawerTransaction = drawerTx,
+            balanceBefore = 1000.0,
+            balanceAfter = 1500.0,
+            is80mm = false,
+            kickDrawerOnPrint = true,
+            hasAutoCutter = false,
+            storeTin = "123-456-789-000",
+            printBarcode = true
+        )
+
+        val slipText = String(slipBytes, Charsets.US_ASCII)
+        assertTrue(slipText.contains("CASH-IN / FLOAT INSERTION"))
+        assertTrue(slipText.contains("Slip #: DRW-1"))
+        assertTrue(slipText.contains("Session #: #SES-10"))
+        assertTrue(slipText.contains("Cashier: cashier1"))
+        assertTrue(slipText.contains("Petty cash float injection"))
+        assertTrue(slipText.contains("CASH INFLOW:"))
+        assertTrue(slipText.contains("P500.00"))
+        assertTrue(slipText.contains("Drawer Before:"))
+        assertTrue(slipText.contains("P1000.00"))
+        assertTrue(slipText.contains("New Drawer Balance:"))
+        assertTrue(slipText.contains("P1500.00"))
+        assertTrue(slipText.contains("Cashier Signature"))
+        assertTrue(slipText.contains("Manager Signature"))
+
+        // Check drawer kick
+        assertTrue(containsSubsequence(slipBytes, EscPosHelper.CMD_DRAWER_KICK_PIN2))
+        // Check barcode DRW-1
+        assertTrue(containsSubsequence(slipBytes, "DRW-1".toByteArray(Charsets.US_ASCII)))
+        // 58mm manual tear
+        assertFalse(containsSubsequence(slipBytes, EscPosHelper.CMD_PAPER_CUT))
+        assertTrue(containsSubsequence(slipBytes, EscPosHelper.CMD_FEED_LINES))
+    }
+
+    @Test
+    fun buildDrawerSlipEscPos_cashOutOperationalDisbursement_formats80mmWithAutoCut() {
+        val drawerTx = com.munzo.storepoint.data.DrawerTransaction(
+            id = 2,
+            sessionId = 10,
+            timestamp = 1790937600000L,
+            cashierUsername = "cashier1",
+            amount = -180.0,
+            type = "CASH_OUT",
+            reason = "Store Supplies: Plastic bags & tape"
+        )
+
+        val slipBytes = EscPosHelper.buildDrawerSlipEscPos(
+            storeConfig = sampleConfig,
+            drawerTransaction = drawerTx,
+            balanceBefore = 1500.0,
+            balanceAfter = 1320.0,
+            is80mm = true,
+            kickDrawerOnPrint = false,
+            hasAutoCutter = true,
+            printBarcode = true
+        )
+
+        val slipText = String(slipBytes, Charsets.US_ASCII)
+        assertTrue(slipText.contains("CASH-OUT / DRAWER PAYOUT"))
+        assertTrue(slipText.contains("Slip #: DRW-2"))
+        assertTrue(slipText.contains("Plastic bags & tape"))
+        assertTrue(slipText.contains("CASH DISBURSED:"))
+        assertTrue(slipText.contains("P180.00"))
+        assertTrue(slipText.contains("Adjustment:"))
+        assertTrue(slipText.contains("-P180.00"))
+        assertTrue(slipText.contains("P1320.00"))
+
+        // Auto cut for 80mm
+        assertTrue(containsSubsequence(slipBytes, EscPosHelper.CMD_PAPER_CUT))
     }
 
     private fun containsSubsequence(haystack: ByteArray, needle: ByteArray): Boolean {

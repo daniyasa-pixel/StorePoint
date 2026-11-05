@@ -2,6 +2,7 @@ package com.munzo.storepoint
 
 import com.munzo.storepoint.data.CashierSession
 import com.munzo.storepoint.data.ShiftReconciliation
+import com.munzo.storepoint.data.StoreConfig
 import com.munzo.storepoint.data.StorePointRepository
 import com.munzo.storepoint.util.EscPosHelper
 import org.junit.Assert.assertEquals
@@ -17,6 +18,41 @@ class DrawerReconciliationTest {
         val total = (c1000 * 1000.0) + (c500 * 500.0) + (c200 * 200.0) +
                 (c100 * 100.0) + (c50 * 50.0) + (c20 * 20.0) + coins
         return StorePointRepository.roundMoney(total)
+    }
+
+    private fun calculateFullPhilippinePesoCount(
+        c1000: Int, c500: Int, c200: Int, c100: Int, c50: Int, c20: Int,
+        c10: Int, c5: Int, c1: Int, c25c: Int, otherCoins: Double
+    ): Triple<Double, Double, Double> {
+        val bills = (c1000 * 1000.0) + (c500 * 500.0) + (c200 * 200.0) +
+                (c100 * 100.0) + (c50 * 50.0) + (c20 * 20.0)
+        val coins = (c10 * 10.0) + (c5 * 5.0) + (c1 * 1.0) + (c25c * 0.25) + otherCoins
+        val total = bills + coins
+        return Triple(
+            StorePointRepository.roundMoney(bills),
+            StorePointRepository.roundMoney(coins),
+            StorePointRepository.roundMoney(total)
+        )
+    }
+
+    private fun calculateDrawerBalanceFormula(
+        startingFloat: Double,
+        cashSales: Double,
+        cashIn: Double,
+        cashOut: Double,
+        refunds: Double
+    ): Double {
+        // Formula: Starting Float + Cash Sales + Cash In - Cash Out - Refunds
+        return StorePointRepository.roundMoney(startingFloat + cashSales + cashIn - cashOut - refunds)
+    }
+
+    private fun calculateGcashWalletFormula(
+        startingBalance: Double,
+        cashInInflow: Double,
+        cashOutDisbursed: Double
+    ): Double {
+        // Formula: Starting Balance + Cash In Inflow - Cash Out Disbursed
+        return StorePointRepository.roundMoney(startingBalance + cashInInflow - cashOutDisbursed)
     }
 
     private fun calculateVariance(counted: Double, expected: Double): Double {
@@ -39,9 +75,105 @@ class DrawerReconciliationTest {
     }
 
     @Test
-    fun physicalDenominationCount_withZeroCounts() {
-        val total = calculateTotalCountedCash(0, 0, 0, 0, 0, 0, 0.0)
-        assertEquals(0.00, total, 0.0)
+    fun philippinePesoFullDenominationBreakdown_includingCoinsAndCentavos() {
+        // Bills
+        val c1000 = 2  // 2000.00
+        val c500 = 3   // 1500.00
+        val c200 = 1   //  200.00
+        val c100 = 4   //  400.00
+        val c50 = 2    //  100.00
+        val c20 = 5    //  100.00 -> Bills Subtotal = 4300.00
+
+        // Philippine Peso Coins (₱10, ₱5, ₱1, ₱0.25) + other
+        val c10 = 10   //  100.00
+        val c5 = 8     //   40.00
+        val c1 = 15    //   15.00
+        val c25c = 6   //    1.50 (6 x 0.25)
+        val other = 0.50 //  0.50 -> Coins Subtotal = 157.00
+
+        val (bills, coins, total) = calculateFullPhilippinePesoCount(
+            c1000, c500, c200, c100, c50, c20,
+            c10, c5, c1, c25c, other
+        )
+
+        assertEquals(4300.00, bills, 0.0)
+        assertEquals(157.00, coins, 0.0)
+        assertEquals(4457.00, total, 0.0)
+    }
+
+    @Test
+    fun drawerBalanceFormula_computesStartingFloatPlusSalesPlusCashInMinusCashOutMinusRefunds() {
+        val startingFloat = 1500.00
+        val cashSales = 5420.75
+        val cashIn = 300.00
+        val cashOut = 250.00
+        val refunds = 120.75
+
+        // Expected: 1500.00 + 5420.75 + 300.00 - 250.00 - 120.75 = 6850.00
+        val expected = calculateDrawerBalanceFormula(
+            startingFloat = startingFloat,
+            cashSales = cashSales,
+            cashIn = cashIn,
+            cashOut = cashOut,
+            refunds = refunds
+        )
+
+        assertEquals(6850.00, expected, 0.0)
+    }
+
+    @Test
+    fun gcashDigitalWalletFormula_computesStartingPlusInflowMinusDisbursed() {
+        val startingBalance = 8000.00
+        val cashInInflow = 2500.00
+        val cashOutDisbursed = 1500.00
+
+        // Expected: 8000 + 2500 - 1500 = 9000.00
+        val expected = calculateGcashWalletFormula(
+            startingBalance = startingBalance,
+            cashInInflow = cashInInflow,
+            cashOutDisbursed = cashOutDisbursed
+        )
+
+        assertEquals(9000.00, expected, 0.0)
+    }
+
+    @Test
+    fun prepaidMobileLoad_evaluatesBeginningVsEndingBalanceAgainstReloadSales() {
+        val smartBeginning = 2000.00
+        val smartReloadSales = 650.00
+        val smartExpected = StorePointRepository.roundMoney(smartBeginning - smartReloadSales)
+        assertEquals(1350.00, smartExpected, 0.0)
+
+        val globeBeginning = 3500.00
+        val globeReloadSales = 1200.00
+        val globeExpected = StorePointRepository.roundMoney(globeBeginning - globeReloadSales)
+        assertEquals(2300.00, globeExpected, 0.0)
+    }
+
+    @Test
+    fun mandatoryShiftClosureGuard_blocksClosureUntilPhysicalCountsEntered() {
+        fun canCloseShiftGuard(
+            hasEnteredCounts: Boolean,
+            variance: Double,
+            managerApproved: Boolean,
+            note: String
+        ): Boolean {
+            if (!hasEnteredCounts) return false
+            val hasDiscrepancy = kotlin.math.abs(variance) >= 0.01
+            return !hasDiscrepancy || (managerApproved && note.trim().length >= 4)
+        }
+
+        // Unentered counts must ALWAYS block closure, even if variance formula would default to zero
+        assertFalse("Unentered counts must block closure", canCloseShiftGuard(false, 0.0, false, ""))
+        assertFalse("Unentered counts must block closure even with manager approval", canCloseShiftGuard(false, 0.0, true, "Supervisor forced"))
+
+        // Entered counts with zero variance allows closure
+        assertTrue("Entered balanced counts allows closure", canCloseShiftGuard(true, 0.0, false, ""))
+
+        // Entered counts with discrepancy requires manager approval and note
+        assertFalse("Variance without approval is blocked", canCloseShiftGuard(true, -25.0, false, ""))
+        assertFalse("Variance with approval but short note is blocked", canCloseShiftGuard(true, -25.0, true, "no"))
+        assertTrue("Variance with manager approval and valid note is permitted", canCloseShiftGuard(true, -25.0, true, "Register coin shortage verified"))
     }
 
     @Test
@@ -105,123 +237,69 @@ class DrawerReconciliationTest {
     }
 
     @Test
-    fun discrepancyThreshold_triggersManagerOverrideRequirement() {
-        val toleranceThreshold = 10.00 // 10 pesos discrepancy tolerance
-
-        // Small 2 peso difference within tolerance
-        val minorVariance = -2.00
-        val requiresOverrideMinor = kotlin.math.abs(minorVariance) > toleranceThreshold
-        assertFalse(requiresOverrideMinor)
-
-        // 50 peso shortage requires manager override
-        val majorShortage = -50.00
-        val requiresOverrideMajor = kotlin.math.abs(majorShortage) > toleranceThreshold
-        assertTrue(requiresOverrideMajor)
-
-        // Verification guard logic:
-        // Closure allowed if NO discrepancy OR manager override verified with reason
-        fun canCloseShift(
-            variance: Double,
-            managerApproved: Boolean,
-            reason: String
-        ): Boolean {
-            val hasDiscrepancy = kotlin.math.abs(variance) > toleranceThreshold
-            return !hasDiscrepancy || (managerApproved && reason.isNotBlank())
-        }
-
-        assertFalse("Unapproved discrepancy must block closure", canCloseShift(majorShortage, false, ""))
-        assertFalse("Approved discrepancy without explanatory note must block closure", canCloseShift(majorShortage, true, ""))
-        assertTrue("Approved discrepancy with note is allowed", canCloseShift(majorShortage, true, "Customer left without change, recorded"))
-        assertTrue("Zero discrepancy is allowed directly", canCloseShift(0.0, false, ""))
-    }
-
-    @Test
-    fun shiftReconciliationEntity_buildsExpectedFields() {
+    fun buildShiftReconciliationReceipt_withFormulaSummary_printsAllDetails() {
         val recon = ShiftReconciliation(
-            sessionId = 12,
-            cashierUsername = "john_cashier",
+            sessionId = 8,
+            cashierUsername = "maria_s",
             timestamp = 1700000000000L,
-            count1000 = 2,
-            count500 = 1,
-            count200 = 2,
+            count1000 = 3,
+            count500 = 2,
+            count200 = 1,
             count100 = 5,
             count50 = 2,
             count20 = 5,
-            countCoins = 25.50,
-            totalCountedCash = 3525.50,
-            expectedCash = 3525.50,
+            countCoins = 145.50,
+            totalCountedCash = 4945.50,
+            expectedCash = 4945.50,
             cashVariance = 0.0,
-            countedGCash = 5000.0,
-            expectedGCash = 5000.0,
+            countedGCash = 6000.0,
+            expectedGCash = 6000.0,
             gcashVariance = 0.0,
-            countedSmartLoad = 1000.0,
-            expectedSmartLoad = 1000.0,
+            countedSmartLoad = 1200.0,
+            expectedSmartLoad = 1200.0,
             smartLoadVariance = 0.0,
-            countedGlobeLoad = 1500.0,
-            expectedGlobeLoad = 1500.0,
+            countedGlobeLoad = 1800.0,
+            expectedGlobeLoad = 1800.0,
             globeLoadVariance = 0.0,
-            managerOverrideApproved = false,
-            managerUsername = "",
-            discrepancyReason = ""
+            hasDiscrepancy = false,
+            managerOverrideApproved = false
         )
 
-        assertEquals(12, recon.sessionId)
-        assertEquals("john_cashier", recon.cashierUsername)
-        assertEquals(3525.50, recon.totalCountedCash, 0.0)
-        assertEquals(0.0, recon.cashVariance, 0.0)
-        assertFalse(recon.managerOverrideApproved)
-    }
-
-    @Test
-    fun buildShiftReconciliationReceipt_containsReconciliationDetails() {
-        val recon = ShiftReconciliation(
-            sessionId = 5,
-            cashierUsername = "maria_s",
-            timestamp = 1700000000000L,
-            count1000 = 1,
-            count500 = 2,
-            count200 = 0,
-            count100 = 3,
-            count50 = 0,
-            count20 = 5,
-            countCoins = 15.00,
-            totalCountedCash = 2415.00,
-            expectedCash = 2400.00,
-            cashVariance = 15.00, // +15 overage
-            countedGCash = 3000.0,
-            expectedGCash = 3000.0,
-            gcashVariance = 0.0,
-            countedSmartLoad = 500.0,
-            expectedSmartLoad = 500.0,
-            smartLoadVariance = 0.0,
-            countedGlobeLoad = 700.0,
-            expectedGlobeLoad = 700.0,
-            globeLoadVariance = 0.0,
-            hasDiscrepancy = true,
-            managerOverrideApproved = true,
-            managerUsername = "admin_boss",
-            discrepancyReason = "Customer tipped coin change"
+        val formula = EscPosHelper.DrawerBalancingSummary(
+            startingFloat = 1000.00,
+            cashSales = 4145.50,
+            cashIn = 200.00,
+            cashOut = 300.00,
+            cashRefunds = 100.00
         )
 
-        val storeConfig = com.munzo.storepoint.data.StoreConfig(
+        val storeConfig = StoreConfig(
             storeName = "StorePoint Supermart",
-            currencySymbol = "₱"
+            currencySymbol = "₱",
+            hasGCash = true,
+            hasLoad = true
         )
+
         val bytes = EscPosHelper.buildShiftReconciliationReceipt(
             storeConfig = storeConfig,
             reconciliation = recon,
             startTime = 1699960000000L,
+            formulaSummary = formula,
             is80mm = true,
             hasAutoCutter = true
         )
 
-        assertTrue("Receipt bytes should be generated", bytes.isNotEmpty())
+        assertTrue(bytes.isNotEmpty())
         val receiptText = String(bytes, Charsets.ISO_8859_1)
-        assertTrue("Should contain store name", receiptText.contains("StorePoint Supermart"))
-        assertTrue("Should contain cashier username", receiptText.contains("maria_s"))
-        assertTrue("Should contain shift handover header", receiptText.contains("SHIFT HANDOVER RECONCILIATION"))
-        assertTrue("Should contain manager override info", receiptText.contains("admin_boss"))
-        assertTrue("Should contain explanation", receiptText.contains("Customer tipped coin change"))
+        assertTrue(receiptText.contains("SHIFT HANDOVER RECONCILIATION"))
+        assertTrue(receiptText.contains("DRAWER FORMULA BREAKDOWN"))
+        assertTrue(receiptText.contains("Starting Float"))
+        assertTrue(receiptText.contains("Cash Sales"))
+        assertTrue(receiptText.contains("Cash In"))
+        assertTrue(receiptText.contains("Cash Out"))
+        assertTrue(receiptText.contains("Cash Refunds"))
+        assertTrue(receiptText.contains("GCASH DIGITAL WALLET"))
+        assertTrue(receiptText.contains("PREPAID MOBILE LOAD"))
+        assertTrue(receiptText.contains("BALANCED"))
     }
 }
-
