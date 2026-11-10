@@ -36,6 +36,7 @@ import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.munzo.storepoint.data.Product
+import com.munzo.storepoint.ui.components.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,12 +74,11 @@ fun BarcodeScannerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {},
         dismissButton = {
-            Button(
+            HeroButton(
                 onClick = onDismiss,
-                shape = CircleShape
-            ) {
-                Text(if (continuous) "Done Scanning" else "Close Scanner")
-            }
+                shape = CircleShape,
+                text = if (continuous) "Done Scanning" else "Close Scanner"
+            )
         },
         title = {
             Row(

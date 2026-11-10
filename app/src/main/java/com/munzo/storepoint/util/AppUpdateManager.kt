@@ -52,11 +52,20 @@ object AppUpdateManager {
         githubToken = token.trim()
     }
 
+    private fun isSecureGitHubApiUrl(urlStr: String): Boolean {
+        return try {
+            val u = URL(urlStr)
+            u.protocol.equals("https", ignoreCase = true) && u.host.equals("api.github.com", ignoreCase = true)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun createConnection(urlStr: String, accept: String = "application/vnd.github.v3+json"): HttpURLConnection {
         return (URL(urlStr).openConnection() as HttpURLConnection).apply {
             setRequestProperty("Accept", accept)
             setRequestProperty("User-Agent", "StorePoint-POS-App")
-            if (githubToken.isNotBlank() && urlStr.contains("api.github.com")) {
+            if (githubToken.isNotBlank() && isSecureGitHubApiUrl(urlStr)) {
                 setRequestProperty("Authorization", "Bearer $githubToken")
             }
             connectTimeout = 12000
@@ -160,7 +169,7 @@ object AppUpdateManager {
                 if (name.endsWith(".apk", ignoreCase = true)) {
                     val candidateIsSigned = name.contains("signed-release", ignoreCase = true)
                     val currentIsSigned = apkAssetName.contains("signed-release", ignoreCase = true)
-                    if (downloadUrl.isEmpty() || (currentIsSigned && !candidateIsSigned)) {
+                    if (downloadUrl.isEmpty() || (!currentIsSigned && candidateIsSigned)) {
                         downloadUrl = effectiveUrl
                         apkAssetName = name
                         assetSize = asset.optLong("size", 0)
@@ -245,7 +254,7 @@ object AppUpdateManager {
                 connection = (URL(targetUrl).openConnection() as HttpURLConnection).apply {
                     instanceFollowRedirects = true
                     setRequestProperty("User-Agent", "StorePoint-POS-App")
-                    if (targetUrl.contains("api.github.com")) {
+                    if (isSecureGitHubApiUrl(targetUrl)) {
                         setRequestProperty("Accept", "application/octet-stream")
                         if (githubToken.isNotBlank()) {
                             setRequestProperty("Authorization", "Bearer $githubToken")
@@ -265,6 +274,14 @@ object AppUpdateManager {
                     }
                 }
                 break
+            }
+
+            val responseCode = connection.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK && responseCode != HttpURLConnection.HTTP_PARTIAL) {
+                val errorMsg = try {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }
+                } catch (_: Exception) { null }
+                throw java.io.IOException("Server returned HTTP $responseCode during package download${if (!errorMsg.isNullOrBlank()) ": $errorMsg" else ""}")
             }
 
             val fileLength = connection.contentLengthLong
@@ -354,7 +371,7 @@ object AppUpdateManager {
                 connection = (URL(targetUrl).openConnection() as HttpURLConnection).apply {
                     instanceFollowRedirects = true
                     setRequestProperty("User-Agent", "StorePoint-POS-App")
-                    if (targetUrl.contains("api.github.com")) {
+                    if (isSecureGitHubApiUrl(targetUrl)) {
                         setRequestProperty("Accept", "application/octet-stream")
                         if (githubToken.isNotBlank()) {
                             setRequestProperty("Authorization", "Bearer $githubToken")
@@ -397,7 +414,7 @@ object AppUpdateManager {
                     connection = (URL(targetUrl).openConnection() as HttpURLConnection).apply {
                         instanceFollowRedirects = true
                         setRequestProperty("User-Agent", "StorePoint-POS-App")
-                        if (targetUrl.contains("api.github.com")) {
+                        if (isSecureGitHubApiUrl(targetUrl)) {
                             setRequestProperty("Accept", "application/octet-stream")
                             if (githubToken.isNotBlank()) {
                                 setRequestProperty("Authorization", "Bearer $githubToken")

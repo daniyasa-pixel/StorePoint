@@ -325,20 +325,18 @@ fun ReturnRefundDialog(
                                 ) {
                                     Text("2. Items to Return & Restock Options", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                     if (isCompact && loadedTx != null) {
-                                        TextButton(
+                                        HeroTextButton(
                                             onClick = { mobileTab = 0 },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                                        ) {
-                                            Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Change Tx", style = MaterialTheme.typography.labelSmall)
-                                        }
+                                            size = HeroSize.Sm,
+                                            icon = Icons.Default.SwapHoriz,
+                                            text = "Change Tx"
+                                        )
                                     }
                                 }
 
                                 if (isLoadingTx) {
                                     Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                                        CircularProgressIndicator()
+                                        HeroSpinner()
                                     }
                                 } else if (loadedTx == null) {
                                     Box(
@@ -353,9 +351,10 @@ fun ReturnRefundDialog(
                                             Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(48.dp))
                                             Text("Select a transaction to review its items", color = MaterialTheme.colorScheme.outline)
                                             if (isCompact) {
-                                                Button(onClick = { mobileTab = 0 }) {
-                                                    Text("Pick a Transaction")
-                                                }
+                                                HeroButton(
+                                                    onClick = { mobileTab = 0 },
+                                                    text = "Pick a Transaction"
+                                                )
                                             }
                                         }
                                     }
@@ -505,16 +504,13 @@ fun ReturnRefundDialog(
                                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 // Reason dropdown button
                                                 Box(modifier = Modifier.fillMaxWidth()) {
-                                                    OutlinedButton(
+                                                    HeroOutlinedButton(
                                                         onClick = { reasonExpanded = true },
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    ) {
-                                                        Icon(Icons.Default.ReportProblem, null, modifier = Modifier.size(16.dp))
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Text("Reason: $returnReason", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-                                                        Spacer(modifier = Modifier.weight(1f))
-                                                        Icon(Icons.Default.ArrowDropDown, null)
-                                                    }
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        icon = Icons.Default.ReportProblem,
+                                                        trailingIcon = Icons.Default.ArrowDropDown,
+                                                        text = "Reason: $returnReason"
+                                                    )
                                                     DropdownMenu(expanded = reasonExpanded, onDismissRequest = { reasonExpanded = false }) {
                                                         reasons.forEach { r ->
                                                             DropdownMenuItem(
@@ -531,16 +527,13 @@ fun ReturnRefundDialog(
                                                 // Refund Method dropdown button
                                                 Box(modifier = Modifier.fillMaxWidth()) {
                                                     val label = methods.find { it.first == refundMethod }?.second ?: refundMethod
-                                                    OutlinedButton(
+                                                    HeroOutlinedButton(
                                                         onClick = { methodExpanded = true },
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    ) {
-                                                        Icon(Icons.Default.Payment, null, modifier = Modifier.size(16.dp))
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Text("Refund: $label", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-                                                        Spacer(modifier = Modifier.weight(1f))
-                                                        Icon(Icons.Default.ArrowDropDown, null)
-                                                    }
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        icon = Icons.Default.Payment,
+                                                        trailingIcon = Icons.Default.ArrowDropDown,
+                                                        text = "Refund: $label"
+                                                    )
                                                     DropdownMenu(expanded = methodExpanded, onDismissRequest = { methodExpanded = false }) {
                                                         methods.forEach { (m, name) ->
                                                             DropdownMenuItem(
@@ -558,12 +551,11 @@ fun ReturnRefundDialog(
                                             // Side by side on wider screens
                                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                 Box(modifier = Modifier.weight(1f)) {
-                                                    OutlinedButton(
+                                                    HeroOutlinedButton(
                                                         onClick = { reasonExpanded = true },
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    ) {
-                                                        Text(returnReason, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-                                                    }
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        text = returnReason
+                                                    )
                                                     DropdownMenu(expanded = reasonExpanded, onDismissRequest = { reasonExpanded = false }) {
                                                         reasons.forEach { r ->
                                                             DropdownMenuItem(
@@ -579,12 +571,11 @@ fun ReturnRefundDialog(
 
                                                 Box(modifier = Modifier.weight(1f)) {
                                                     val label = methods.find { it.first == refundMethod }?.second ?: refundMethod
-                                                    OutlinedButton(
+                                                    HeroOutlinedButton(
                                                         onClick = { methodExpanded = true },
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    ) {
-                                                        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-                                                    }
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        text = label
+                                                    )
                                                     DropdownMenu(expanded = methodExpanded, onDismissRequest = { methodExpanded = false }) {
                                                         methods.forEach { (m, name) ->
                                                             DropdownMenuItem(

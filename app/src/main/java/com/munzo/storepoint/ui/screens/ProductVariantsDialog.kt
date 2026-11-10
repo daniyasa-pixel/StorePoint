@@ -351,9 +351,7 @@ fun ProductVariantsDialog(
                                 horizontalArrangement = Arrangement.End,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                TextButton(onClick = { resetForm() }) {
-                                    Text("Cancel")
-                                }
+                                HeroTextButton(onClick = { resetForm() }, text = "Cancel")
                                 Spacer(modifier = Modifier.width(8.dp))
                                 HeroButton(
                                     onClick = {

@@ -12,6 +12,9 @@ interface StoreConfigDao {
     @Query("SELECT * FROM store_config WHERE id = 1")
     suspend fun getStoreConfigSync(): StoreConfig?
 
+    @Query("SELECT * FROM store_config WHERE id = 1")
+    fun getStoreConfigBlocking(): StoreConfig?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertStoreConfig(config: StoreConfig)
 
@@ -59,18 +62,24 @@ interface UserDao {
 
 @Dao
 interface CategoryDao {
-    @Query("SELECT * FROM categories ORDER BY name ASC")
+    @Query("SELECT * FROM categories WHERE isArchived = 0 ORDER BY name ASC")
     fun getAllCategories(): Flow<List<Category>>
 
-    @Query("SELECT * FROM categories ORDER BY name ASC")
+    @Query("SELECT * FROM categories WHERE isArchived = 0 ORDER BY name ASC")
     suspend fun getAllCategoriesSync(): List<Category>
 
     @RoomTransaction
-    @Query("SELECT * FROM categories ORDER BY name ASC")
+    @Query("SELECT * FROM categories WHERE isArchived = 0 ORDER BY name ASC")
     fun getCategoriesWithProducts(): Flow<List<CategoryWithProducts>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategory(category: Category)
+
+    @Query("UPDATE categories SET isArchived = 1 WHERE id = :id")
+    suspend fun archiveCategory(id: Int)
+
+    @Query("UPDATE categories SET isArchived = 0 WHERE id = :id")
+    suspend fun unarchiveCategory(id: Int)
 
     @Query("DELETE FROM categories WHERE id = :id")
     suspend fun deleteCategory(id: Int)
@@ -78,11 +87,14 @@ interface CategoryDao {
 
 @Dao
 interface ProductDao {
-    @Query("SELECT * FROM products ORDER BY name ASC")
+    @Query("SELECT * FROM products WHERE isArchived = 0 ORDER BY name ASC")
     fun getAllProducts(): Flow<List<Product>>
 
-    @Query("SELECT * FROM products ORDER BY name ASC")
+    @Query("SELECT * FROM products WHERE isArchived = 0 ORDER BY name ASC")
     suspend fun getAllProductsSync(): List<Product>
+
+    @Query("SELECT * FROM products WHERE isArchived = 1 ORDER BY name ASC")
+    fun getArchivedProducts(): Flow<List<Product>>
 
     @Query("SELECT * FROM products WHERE id = :id")
     fun getProductById(id: Int): Flow<Product?>
@@ -92,14 +104,20 @@ interface ProductDao {
     fun getProductWithVariants(id: Int): Flow<ProductWithVariants?>
 
     @RoomTransaction
-    @Query("SELECT * FROM products ORDER BY name ASC")
+    @Query("SELECT * FROM products WHERE isArchived = 0 ORDER BY name ASC")
     fun getAllProductsWithVariants(): Flow<List<ProductWithVariants>>
 
-    @Query("SELECT * FROM products WHERE barcode = :barcode")
+    @Query("SELECT * FROM products WHERE barcode = :barcode AND isArchived = 0")
     suspend fun getProductByBarcode(barcode: String): Product?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProduct(product: Product)
+
+    @Query("UPDATE products SET isArchived = 1 WHERE id = :id")
+    suspend fun archiveProduct(id: Int)
+
+    @Query("UPDATE products SET isArchived = 0 WHERE id = :id")
+    suspend fun unarchiveProduct(id: Int)
 
     @Query("DELETE FROM products WHERE id = :id")
     suspend fun deleteProduct(id: Int)

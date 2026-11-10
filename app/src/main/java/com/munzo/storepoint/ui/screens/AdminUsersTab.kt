@@ -267,9 +267,7 @@ fun UsersTab(
                 )
             },
             dismissButton = {
-                TextButton(onClick = { userToResetPin = null }) {
-                    Text("Cancel")
-                }
+                HeroTextButton(onClick = { userToResetPin = null }, text = "Cancel")
             }
         )
     }

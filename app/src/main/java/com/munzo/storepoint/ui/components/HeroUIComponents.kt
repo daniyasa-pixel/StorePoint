@@ -77,6 +77,7 @@ fun HeroButton(
     icon: ImageVector? = null,
     trailingIcon: ImageVector? = null,
     text: String? = null,
+    contentPadding: PaddingValues? = null,
     content: (@Composable RowScope.() -> Unit)? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -143,7 +144,7 @@ fun HeroButton(
             .scale(scale)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = hPadding),
+            modifier = if (contentPadding != null) Modifier.padding(contentPadding) else Modifier.padding(horizontal = hPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -185,6 +186,96 @@ fun HeroButton(
     }
 }
 
+@Composable
+fun HeroOutlinedButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    color: HeroColor = HeroColor.Primary,
+    size: HeroSize = HeroSize.Md,
+    enabled: Boolean = true,
+    shape: Shape = HeroUITheme.radius.lg,
+    icon: ImageVector? = null,
+    trailingIcon: ImageVector? = null,
+    text: String? = null,
+    contentPadding: PaddingValues? = null,
+    content: (@Composable RowScope.() -> Unit)? = null
+) {
+    HeroButton(
+        onClick = onClick,
+        modifier = modifier,
+        color = color,
+        variant = HeroButtonVariant.Bordered,
+        size = size,
+        enabled = enabled,
+        shape = shape,
+        icon = icon,
+        trailingIcon = trailingIcon,
+        text = text,
+        contentPadding = contentPadding,
+        content = content
+    )
+}
+
+@Composable
+fun HeroTextButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    color: HeroColor = HeroColor.Primary,
+    size: HeroSize = HeroSize.Md,
+    enabled: Boolean = true,
+    shape: Shape = HeroUITheme.radius.lg,
+    icon: ImageVector? = null,
+    trailingIcon: ImageVector? = null,
+    text: String? = null,
+    contentPadding: PaddingValues? = null,
+    content: (@Composable RowScope.() -> Unit)? = null
+) {
+    HeroButton(
+        onClick = onClick,
+        modifier = modifier,
+        color = color,
+        variant = HeroButtonVariant.Light,
+        size = size,
+        enabled = enabled,
+        shape = shape,
+        icon = icon,
+        trailingIcon = trailingIcon,
+        text = text,
+        contentPadding = contentPadding,
+        content = content
+    )
+}
+
+@Composable
+fun HeroFilledTonalButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    color: HeroColor = HeroColor.Primary,
+    size: HeroSize = HeroSize.Md,
+    enabled: Boolean = true,
+    shape: Shape = HeroUITheme.radius.lg,
+    icon: ImageVector? = null,
+    trailingIcon: ImageVector? = null,
+    text: String? = null,
+    contentPadding: PaddingValues? = null,
+    content: (@Composable RowScope.() -> Unit)? = null
+) {
+    HeroButton(
+        onClick = onClick,
+        modifier = modifier,
+        color = color,
+        variant = HeroButtonVariant.Flat,
+        size = size,
+        enabled = enabled,
+        shape = shape,
+        icon = icon,
+        trailingIcon = trailingIcon,
+        text = text,
+        contentPadding = contentPadding,
+        content = content
+    )
+}
+
 private data class Tuple4<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 
 // =========================================================================
@@ -205,7 +296,7 @@ fun HeroCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val cardModifier = if (onClick != null) {
-        modifier.clickable(onClick = onClick)
+        modifier.clip(shape).clickable(onClick = onClick)
     } else {
         modifier
     }
@@ -440,6 +531,79 @@ fun HeroChip(
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.SemiBold
             )
+        }
+    }
+}
+
+@Composable
+fun HeroFilterChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    color: HeroColor = HeroColor.Primary,
+    icon: ImageVector? = null,
+    enabled: Boolean = true
+) {
+    HeroChip(
+        text = label,
+        modifier = modifier,
+        color = if (selected) color else HeroColor.Default,
+        variant = if (selected) HeroChipVariant.Solid else HeroChipVariant.Flat,
+        icon = icon,
+        onClick = if (enabled) onClick else null
+    )
+}
+
+@Composable
+fun HeroFilterChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    color: HeroColor = HeroColor.Primary,
+    leadingIcon: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
+    label: @Composable () -> Unit
+) {
+    val c = HeroUITheme.colors
+    val (bg, fg, border) = if (selected) {
+        when (color) {
+            HeroColor.Primary -> Triple(c.accent, c.accentForeground, null)
+            HeroColor.Success -> Triple(c.success, c.successForeground, null)
+            HeroColor.Warning -> Triple(c.warning, c.warningForeground, null)
+            HeroColor.Danger -> Triple(c.danger, c.dangerForeground, null)
+            HeroColor.Default -> Triple(c.defaultBtn, c.defaultForeground, null)
+        }
+    } else {
+        Triple(c.surfaceSecondary, c.muted, null)
+    }
+
+    val chipModifier = if (enabled) {
+        modifier.clip(HeroUITheme.radius.full).clickable(onClick = onClick)
+    } else {
+        modifier
+    }
+
+    Surface(
+        modifier = chipModifier,
+        shape = HeroUITheme.radius.full,
+        color = if (enabled) bg else bg.copy(alpha = 0.5f),
+        border = border
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            if (leadingIcon != null) {
+                leadingIcon()
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            CompositionLocalProvider(
+                LocalContentColor provides fg
+            ) {
+                label()
+            }
         }
     }
 }

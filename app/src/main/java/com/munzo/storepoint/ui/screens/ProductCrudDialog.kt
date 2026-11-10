@@ -146,7 +146,7 @@ fun ProductCrudDialog(
             )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            HeroTextButton(onClick = onDismiss) { Text("Cancel") }
         },
         title = { Text(if (editingProduct == null) "Create Store Product Registry" else "Modify Product Details") },
         text = {
@@ -267,10 +267,10 @@ fun ProductCrudDialog(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         listOf("pc", "kg", "liters", "pack", "bottle", "can", "box").forEach { uom ->
-                            FilterChip(
+                            HeroFilterChip(
                                 selected = pBaseUom.equals(uom, ignoreCase = true),
                                 onClick = { pBaseUom = uom },
-                                label = { Text(uom) }
+                                label = uom
                             )
                         }
                     }

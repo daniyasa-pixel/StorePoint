@@ -163,15 +163,7 @@ internal fun StorePointViewModel.backupRestoreFromPersistentBackupImpl(
 internal fun StorePointViewModel.backupClearAllDatabaseDataImpl(adminPass: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
     viewModelScope.launch {
         try {
-            val isAuthorized = withContext(Dispatchers.IO) {
-                val dbAdmins = repository.getAllUsersSync().filter { it.role == "ADMIN" }
-                val active = activeUser.value
-                if (active != null && active.role == "ADMIN" && SecurityHelper.verifyPin(adminPass, active.pinHash).isMatch) {
-                    true
-                } else {
-                    dbAdmins.any { SecurityHelper.verifyPin(adminPass, it.pinHash).isMatch }
-                }
-            }
+            val isAuthorized = verifyAdminPin(adminPass)
 
             if (isAuthorized) {
                 withContext(Dispatchers.IO) {

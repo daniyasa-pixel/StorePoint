@@ -157,11 +157,11 @@ object UsbPrinterHelper {
             return
         }
 
-        val flag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val flag = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PendingIntent.FLAG_MUTABLE
         } else {
             0
-        }
+        }) or PendingIntent.FLAG_UPDATE_CURRENT
         val permissionIntent = PendingIntent.getBroadcast(
             context,
             0,
@@ -170,17 +170,44 @@ object UsbPrinterHelper {
         )
 
         val filter = IntentFilter(ACTION_USB_PERMISSION)
+        val isUnregistered = java.util.concurrent.atomic.AtomicBoolean(false)
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        var cleanupRunnable: Runnable? = null
+
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context?, intent: Intent?) {
                 if (intent?.action == ACTION_USB_PERMISSION) {
+                    val targetDevice: UsbDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                    }
+                    if (targetDevice != null && targetDevice.deviceId != device.deviceId) {
+                        return
+                    }
+                    cleanupRunnable?.let { handler.removeCallbacks(it) }
+                    if (isUnregistered.compareAndSet(false, true)) {
+                        try {
+                            context.unregisterReceiver(this)
+                        } catch (_: Exception) {}
+                    }
                     val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-                    try {
-                        context.unregisterReceiver(this)
-                    } catch (_: Exception) {}
                     onResult(granted)
                 }
             }
         }
+
+        cleanupRunnable = Runnable {
+            if (isUnregistered.compareAndSet(false, true)) {
+                try {
+                    context.unregisterReceiver(receiver)
+                } catch (_: Exception) {}
+                onResult(false)
+            }
+        }
+        // Safety timeout: automatically unregister receiver after 30 seconds if dismissed without response
+        handler.postDelayed(cleanupRunnable, 30000L)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -251,11 +278,13 @@ object UsbPrinterHelper {
                     offset += length
                 }
                 // Small buffer settle delay for XP-58 USB controller
-                Thread.sleep(100)
+                kotlinx.coroutines.delay(100)
                 Result.success(Unit)
             } finally {
                 connection.releaseInterface(iface)
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         } finally {

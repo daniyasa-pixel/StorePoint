@@ -126,7 +126,7 @@ fun LoginScreen(
                 }
             },
             confirmButton = {
-                Button(
+                HeroButton(
                     onClick = {
                         viewModel.verifyKioskUnlock(
                             pin = logoUnlockInput,
@@ -159,19 +159,19 @@ fun LoginScreen(
                                 logoUnlockError = err
                             }
                         )
-                    }
-                ) {
-                    Text("Unlock")
-                }
+                    },
+                    text = "Unlock"
+                )
             },
             dismissButton = {
-                TextButton(onClick = {
-                    showLogoUnlockDialog = false
-                    logoUnlockInput = ""
-                    logoUnlockError = ""
-                }) {
-                    Text("Cancel")
-                }
+                HeroTextButton(
+                    onClick = {
+                        showLogoUnlockDialog = false
+                        logoUnlockInput = ""
+                        logoUnlockError = ""
+                    },
+                    text = "Cancel"
+                )
             }
         )
     }

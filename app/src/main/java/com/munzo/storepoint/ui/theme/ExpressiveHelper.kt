@@ -146,16 +146,18 @@ fun Modifier.tactileBounce(
 ): Modifier {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val reduceMotion = LocalReduceMotion.current
+    val shouldAnimate = pressFeedback && !reduceMotion
 
     // Ripple = GPU-cheap, zero-recomposition press feedback (default everywhere).
     // Spring scale = expressive but recomposes on every press frame (hero surfaces only).
     val scale by animateFloatAsState(
-        targetValue = if (pressFeedback && isPressed) 0.96f else 1.0f,
+        targetValue = if (shouldAnimate && isPressed) 0.96f else 1.0f,
         animationSpec = ExpressiveMotion.springBouncy(),
         label = "PressBounce"
     )
 
-    val pressedModifier = if (pressFeedback) {
+    val pressedModifier = if (shouldAnimate) {
         this.graphicsLayer {
             scaleX = scale
             scaleY = scale

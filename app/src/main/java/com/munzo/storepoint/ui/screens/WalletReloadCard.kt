@@ -21,17 +21,11 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -145,43 +139,32 @@ fun WalletReloadCard(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     walletOptions.forEach { (label, key) ->
-                        FilterChip(
+                        HeroFilterChip(
                             selected = selectedWallet == key,
                             onClick = { selectedWallet = key },
-                            label = {
-                                Text(
-                                    text = label,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                            label = label
                         )
                     }
                 }
 
-                Button(
+                HeroButton(
                     onClick = {
                         amountInput = ""
                         referenceInput = ""
                         dialogError = ""
                         showReloadDialog = true
                     },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Reload $currentLabel")
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = Icons.Default.Add,
+                    text = "Reload $currentLabel"
+                )
 
-                TextButton(
+                HeroTextButton(
                     onClick = { showHistoryDialog = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("View $currentLabel ledger history", style = MaterialTheme.typography.labelMedium)
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = Icons.Default.History,
+                    text = "View $currentLabel ledger history"
+                )
             }
         }
     }
@@ -229,7 +212,7 @@ fun WalletReloadCard(
                 }
             },
             confirmButton = {
-                Button(
+                HeroButton(
                     enabled = !isSaving && amountInput.isNotBlank(),
                     onClick = {
                         val amount = amountInput.toDoubleOrNull()
@@ -254,20 +237,14 @@ fun WalletReloadCard(
                     }
                 ) {
                     if (isSaving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
+                        HeroSpinner(size = 16.dp, strokeWidth = 2.dp)
                     } else {
                         Text("Confirm Reload")
                     }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showReloadDialog = false }, enabled = !isSaving) {
-                    Text("Cancel")
-                }
+                HeroTextButton(onClick = { showReloadDialog = false }, enabled = !isSaving, text = "Cancel")
             }
         )
     }
@@ -318,7 +295,7 @@ private fun WalletHistoryDialog(
                     modifier = Modifier.fillMaxWidth().height(160.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator()
+                    HeroSpinner()
                 }
 
                 list.isEmpty() -> Column(
@@ -417,7 +394,7 @@ private fun WalletHistoryDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            HeroTextButton(onClick = onDismiss, text = "Close")
         }
     )
 }

@@ -672,7 +672,7 @@ fun ShiftReconciliationDialog(
             )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
+            HeroTextButton(onClick = onDismiss, enabled = !isSubmitting) {
                 Text("Cancel")
             }
         }

@@ -217,11 +217,14 @@ internal fun StorePointViewModel.cartExecuteCheckoutImpl(
     totalAmount: Double,
     checkoutItems: List<Pair<Product, Int>>? = null,
     customerName: String = "",
+    onError: (String) -> Unit = {},
     onSuccess: (Transaction) -> Unit
 ) {
     val itemsToProcess = checkoutItems ?: _cartMap.value.values.toList()
     if (itemsToProcess.isEmpty()) {
-        Toast.makeText(context, "Shopping cart is empty.", Toast.LENGTH_SHORT).show()
+        val errorMsg = "Shopping cart is empty."
+        Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+        onError(errorMsg)
         return
     }
 
@@ -319,7 +322,9 @@ internal fun StorePointViewModel.cartExecuteCheckoutImpl(
                 }
             }
         } catch (e: Exception) {
-            Toast.makeText(context, e.localizedMessage ?: "Checkout failed.", Toast.LENGTH_LONG).show()
+            val msg = e.localizedMessage ?: "Checkout failed."
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            onError(msg)
         }
     }
 }

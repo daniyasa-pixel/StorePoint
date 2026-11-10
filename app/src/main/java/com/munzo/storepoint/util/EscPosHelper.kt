@@ -12,8 +12,12 @@ import com.munzo.storepoint.data.Transaction
 import com.munzo.storepoint.data.TransactionItem
 import com.munzo.storepoint.data.ReturnTransaction
 import com.munzo.storepoint.data.ReturnItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -929,38 +933,47 @@ object EscPosHelper {
             var socket: BluetoothSocket? = null
             var lastEx: Exception? = null
 
-            // 1. Try standard secure RFCOMM SPP socket
-            try {
-                socket = device.createRfcommSocketToServiceRecord(SPP_UUID)
-                socket.connect()
-            } catch (e: Exception) {
-                lastEx = e
-                try { socket?.close() } catch (_: Exception) {}
-                socket = null
-            }
-
-            // 2. Try insecure RFCOMM socket (common requirement on XP-58 / portable printers)
-            if (socket == null) {
+            // Connect with timeout guard to prevent UI thread hangs on unresponsive/offline printers
+            withTimeout(8000L) {
+                // 1. Try standard secure RFCOMM SPP socket
+                var s1: BluetoothSocket? = null
                 try {
-                    socket = device.createInsecureRfcommSocketToServiceRecord(SPP_UUID)
-                    socket.connect()
+                    s1 = device.createRfcommSocketToServiceRecord(SPP_UUID)
+                    s1.connect()
+                    socket = s1
                 } catch (e: Exception) {
                     lastEx = e
-                    try { socket?.close() } catch (_: Exception) {}
+                    try { s1?.close() } catch (_: Exception) {}
                     socket = null
                 }
-            }
 
-            // 3. Fallback to RFCOMM Channel 1 via reflection (XP-58 / XP-58IIH / POS-58 standard fix)
-            if (socket == null) {
-                try {
-                    val m = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
-                    socket = m.invoke(device, 1) as BluetoothSocket
-                    socket.connect()
-                } catch (fallbackEx: Exception) {
-                    lastEx = fallbackEx
-                    try { socket?.close() } catch (_: Exception) {}
-                    socket = null
+                // 2. Try insecure RFCOMM socket (common requirement on XP-58 / portable printers)
+                if (socket == null) {
+                    var s2: BluetoothSocket? = null
+                    try {
+                        s2 = device.createInsecureRfcommSocketToServiceRecord(SPP_UUID)
+                        s2.connect()
+                        socket = s2
+                    } catch (e: Exception) {
+                        lastEx = e
+                        try { s2?.close() } catch (_: Exception) {}
+                        socket = null
+                    }
+                }
+
+                // 3. Fallback to RFCOMM Channel 1 via reflection (XP-58 / XP-58IIH / POS-58 standard fix)
+                if (socket == null) {
+                    var s3: BluetoothSocket? = null
+                    try {
+                        val m = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+                        s3 = m.invoke(device, 1) as BluetoothSocket
+                        s3.connect()
+                        socket = s3
+                    } catch (fallbackEx: Exception) {
+                        lastEx = fallbackEx
+                        try { s3?.close() } catch (_: Exception) {}
+                        socket = null
+                    }
                 }
             }
 
@@ -971,11 +984,15 @@ object EscPosHelper {
                     out.write(data)
                     out.flush()
                     // Allow printer buffer to complete printing before closing connection
-                    Thread.sleep(150)
+                    delay(150)
                 }
             }
 
             Result.success(Unit)
+        } catch (e: TimeoutCancellationException) {
+            Result.failure(IOException("Bluetooth printer connection timed out after 8s ($macAddress)", e))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }

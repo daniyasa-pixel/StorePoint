@@ -109,16 +109,18 @@ fun StorePointTheme(
       else -> LightColorScheme
     }
 
-  CompositionLocalProvider(
-    LocalReduceMotion provides reduceMotion,
-    LocalExpressiveColors provides if (darkTheme) ExpressiveRolesDark else ExpressiveRolesLight
-  ) {
-    MaterialTheme(
-      colorScheme = colorScheme,
-      shapes = ExpressiveShapes,
-      typography = Typography,
-      content = content
-    )
+  HeroUIThemeProvider(darkTheme = darkTheme) {
+    CompositionLocalProvider(
+      LocalReduceMotion provides reduceMotion,
+      LocalExpressiveColors provides if (darkTheme) ExpressiveRolesDark else ExpressiveRolesLight
+    ) {
+      MaterialTheme(
+        colorScheme = colorScheme,
+        shapes = ExpressiveShapes,
+        typography = Typography,
+        content = content
+      )
+    }
   }
 }
 
@@ -128,7 +130,7 @@ fun StorePointTheme(
 @Composable
 fun MyApplicationTheme(
   darkTheme: Boolean = isSystemInDarkTheme(),
-  dynamicColor: Boolean = true,
+  dynamicColor: Boolean = false,
   content: @Composable () -> Unit,
 ) {
   StorePointTheme(

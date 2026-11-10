@@ -633,13 +633,11 @@ fun BulkProductionDialog(
                                                 }
                                             }
                                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                OutlinedButton(
+                                                HeroOutlinedButton(
                                                     onClick = { applyBom(bom) },
-                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                                    modifier = Modifier.height(34.dp)
-                                                ) {
-                                                    Text("Apply", fontSize = 11.sp)
-                                                }
+                                                    size = HeroSize.Sm,
+                                                    text = "Apply"
+                                                )
                                                 IconButton(
                                                     onClick = {
                                                         viewModel.deleteBomRecipe(bom.id) { success ->
@@ -697,15 +695,11 @@ fun BulkProductionDialog(
                     modifier = Modifier.testTag("execute_production_btn")
                 )
             } else {
-                TextButton(onClick = { selectedTabIndex = 0 }) {
-                    Text("Back to Repack Batch")
-                }
+                HeroTextButton(onClick = { selectedTabIndex = 0 }, text = "Back to Repack Batch")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isExecuting) {
-                Text("Close")
-            }
+            HeroTextButton(onClick = onDismiss, enabled = !isExecuting, text = "Close")
         }
     )
 }

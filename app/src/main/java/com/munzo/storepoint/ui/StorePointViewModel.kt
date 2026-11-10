@@ -153,37 +153,17 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
      *
      * @return null on success, or a user-facing reason the PIN was rejected.
      */
-    fun setKioskPin(newPin: String, onResult: ((String?) -> Unit)? = null): String? {
-        // Fails closed: a blank/short PIN must never silently store an empty hash,
-        // which would leave lockdown releasable with no credential (see issue #2).
-        if (!SecurityHelper.isValidPin(newPin)) {
-            val reason = "Kiosk PIN must be exactly ${SecurityHelper.PIN_LENGTH} digits."
-            onResult?.invoke(reason)
-            return reason
-        }
-        if (SecurityHelper.isWeakPin(newPin)) {
-            val reason = "That Kiosk PIN is too easy to guess. ${SecurityHelper.pinPolicyHint()}"
-            onResult?.invoke(reason)
-            return reason
-        }
-        // C1: Store only a salted PBKDF2 hash (never plaintext).
-        val hashedPin = SecurityHelper.hashPin(newPin)
-        prefs.edit().putString("system_kiosk_pin", hashedPin).apply()
-        kioskPin.value = hashedPin
-        onResult?.invoke(null)
-        return null
+    companion object {
+        const val KIOSK_PIN_LOCKOUT_KEY = "kiosk_pin"
+        const val KIOSK_PIN_FAIL_COUNT = "kiosk_pin_fail_count"
+        const val KIOSK_PIN_LOCKED_UNTIL = "kiosk_pin_locked_until"
+        const val KIOSK_UNLOCK_LOCKOUT_KEY = "admin_kiosk_unlock"
+        const val RADIO_TOGGLE_LOCKOUT_KEY = "admin_radio_toggle"
     }
 
-    /**
-     * Escalating failure counter for the kiosk PIN itself.
-     *
-     * SECURITY (issue #3): the Admin Security dialog used to call [isKioskPinValid]
-     * directly on every button press, with no fail counter at all, against a PIN
-     * whose keyspace is only 10,000. Every other privileged path in the app
-     * ([verifyAdminPin], [verifyKioskUnlock], `login`) was already throttled; this
-     * was the single exception, and it guarded the register.
-     */
-    private val kioskPinLockout = KioskLockout(
+    val RADIO_TOGGLE_BUDGET: String = RADIO_TOGGLE_LOCKOUT_KEY
+
+    internal val kioskPinLockout = KioskLockout(
         readFailCount = { prefs.getInt(KIOSK_PIN_FAIL_COUNT, 0) },
         readLockedUntil = { prefs.getLong(KIOSK_PIN_LOCKED_UNTIL, 0L) },
         writeState = { _, fails, lockedUntil ->
@@ -192,14 +172,7 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
         }
     )
 
-    /**
-     * Escalating failure counter for the admin-PIN budget, keyed per action.
-     *
-     * SECURITY (issue #6): shares [KioskLockdownPolicy] with the kiosk PIN so every
-     * privileged gate in the app escalates identically, while keeping a separate
-     * counter per action so one cannot exhaust another's allowance.
-     */
-    private val adminUnlockLockout = KioskLockout(
+    internal val adminUnlockLockout = KioskLockout(
         readFailCount = { key -> prefs.getInt("${key}_fail_count", 0) },
         readLockedUntil = { key -> prefs.getLong("${key}_locked_until", 0L) },
         writeState = { key, fails, lockedUntil ->
@@ -210,35 +183,19 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
         }
     )
 
-    /**
-     * Verifies the kiosk PIN under an escalating lockout.
-     *
-     * This is the **only** supported way to release lockdown with the kiosk PIN.
-     * [isKioskPinValid] remains a pure, side-effect-free comparison for callers
-     * that only need to know whether a PIN is configured.
-     */
-    fun verifyKioskPinUnlock(pin: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        val active = kioskPinLockout.lockoutMessage(KIOSK_PIN_LOCKOUT_KEY)
-        if (active != null) {
-            onFailure(active)
-            return
-        }
+    internal val lockoutScheduleMs = longArrayOf(30_000L, 60_000L, 120_000L, 300_000L)
+    internal fun lockoutWindowFor(failCount: Int): Long =
+        lockoutScheduleMs[failCount.coerceAtMost(lockoutScheduleMs.lastIndex)]
 
-        if (isKioskPinValid(pin)) {
-            kioskPinLockout.onSuccess(KIOSK_PIN_LOCKOUT_KEY)
-            onSuccess()
-        } else {
-            onFailure(kioskPinLockout.onFailure(KIOSK_PIN_LOCKOUT_KEY))
-        }
-    }
+    fun setKioskPin(newPin: String, onResult: ((String?) -> Unit)? = null): String? =
+        authSetKioskPinImpl(newPin, onResult)
 
-    /** Verifies a candidate kiosk PIN against the stored PBKDF2 hash (constant-time). */
-    fun isKioskPinValid(candidate: String): Boolean {
-        val storedHash = kioskPin.value ?: ""
-        return storedHash.isNotEmpty() && SecurityHelper.verifyPassword(candidate, storedHash).isMatch
-    }
+    fun verifyKioskPinUnlock(pin: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) =
+        authVerifyKioskPinUnlockImpl(pin, onSuccess, onFailure)
 
-    /** True when a kiosk PIN has been configured on this terminal. */
+    fun isKioskPinValid(candidate: String): Boolean =
+        authIsKioskPinValidImpl(candidate)
+
     fun hasKioskPin(): Boolean = !kioskPin.value.isNullOrEmpty()
 
     internal var toneGenerator: android.media.ToneGenerator? = null
@@ -278,36 +235,8 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
      * removed. Repeated failures trigger a 60-second lockout to slow brute-force of the
      * PIN space.
      */
-    suspend fun verifyAdminPin(candidatePin: String): Boolean {
-        if (candidatePin.isBlank()) return false
-
-        val now = System.currentTimeMillis()
-        val lockedUntil = prefs.getLong("admin_pin_locked_until", 0L)
-        if (now < lockedUntil) return false
-
-        val active = activeUser.value
-        val verified = if (active != null && active.role.equals("ADMIN", ignoreCase = true) &&
-            SecurityHelper.verifyPin(candidatePin, active.pinHash).isMatch
-        ) {
-            true
-        } else {
-            val dbAdmins = repository.getAllUsersSync().filter { it.role.equals("ADMIN", ignoreCase = true) }
-            // Fail closed: with no admin accounts there is nothing valid to verify against.
-            dbAdmins.isNotEmpty() && dbAdmins.any { SecurityHelper.verifyPin(candidatePin, it.pinHash).isMatch }
-        }
-
-        if (verified) {
-            prefs.edit().putInt("admin_pin_fail_count", 0).putLong("admin_pin_locked_until", 0L).apply()
-        } else {
-            val fails = prefs.getInt("admin_pin_fail_count", 0) + 1
-            if (fails >= 5) {
-                prefs.edit().putInt("admin_pin_fail_count", 0).putLong("admin_pin_locked_until", now + 60_000L).apply()
-            } else {
-                prefs.edit().putInt("admin_pin_fail_count", fails).apply()
-            }
-        }
-        return verified
-    }
+    suspend fun verifyAdminPin(candidatePin: String): Boolean =
+        authVerifyAdminPinImpl(candidatePin)
 
     // Active cart items (Product to count)
     internal val _cartMap = MutableStateFlow<Map<Int, Pair<Product, Int>>>(emptyMap())
@@ -418,25 +347,8 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
     }
 
 
-    fun getDrawerPayoutsInActiveSession(): Double {
-        val session = activeSession.value ?: return 0.0
-        return allDrawerTransactions.value.filter {
-            it.sessionId == session.id
-        }.sumOf { it.amount }
-    }
-
-    fun getCurrentDrawerCash(): Double {
-        val session = activeSession.value ?: return 0.0
-        val sales = allTransactions.value.filter {
-            it.timestamp >= session.startTime && it.paymentMethod == "CASH" && it.status != "VOIDED" && it.status != "CANCELLED"
-        }.sumOf { it.totalAmount }
-        
-        val payouts = allDrawerTransactions.value.filter {
-            it.sessionId == session.id
-        }.sumOf { it.amount }
-        
-        return StorePointRepository.roundMoney(session.startingCash + sales + payouts)
-    }
+    fun getDrawerPayoutsInActiveSession(): Double = shiftGetDrawerPayoutsInActiveSessionImpl()
+    fun getCurrentDrawerCash(): Double = shiftGetCurrentDrawerCashImpl()
 
     // Filters and query state
     val searchBarcodeQuery = MutableStateFlow("")
@@ -490,15 +402,8 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
         refreshBackupSnapshots()
     }
 
-    fun checkDatabaseHealth() {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val report = AppDatabase.checkConnectionHealth(context)
-            databaseHealth.value = report
-            android.util.Log.i("StorePointViewModel", "Database Health Report: ${report.message}")
-        }
-    }
+    fun checkDatabaseHealth() = setupCheckDatabaseHealthImpl()
 
-    // --- Setup operations ---
     fun completeInitialSetup(
         storeName: String,
         currency: String,
@@ -516,594 +421,75 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
         gcashServiceFee: Double = 10.0,
         mayaServiceFee: Double = 10.0,
         mayaBankFee: Double = 15.0
-    ) {
-        viewModelScope.launch {
-            val hashedPass = hashPin(adminPass)
-            // Save admin credentials. `pinResetRequired = false` because this account
-            // is created now under the 4-digit standard — it must not be routed
-            // through the legacy-credential migration wizard.
-            val user = User(
-                username = adminUser,
-                pinHash = hashedPass,
-                role = "ADMIN",
-                biometricEnrolled = false,
-                pinResetRequired = false
-            )
-            repository.saveUser(user)
+    ) = setupCompleteInitialSetupImpl(
+        storeName, currency, taxPercent, adminUser, adminPass, adminName, adminPhone,
+        hasGCash, hasMaya, hasLoad, smartLoadBalance, globeLoadBalance,
+        loadServiceFee, gcashServiceFee, mayaServiceFee, mayaBankFee
+    )
 
-            // Save admin contact details in preferences
-            val adminPrefs = context.getSharedPreferences("storepoint_admin_prefs", Context.MODE_PRIVATE)
-            adminPrefs.edit()
-                .putString("admin_phone_number", adminPhone.trim())
-                .putString("admin_name", adminName.trim())
-                .apply()
-
-            // Save store config
-            val config = StoreConfig(
-                storeName = storeName,
-                currencySymbol = currency,
-                taxPercentage = taxPercent,
-                setupCompleted = true,
-                hasGCash = hasGCash,
-                hasMaya = hasMaya,
-                hasLoad = hasLoad,
-                smartLoadBalance = StorePointRepository.roundMoney(smartLoadBalance),
-                globeLoadBalance = StorePointRepository.roundMoney(globeLoadBalance),
-                loadServiceFee = StorePointRepository.roundMoney(loadServiceFee),
-                gcashServiceFee = StorePointRepository.roundMoney(gcashServiceFee),
-                mayaServiceFee = StorePointRepository.roundMoney(mayaServiceFee),
-                mayaBankFee = StorePointRepository.roundMoney(mayaBankFee)
-            )
-            repository.saveStoreConfig(config)
-            
-            // Automatically log in active administrator
-            activeUser.value = user
-            Toast.makeText(context, "Initial Store Setup Completed Successfully!", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    // --- Authentication ---
+    // --- Authentication & Terminal State ---
     val isKioskModeActive = MutableStateFlow(prefs.getBoolean("is_kiosk_mode_active", false))
-
-    private companion object {
-        /** Lockout bucket for the kiosk PIN, kept separate from admin-PIN throttles. */
-        const val KIOSK_PIN_LOCKOUT_KEY = "kiosk_pin"
-        const val KIOSK_PIN_FAIL_COUNT = "kiosk_pin_fail_count"
-        const val KIOSK_PIN_LOCKED_UNTIL = "kiosk_pin_locked_until"
-
-        /**
-         * SECURITY (issue #6): the admin-PIN budget is now keyed per action.
-         *
-         * Previously releasing a cash register out of lockdown and toggling the Wi-Fi
-         * radio shared one counter, so unrelated mistakes consumed the admin's ability
-         * to unlock the terminal.
-         */
-        const val KIOSK_UNLOCK_LOCKOUT_KEY = "admin_kiosk_unlock"
-        const val RADIO_TOGGLE_LOCKOUT_KEY = "admin_radio_toggle"
-    }
-
-    /**
-     * Lockout budget for the Wi-Fi/Bluetooth radio toggles (issue #6).
-     *
-     * Exposed so the status bar can charge its own budget rather than the kiosk-exit
-     * one, without duplicating the key string.
-     */
-    val RADIO_TOGGLE_BUDGET: String = RADIO_TOGGLE_LOCKOUT_KEY
-
-    fun toggleKioskMode(active: Boolean) {
-        prefs.edit().putBoolean("is_kiosk_mode_active", active).apply()
-        isKioskModeActive.value = active
-        if (!active) {
-            // Releasing lockdown clears its failure history, so a later re-activation
-            // does not inherit a stale lockout from a previous lockdown cycle.
-            kioskPinLockout.onSuccess(KIOSK_PIN_LOCKOUT_KEY)
-        }
-    }
-
-    fun loginWithBarcode(barcodeId: String, onSuccess: (User) -> Unit, onFailure: (String) -> Unit) {
-        viewModelScope.launch {
-            val user = repository.getUserByBarcode(barcodeId.trim())
-            if (user != null) {
-                activeUser.value = user
-                playBeep()
-                onSuccess(user)
-            } else {
-                onFailure("No staff member matches scanned barcode ID: $barcodeId")
-            }
-        }
-    }
-
     val isBiometricEnabled = MutableStateFlow(prefs.getBoolean("is_biometric_enabled", true))
     val lastLoggedInUser = MutableStateFlow(prefs.getString("last_logged_in_user", null))
-
     val allowedTerminalApps = MutableStateFlow<Set<String>>(
         DigitalServicesHelper.getAllowedApps(context.getSharedPreferences(DigitalServicesHelper.PREFS_NAME, Context.MODE_PRIVATE))
     )
+    val usersPendingPinReset: StateFlow<List<User>> = repository.usersPendingPinReset
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val biometricEnrolledUsers: StateFlow<List<User>> = repository.biometricEnrolledUsers
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addAllowedTerminalApp(pkg: String) {
-        val clean = pkg.trim()
-        if (clean.isBlank()) return
-        val current = allowedTerminalApps.value.toMutableSet()
-        current.add(clean)
-        allowedTerminalApps.value = current
-        val p = context.getSharedPreferences(DigitalServicesHelper.PREFS_NAME, Context.MODE_PRIVATE)
-        DigitalServicesHelper.saveAllowedApps(p, current)
-    }
-
-    fun removeAllowedTerminalApp(pkg: String) {
-        val clean = pkg.trim()
-        val current = allowedTerminalApps.value.toMutableSet()
-        current.remove(clean)
-        allowedTerminalApps.value = current
-        val p = context.getSharedPreferences(DigitalServicesHelper.PREFS_NAME, Context.MODE_PRIVATE)
-        DigitalServicesHelper.saveAllowedApps(p, current)
-    }
-
-    fun switchCashierWithPin(pin: String, onResult: (Boolean, String, User?) -> Unit) {
-        viewModelScope.launch {
-            if (!SecurityHelper.isValidPin(pin)) {
-                onResult(false, "PIN must be exactly 4 numeric digits.", null)
-                return@launch
-            }
-            val users = allUsers.value
-            val match = users.firstOrNull { SecurityHelper.verifyPin(pin, it.pinHash).isMatch }
-            if (match != null) {
-                activeUser.value = match
-                lastLoggedInUser.value = match.username
-                prefs.edit().putString("last_logged_in_user", match.username).apply()
-                playBeep()
-                onResult(true, "Switched to ${match.username.uppercase()} (${match.role})", match)
-            } else {
-                onResult(false, "Invalid staff PIN. No account matched.", null)
-            }
-        }
-    }
-
-    fun switchCashierWithUser(user: User) {
-        activeUser.value = user
-        lastLoggedInUser.value = user.username
-        prefs.edit().putString("last_logged_in_user", user.username).apply()
-        playBeep()
-    }
-
-    fun resetAdminPin(
-        adminUsername: String,
-        currentPinOrRecoveryKey: String,
-        newPin: String,
-        onResult: (Boolean, String) -> Unit
-    ) {
-        viewModelScope.launch {
-            if (!SecurityHelper.isValidPin(newPin)) {
-                onResult(false, "New PIN must be exactly 4 digits.")
-                return@launch
-            }
-            if (SecurityHelper.isWeakPin(newPin)) {
-                onResult(false, "New PIN is too weak. ${SecurityHelper.pinPolicyHint()}")
-                return@launch
-            }
-            val adminUser = allUsers.value.firstOrNull {
-                it.username.equals(adminUsername.trim(), ignoreCase = true) && it.role.equals("ADMIN", ignoreCase = true)
-            }
-            if (adminUser == null) {
-                onResult(false, "Admin account '${adminUsername.trim()}' not found.")
-                return@launch
-            }
-
-            val isPinMatch = SecurityHelper.verifyPinLenient(currentPinOrRecoveryKey.trim(), adminUser.pinHash).isMatch
-            val recoveryKey = prefs.getString("admin_recovery_key", "STOREPOINT-ADMIN-RESET") ?: "STOREPOINT-ADMIN-RESET"
-            val isRecoveryMatch = currentPinOrRecoveryKey.trim() == recoveryKey || currentPinOrRecoveryKey.trim() == "STOREPOINT-ADMIN-RESET"
-
-            if (!isPinMatch && !isRecoveryMatch) {
-                onResult(false, "Authentication failed. Incorrect current PIN or recovery key.")
-                return@launch
-            }
-
-            val updatedUser = adminUser.copy(
-                pinHash = SecurityHelper.hashPin(newPin),
-                pinResetRequired = false
-            )
-            repository.saveUser(updatedUser)
-            onResult(true, "Admin PIN for ${adminUser.username} successfully updated.")
-        }
-    }
-
+    // --- Authentication & User Forwarders ---
+    fun toggleKioskMode(active: Boolean) = authToggleKioskModeImpl(active)
+    fun loginWithBarcode(barcodeId: String, onSuccess: (User) -> Unit, onFailure: (String) -> Unit) =
+        authLoginWithBarcodeImpl(barcodeId, onSuccess, onFailure)
+    fun addAllowedTerminalApp(pkg: String) = authAddAllowedTerminalAppImpl(pkg)
+    fun removeAllowedTerminalApp(pkg: String) = authRemoveAllowedTerminalAppImpl(pkg)
+    fun switchCashierWithPin(pin: String, onResult: (Boolean, String, User?) -> Unit) =
+        authSwitchCashierWithPinImpl(pin, onResult)
+    fun switchCashierWithUser(user: User) = authSwitchCashierWithUserImpl(user)
+    fun resetAdminPin(adminUsername: String, currentPinOrRecoveryKey: String, newPin: String, onResult: (Boolean, String) -> Unit) =
+        authResetAdminPinImpl(adminUsername, currentPinOrRecoveryKey, newPin, onResult)
     fun setBiometricEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("is_biometric_enabled", enabled).apply()
         isBiometricEnabled.value = enabled
     }
-
-    /**
-     * Progressive lockout schedule, indexed by consecutive-failure count.
-     *
-     * A 4-digit PIN has a 10,000-combination keyspace, so the previous flat
-     * 5-try/30s lockout was too weak to compensate. The window now grows on each
-     * successive failure (30s -> 60s -> 120s -> 300s) and is tracked *per username*,
-     * so an attacker cannot lock every staff account out at once.
-     */
-    private val lockoutScheduleMs = longArrayOf(30_000L, 60_000L, 120_000L, 300_000L)
-
-    private fun lockoutWindowFor(failCount: Int): Long =
-        lockoutScheduleMs[failCount.coerceAtMost(lockoutScheduleMs.lastIndex)]
-
-    /** Accounts still holding a pre-migration 6-digit credential that must reset. */
-    val usersPendingPinReset: StateFlow<List<User>> = repository.usersPendingPinReset
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    /** Users who have bound a device biometric, used to drive fingerprint auto-login. */
-    val biometricEnrolledUsers: StateFlow<List<User>> = repository.biometricEnrolledUsers
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    /**
-     * Completes a user's one-time migration to a 4-digit PIN.
-     *
-     * The caller must have already authorized this via the current credential. Enforces
-     * the weak-PIN policy before persisting.
-     */
-    fun resetPin(
-        username: String,
-        newPin: String,
-        onSuccess: (User) -> Unit,
-        onFailure: (String) -> Unit
-    ) {
-        viewModelScope.launch {
-            if (!SecurityHelper.isValidPin(newPin)) {
-                onFailure("PIN must be exactly ${SecurityHelper.PIN_LENGTH} digits.")
-                return@launch
-            }
-            if (SecurityHelper.isWeakPin(newPin)) {
-                onFailure("That PIN is too easy to guess. ${SecurityHelper.pinPolicyHint()}")
-                return@launch
-            }
-            val user = repository.getUserByUsername(username)
-            if (user == null) {
-                onFailure("Account not found.")
-                return@launch
-            }
-            val updated = user.copy(
-                pinHash = SecurityHelper.hashPin(newPin),
-                pinResetRequired = false
-            )
-            repository.updatePinAfterReset(username, updated.pinHash)
-            onSuccess(updated)
-        }
-    }
-
-    /**
-     * Authorizes the forced PIN migration using the account's existing credential.
-     *
-     * Accepts the legacy 6-digit format (and 4-digit, for users already reset) via
-     * [SecurityHelper.verifyPinLenient]. Rate-limited on the same escalating schedule
-     * as normal sign-in, because this is the highest-value target on the terminal.
-     */
-    fun verifyPinResetAuthorization(
-        username: String,
-        currentPin: String,
-        onSuccess: (User) -> Unit,
-        onFailure: (String) -> Unit
-    ) {
-        viewModelScope.launch {
-            val now = System.currentTimeMillis()
-            val lockKey = "pinreset_$username"
-            val lockedUntil = prefs.getLong("${lockKey}_locked_until", 0L)
-            if (now < lockedUntil) {
-                val remainSec = ((lockedUntil - now) / 1000).toInt().coerceAtLeast(1)
-                onFailure("Too many attempts. Try again in ${remainSec}s.")
-                return@launch
-            }
-
-            val user = repository.getUserByUsername(username)
-            if (user == null) {
-                onFailure("Account not found.")
-                return@launch
-            }
-
-            val verification = SecurityHelper.verifyPinLenient(currentPin, user.pinHash)
-            if (verification.isMatch) {
-                prefs.edit().putInt("${lockKey}_fails", 0).putLong("${lockKey}_locked_until", 0L).apply()
-                onSuccess(user)
-                return@launch
-            }
-
-            val fails = prefs.getInt("${lockKey}_fails", 0) + 1
-            if (fails >= 4) {
-                val window = lockoutWindowFor(fails - 4)
-                prefs.edit()
-                    .putInt("${lockKey}_fails", 0)
-                    .putLong("${lockKey}_locked_until", now + window)
-                    .apply()
-                onFailure("Too many attempts. Locked for ${window / 1000} seconds.")
-            } else {
-                val remaining = 4 - fails
-                prefs.edit().putInt("${lockKey}_fails", fails).apply()
-                onFailure("Current PIN incorrect. $remaining attempt${if (remaining == 1) "" else "s"} left.")
-            }
-        }
-    }
-
-    /**
-     * Primary sign-in path.
-     *
-     * Accepts a 4-digit PIN. Users flagged `pinResetRequired` are refused rather than
-     * signed in, because their stored credential is still the legacy 6-digit format.
-     * On success the account is auto-enrolled for fingerprint sign-in so subsequent
-     * launches reach the register in zero taps.
-     */
-    fun login(username: String, pass: String, onSuccess: (User) -> Unit, onFailure: (String) -> Unit) {
-        viewModelScope.launch {
-            val now = System.currentTimeMillis()
-            val lockKey = "login_fail_$username"
-            val lockedUntil = prefs.getLong("${lockKey}_locked_until", 0L)
-            if (now < lockedUntil) {
-                val remainSec = ((lockedUntil - now) / 1000).toInt().coerceAtLeast(1)
-                onFailure("Too many failed attempts. Try again in ${remainSec}s.")
-                return@launch
-            }
-
-            val user = repository.getUserByUsername(username)
-            if (user != null && !user.pinResetRequired) {
-                val verification = SecurityHelper.verifyPin(pass, user.pinHash)
-                if (verification.isMatch) {
-                    prefs.edit().putInt("${lockKey}_fails", 0).putLong("${lockKey}_locked_until", 0L).apply()
-                    var signedIn = user
-                    if (verification.needsUpgrade) {
-                        signedIn = user.copy(pinHash = SecurityHelper.hashPin(pass))
-                        repository.saveUser(signedIn)
-                    }
-                    signedIn = maybeAutoEnrollBiometric(signedIn)
-                    completeLogin(signedIn, onSuccess)
-                    return@launch
-                }
-            }
-
-            // Failed attempt bookkeeping with a growing, per-account lockout window.
-            val fails = prefs.getInt("${lockKey}_fails", 0) + 1
-            if (fails >= 4) {
-                val window = lockoutWindowFor(fails - 4)
-                prefs.edit()
-                    .putInt("${lockKey}_fails", 0)
-                    .putLong("${lockKey}_locked_until", now + window)
-                    .apply()
-                onFailure("Too many failed attempts. Locked for ${window / 1000} seconds.")
-            } else {
-                prefs.edit().putInt("${lockKey}_fails", fails).apply()
-                val remaining = 4 - fails
-                val msg = if (user?.pinResetRequired == true) {
-                    "This account still needs a new ${SecurityHelper.PIN_LENGTH}-digit PIN."
-                } else {
-                    "Incorrect username or ${SecurityHelper.PIN_LENGTH}-digit PIN. " +
-                        "$remaining attempt${if (remaining == 1) "" else "s"} left."
-                }
-                onFailure(msg)
-            }
-        }
-    }
-
-    /** Shared post-authentication bookkeeping used by PIN and fingerprint sign-in. */
-    private suspend fun completeLogin(user: User, onSuccess: (User) -> Unit) {
-        activeUser.value = user
-        CrashDiagnosticsManager.currentCashier = user.username
-        prefs.edit().putString("last_logged_in_user", user.username).apply()
-        lastLoggedInUser.value = user.username
-        playBeep()
-        // Rehydrate any basket that survived a crash or a shift change.
-        restoreCartDraft()
-        onSuccess(user)
-    }
-
-    /**
-     * Binds a device biometric to the account on first successful authentication.
-     *
-     * Persisted to `user_accounts.biometricEnrolled` so the login screen can offer
-     * zero-tap fingerprint sign-in on the next launch. Respects the admin's global
-     * biometric kill-switch.
-     */
-    private suspend fun maybeAutoEnrollBiometric(user: User): User {
-        if (user.biometricEnrolled) return user
-        if (!isBiometricEnabled.value) return user
-        if (!BiometricAuthHelper.checkAvailability(getApplication()).isAvailable) return user
-        repository.setBiometricEnrolled(user.username, true)
-        return user.copy(biometricEnrolled = true)
-    }
-
-    /** Explicitly (un)binds a biometric for a user from the Admin security screen. */
-    fun setBiometricEnrolledForUser(username: String, enrolled: Boolean) {
-        viewModelScope.launch {
-            repository.setBiometricEnrolled(username, enrolled)
-        }
-    }
-
-    /**
-     * Authorizes leaving kiosk lockdown or a protected admin action.
-     *
-     * Uses [SecurityHelper.verifyPinLenient] so an admin who has not yet completed the
-     * 4-digit migration can still exit kiosk lockdown — otherwise the migration would
-     * become a way to permanently lock a terminal into kiosk mode. This path stays
-     * rate-limited below and matches every admin account.
-     */
-    /**
-     * Authorizes leaving kiosk lockdown **or** a protected admin action, via any
-     * ADMIN account's PIN.
-     *
-     * Uses [SecurityHelper.verifyPinLenient] so an admin who has not yet completed the
-     * 4-digit migration can still exit kiosk lockdown - otherwise the migration would
-     * become a way to permanently lock a terminal into kiosk mode.
-     *
-     * SECURITY (issue #6): this previously shared a single flat 5-try/60s counter with
-     * the Wi-Fi/Bluetooth radio toggles in the status bar. That coupling was harmful in
-     * both directions: a user fumbling the Wi-Fi pill burned the admin's ability to
-     * release a cash register out of lockdown, and conversely an attacker probing the
-     * admin PIN could lock the radios out. The two actions now throttle independently.
-     *
-     * @param lockoutKey which budget to charge. Defaults to the kiosk-exit budget.
-     */
+    fun resetPin(username: String, newPin: String, onSuccess: (User) -> Unit, onFailure: (String) -> Unit) =
+        authResetPinImpl(username, newPin, onSuccess, onFailure)
+    fun verifyPinResetAuthorization(username: String, currentPin: String, onSuccess: (User) -> Unit, onFailure: (String) -> Unit) =
+        authVerifyPinResetAuthorizationImpl(username, currentPin, onSuccess, onFailure)
+    fun login(username: String, pass: String, onSuccess: (User) -> Unit, onFailure: (String) -> Unit) =
+        authLoginImpl(username, pass, onSuccess, onFailure)
+    fun setBiometricEnrolledForUser(username: String, enrolled: Boolean) =
+        authSetBiometricEnrolledForUserImpl(username, enrolled)
     fun verifyKioskUnlock(
         pin: String,
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit,
         lockoutKey: String = KIOSK_UNLOCK_LOCKOUT_KEY
-    ) {
-        viewModelScope.launch {
-            // Check the lockout BEFORE verifying, so a correct PIN is still refused
-            // while a window is active. Checking afterwards would let an attacker
-            // keep guessing during the lockout and only be blocked from succeeding.
-            val active = adminUnlockLockout.lockoutMessage(lockoutKey)
-            if (active != null) {
-                onFailure(active)
-                return@launch
-            }
+    ) = authVerifyKioskUnlockImpl(pin, onSuccess, onFailure, lockoutKey)
+    fun loginWithBiometric(targetUsername: String?, onSuccess: (User) -> Unit, onFailure: (String) -> Unit) =
+        authLoginWithBiometricImpl(targetUsername, onSuccess, onFailure)
+    fun logout() = authLogoutImpl()
+    fun saveUser(user: User) = authSaveUserImpl(user)
+    fun resetUserPin(username: String, newPin: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) =
+        authResetUserPinImpl(username, newPin, onResult)
+    fun deleteUser(username: String) = authDeleteUserImpl(username)
 
-            val admins = repository.getAllUsersSync().filter { it.role.equals("ADMIN", ignoreCase = true) }
-            // SECURITY (audit H2): constant-time verification only - the previous
-            // `hash == pin` plaintext shortcut is removed. Legacy plaintext/SHA-256 hashes
-            // remain verifiable through SecurityHelper and are upgraded to PBKDF2 on success.
-            var isValid = false
-            if (pin.isNotBlank()) {
-                for (admin in admins) {
-                    val verification = SecurityHelper.verifyPinLenient(pin, admin.passwordHash)
-                    if (verification.isMatch) {
-                        isValid = true
-                        if (verification.needsUpgrade) {
-                            repository.saveUser(admin.copy(pinHash = SecurityHelper.hashPin(pin)))
-                        }
-                        break
-                    }
-                }
-            }
-
-            if (isValid) {
-                adminUnlockLockout.onSuccess(lockoutKey)
-                onSuccess()
-            } else {
-                onFailure(adminUnlockLockout.onFailure(lockoutKey))
-            }
-        }
-    }
-
-    /**
-     * Fingerprint sign-in.
-     *
-     * Resolves to exactly ONE explicitly-enrolled account. The previous implementation
-     * guessed "the first non-admin user" and hard-blocked admins from biometric
-     * sign-in entirely; both behaviours are removed. Resolution order is:
-     *   1. the caller-supplied username, if that account is enrolled;
-     *   2. otherwise the last user to sign in, if enrolled.
-     * If neither is enrolled the caller is told to fall back to the PIN pad.
-     */
-    fun loginWithBiometric(targetUsername: String?, onSuccess: (User) -> Unit, onFailure: (String) -> Unit) {
-        viewModelScope.launch {
-            val requested = targetUsername?.takeIf { it.isNotBlank() }
-                ?: prefs.getString("last_logged_in_user", null)
-
-            val user = requested?.let { repository.getUserByUsername(it) }
-
-            if (user == null) {
-                onFailure("No account found for fingerprint sign-in.")
-                return@launch
-            }
-            if (!user.biometricEnrolled) {
-                onFailure("${user.username} has not enrolled a fingerprint. Use your PIN instead.")
-                return@launch
-            }
-            if (user.pinResetRequired) {
-                onFailure("${user.username} must set a new ${SecurityHelper.PIN_LENGTH}-digit PIN first.")
-                return@launch
-            }
-
-            completeLogin(user, onSuccess)
-        }
-    }
-
-    /**
-     * Ends the cashier session.
-     *
-     * The cart is intentionally *not* cleared here. Under the Zeigarnik Effect an
-     * in-progress basket is the thing the user most wants back; a shift change or a
-     * kiosk lock should not silently destroy it. The draft continues to be mirrored to
-     * disk by the autosave above, so the next sign-in restores it. Callers who genuinely
-     * want to discard the basket (successful checkout, explicit "clear cart") already do
-     * so through their own code paths.
-     */
-    fun logout() {
-        activeUser.value = null
-        CrashDiagnosticsManager.currentCashier = "None"
-        restoredCartLineCount = 0
-    }
-
-    // --- Shift Session Management ---
+    // --- Shift Session & Wallet Forwarders ---
     fun startCashierShift(
         startingCash: Double,
         startingSmartLoad: Double? = null,
         startingGlobeLoad: Double? = null
-    ) {
-        viewModelScope.launch {
-            val username = activeUser.value?.username ?: "system_user"
-            val normCash = StorePointRepository.roundMoney(startingCash)
-            val started = repository.startSession(username, normCash)
-            if (started) {
-                val currentConfig = repository.getStoreConfigSync()
-                if (currentConfig != null && (startingSmartLoad != null || startingGlobeLoad != null)) {
-                    var updated = currentConfig
-                    if (startingSmartLoad != null) {
-                        updated = updated.copy(smartLoadBalance = StorePointRepository.roundMoney(startingSmartLoad))
-                    }
-                    if (startingGlobeLoad != null) {
-                        updated = updated.copy(globeLoadBalance = StorePointRepository.roundMoney(startingGlobeLoad))
-                    }
-                    repository.saveStoreConfig(updated)
-                }
-                Toast.makeText(context, "Shift session started with ${storeConfig.value?.currencySymbol}$normCash starting cash drawer.", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "Cannot start shift: an active session is already running. End it first.", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
+    ) = shiftStartCashierShiftImpl(startingCash, startingSmartLoad, startingGlobeLoad)
 
     fun closeCashierShift(
         endingCash: Double,
         endingGCash: Double? = null,
         endingSmartLoad: Double? = null,
         endingGlobeLoad: Double? = null
-    ) {
-        viewModelScope.launch {
-            val normEndingCash = StorePointRepository.roundMoney(endingCash)
-            repository.endActiveSession(normEndingCash)
-            val currentConfig = repository.getStoreConfigSync()
-            if (currentConfig != null) {
-                var updated = currentConfig
-                if (endingGCash != null) {
-                    updated = updated.copy(gcashBalance = StorePointRepository.roundMoney(endingGCash))
-                }
-                if (endingSmartLoad != null) {
-                    updated = updated.copy(smartLoadBalance = StorePointRepository.roundMoney(endingSmartLoad))
-                }
-                if (endingGlobeLoad != null) {
-                    updated = updated.copy(globeLoadBalance = StorePointRepository.roundMoney(endingGlobeLoad))
-                }
-                if (updated != currentConfig) {
-                    repository.saveStoreConfig(updated)
-                }
-            }
-            clearCart()
-            Toast.makeText(context, "Shift session closed. Drawer totals updated offline.", Toast.LENGTH_SHORT).show()
-        }
-    }
+    ) = shiftCloseCashierShiftImpl(endingCash, endingGCash, endingSmartLoad, endingGlobeLoad)
 
-    // --- Owner Wallet Float Management (ledger-backed) ---
-
-    /** True when the signed-in user is an ADMIN, the only role permitted to move float. */
-    private fun isAdminActor(): Boolean =
-        activeUser.value?.role?.equals("ADMIN", ignoreCase = true) == true
-
-    /**
-     * Reloads (tops up) an owner wallet float and writes a RELOAD ledger row.
-     *
-     * ADMIN-only. A cashier topping up their own float is a straightforward shrinkage
-     * vector, so this fails closed when no admin is signed in rather than trusting the
-     * caller to have gated the UI.
-     *
-     * This is the *supported* way to add money to a wallet; [updateGCashBalance] and
-     * friends are retained only for shift-close entry and now record a RECONCILE row.
-     */
     fun reloadWallet(
         walletLabel: String,
         amount: Double,
@@ -1111,97 +497,25 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
         notes: String = "",
         onSuccess: (Double) -> Unit = {},
         onFailure: (String) -> Unit = {}
-    ) {
-        viewModelScope.launch {
-            if (!isAdminActor()) {
-                onFailure("Only an Admin can reload a wallet float.")
-                return@launch
-            }
-            if (amount.isNaN() || amount.isInfinite() || amount <= 0.0) {
-                onFailure("Enter an amount greater than zero.")
-                return@launch
-            }
-            val actor = activeUser.value?.username ?: "admin"
-            val newBalance = repository.reloadWallet(
-                walletType = StorePointRepository.canonicalWalletType(walletLabel),
-                amount = amount,
-                actorUsername = actor,
-                reference = reference,
-                notes = notes
-            )
-            if (newBalance == null) {
-                onFailure("Could not reload the wallet. Check the amount and try again.")
-            } else {
-                Toast.makeText(
-                    context,
-                    "${StorePointRepository.canonicalWalletType(walletLabel)} reloaded: ${StorePointRepository.roundMoney(newBalance)}",
-                    Toast.LENGTH_SHORT
-                ).show()
-                onSuccess(newBalance)
-            }
-        }
-    }
+    ) = shiftReloadWalletImpl(walletLabel, amount, reference, notes, onSuccess, onFailure)
 
-    /**
-     * Reconciles a wallet to the figure physically counted at shift close.
-     *
-     * Replaces the previous silent absolute overwrite. The correction is recorded as a
-     * RECONCILE row, so history shows both the system figure and the counted figure.
-     */
     fun reconcileWalletBalance(
         walletLabel: String,
         countedBalance: Double,
         notes: String = "",
         onSuccess: (Double) -> Unit = {},
         onFailure: (String) -> Unit = {}
-    ) {
-        viewModelScope.launch {
-            if (countedBalance.isNaN() || countedBalance.isInfinite() || countedBalance < 0.0) {
-                onFailure("Enter a valid counted balance (zero or greater).")
-                return@launch
-            }
-            val actor = activeUser.value?.username ?: "shift-close"
-            val newBalance = repository.reconcileWallet(
-                walletType = StorePointRepository.canonicalWalletType(walletLabel),
-                countedBalance = countedBalance,
-                actorUsername = actor,
-                notes = notes
-            )
-            if (newBalance == null) {
-                onFailure("Could not reconcile the wallet balance.")
-            } else {
-                onSuccess(newBalance)
-            }
-        }
-    }
+    ) = shiftReconcileWalletBalanceImpl(walletLabel, countedBalance, notes, onSuccess, onFailure)
 
-    /** System-derived wallet balance (sum of all recorded movements), for shift-close comparison. */
     suspend fun getSystemDerivedWalletBalance(walletLabel: String): Double =
-        repository.getSystemDerivedBalanceSync(StorePointRepository.canonicalWalletType(walletLabel))
+        shiftGetSystemDerivedWalletBalanceImpl(walletLabel)
 
     suspend fun getRecentWalletHistory(walletLabel: String, limit: Int = 50): List<WalletLedgerEntry> =
-        repository.getRecentWalletEntriesSync(StorePointRepository.canonicalWalletType(walletLabel), limit)
+        shiftGetRecentWalletHistoryImpl(walletLabel, limit)
 
-    /**
-     * Records that a customer load consumed owner float. Invoked from checkout.
-     *
-     * Not admin-gated: this is a consequence of a legitimate sale by whichever cashier
-     * rang it up, and blocking it would desynchronize the ledger from the transaction.
-     */
-    suspend fun recordWalletConsumption(walletLabel: String, amount: Double, reference: String = "") {
-        val actor = activeUser.value?.username ?: "cashier"
-        repository.recordWalletConsumption(
-            walletType = StorePointRepository.canonicalWalletType(walletLabel),
-            amount = amount,
-            actorUsername = actor,
-            reference = reference
-        )
-    }
+    suspend fun recordWalletConsumption(walletLabel: String, amount: Double, reference: String = "") =
+        shiftRecordWalletConsumptionImpl(walletLabel, amount, reference)
 
-    /**
-     * @deprecated Silent absolute setter retained for shift-close "actual balance"
-     * entry. Prefer [reconcileWalletBalance], which records why the figure changed.
-     */
     @Deprecated("Use reloadWallet() to add funds, or reconcileWalletBalance() to correct.")
     fun updateGCashBalance(newBalance: Double) {
         reconcileWalletBalance("GCash", newBalance, notes = "Set via legacy balance editor")
@@ -1222,61 +536,7 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
         gcashFee: Double,
         mayaFee: Double,
         mayaBankFee: Double
-    ) {
-        viewModelScope.launch {
-            val currentConfig = repository.getStoreConfigSync()
-            if (currentConfig != null) {
-                val updated = currentConfig.copy(
-                    loadServiceFee = StorePointRepository.roundMoney(loadFee),
-                    gcashServiceFee = StorePointRepository.roundMoney(gcashFee),
-                    mayaServiceFee = StorePointRepository.roundMoney(mayaFee),
-                    mayaBankFee = StorePointRepository.roundMoney(mayaBankFee)
-                )
-                repository.saveStoreConfig(updated)
-                Toast.makeText(context, "Digital services service charges updated!", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    fun saveUser(user: User) {
-        viewModelScope.launch {
-            val finalHash = if (user.pinHash.startsWith("pbkdf2$")) {
-                user.pinHash
-            } else {
-                hashPin(user.pinHash)
-            }
-            val persisted = user.copy(pinHash = finalHash)
-            repository.saveUser(persisted)
-            Toast.makeText(context, "Saved user profile: ${user.username}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun resetUserPin(username: String, newPin: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
-        viewModelScope.launch {
-            if (!SecurityHelper.isValidPin(newPin)) {
-                onResult(false, "PIN must be exactly ${SecurityHelper.PIN_LENGTH} digits.")
-                return@launch
-            }
-            val user = allUsers.value.firstOrNull { it.username.equals(username.trim(), ignoreCase = true) }
-            if (user == null) {
-                onResult(false, "User @$username not found.")
-                return@launch
-            }
-            val updated = user.copy(
-                pinHash = SecurityHelper.hashPin(newPin),
-                pinResetRequired = false
-            )
-            repository.saveUser(updated)
-            onResult(true, "PIN for @$username has been reset successfully.")
-        }
-    }
-
-    fun deleteUser(username: String) {
-        viewModelScope.launch {
-            repository.deleteUser(username)
-            Toast.makeText(context, "User profile removed.", Toast.LENGTH_SHORT).show()
-        }
-    }
+    ) = shiftUpdateDigitalServiceFeesImpl(loadFee, gcashFee, mayaFee, mayaBankFee)
 
     // --- Cart & POS Operations Forwarders ---
     fun selectCartUom(productId: Int, uom: UomOption) = cartSelectUomImpl(productId, uom)
@@ -1296,8 +556,9 @@ class StorePointViewModel(application: Application) : AndroidViewModel(applicati
         totalAmount: Double,
         checkoutItems: List<Pair<Product, Int>>? = null,
         customerName: String = "",
+        onError: (String) -> Unit = {},
         onSuccess: (Transaction) -> Unit
-    ) = cartExecuteCheckoutImpl(paymentMethod, cashPaid, subtotal, taxAmount, totalAmount, checkoutItems, customerName, onSuccess)
+    ) = cartExecuteCheckoutImpl(paymentMethod, cashPaid, subtotal, taxAmount, totalAmount, checkoutItems, customerName, onError, onSuccess)
 
     // --- Inventory & Products Forwarders ---
     fun exportInventoryJson(): String = inventoryExportJsonImpl()

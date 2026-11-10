@@ -135,9 +135,9 @@ fun ReceiveInventoryDialog(
                     )
                     
                     Box(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(
+                        HeroOutlinedButton(
                             onClick = { uomExpanded = true },
-                            modifier = Modifier.fillMaxWidth().height(56.dp).testTag("restock_uom_dropdown_trigger")
+                            modifier = Modifier.fillMaxWidth().testTag("restock_uom_dropdown_trigger")
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -324,12 +324,11 @@ fun ReceiveInventoryDialog(
             )
         },
         dismissButton = {
-            TextButton(
+            HeroTextButton(
                 onClick = onDismiss,
-                modifier = Modifier.testTag("restock_dialog_dismiss_btn")
-            ) {
-                Text("Cancel")
-            }
+                modifier = Modifier.testTag("restock_dialog_dismiss_btn"),
+                text = "Cancel"
+            )
         }
     )
 }

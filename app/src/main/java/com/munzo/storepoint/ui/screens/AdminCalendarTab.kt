@@ -312,9 +312,11 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                     )
                     
                     if (selectedDay != null) {
-                        TextButton(onClick = { selectedDay = null }) {
-                            Text("Show All Dates", style = MaterialTheme.typography.labelSmall)
-                        }
+                        HeroTextButton(
+                            onClick = { selectedDay = null },
+                            size = HeroSize.Sm,
+                            text = "Show All Dates"
+                        )
                     }
                 }
 
@@ -325,10 +327,10 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     listOf("All", "Unpaid", "Paid").forEach { statusOption ->
-                        FilterChip(
+                        HeroFilterChip(
                             selected = statusFilter == statusOption,
                             onClick = { statusFilter = statusOption },
-                            label = { Text(statusOption) }
+                            label = statusOption
                         )
                     }
 
@@ -554,10 +556,10 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                     ) {
                         listOf("Low", "Medium", "Critical").forEach { item ->
                             val isSelected = newPriority == item
-                            FilterChip(
+                            HeroFilterChip(
                                 selected = isSelected,
                                 onClick = { newPriority = item },
-                                label = { Text(item) },
+                                label = item,
                                 modifier = Modifier.testTag("priority_chip_$item")
                             )
                         }
@@ -580,10 +582,10 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                                 "Other Overheads"
                             ).forEach { item ->
                                 val isSelected = newCategory == item
-                                FilterChip(
+                                HeroFilterChip(
                                     selected = isSelected,
                                     onClick = { newCategory = item },
-                                    label = { Text(item) },
+                                    label = item,
                                     modifier = Modifier.testTag("category_chip_$item")
                                 )
                             }
@@ -597,10 +599,10 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                     ) {
                         listOf("CASH" to "Cash Register Drawer", "GCASH" to "Store GCash Account").forEach { (code, label) ->
                             val isSelected = newPayMethod == code
-                            FilterChip(
+                            HeroFilterChip(
                                 selected = isSelected,
                                 onClick = { newPayMethod = code },
-                                label = { Text(label) }
+                                label = label
                             )
                         }
                     }
@@ -631,9 +633,7 @@ fun CalendarTab(viewModel: StorePointViewModel) {
                 )
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
-                    Text("Cancel")
-                }
+                HeroTextButton(onClick = { showAddDialog = false }, text = "Cancel")
             }
         )
     }

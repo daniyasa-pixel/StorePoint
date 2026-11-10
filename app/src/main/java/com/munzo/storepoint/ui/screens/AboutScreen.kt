@@ -189,7 +189,7 @@ fun AboutScreenContent(
                 // In-App Updater Button
                 if (viewModel != null) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    FilledTonalButton(
+                    HeroFilledTonalButton(
                         onClick = {
                             viewModel.checkForAppUpdates(currentVersion) { info ->
                                 showUpdateDialog = true
@@ -199,22 +199,18 @@ fun AboutScreenContent(
                         shape = CircleShape,
                         modifier = Modifier.testTag("check_for_updates_button")
                     ) {
-                    if (isCheckingUpdate) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Checking GitHub Releases...")
-                    } else {
-                        Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Check for Updates")
+                        if (isCheckingUpdate) {
+                            HeroSpinner(size = 16.dp, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Checking GitHub Releases...")
+                        } else {
+                            Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Check for Updates")
+                        }
                     }
                 }
             }
-        }
 
         HeroDivider(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
@@ -299,7 +295,7 @@ fun AboutScreenContent(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    FilledTonalButton(
+                    HeroFilledTonalButton(
                         onClick = {
                             try {
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/uznom"))
@@ -307,18 +303,12 @@ fun AboutScreenContent(
                             } catch (_: Exception) {}
                         },
                         shape = CircleShape,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Profile", style = MaterialTheme.typography.labelMedium)
-                    }
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.AutoMirrored.Filled.OpenInNew,
+                        text = "Profile"
+                    )
 
-                    OutlinedButton(
+                    HeroOutlinedButton(
                         onClick = {
                             try {
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/uznom/StorePoint"))
@@ -326,16 +316,10 @@ fun AboutScreenContent(
                             } catch (_: Exception) {}
                         },
                         shape = CircleShape,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FolderZip,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Repository", style = MaterialTheme.typography.labelMedium)
-                    }
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Default.FolderZip,
+                        text = "Repository"
+                    )
                 }
             }
         }
@@ -672,331 +656,18 @@ fun AboutScreenContent(
 
     // --- SOFTWARE UPDATE MODAL DIALOGS ---
     if (showUpdateDialog && viewModel != null) {
-        if (updateError != null) {
-            AlertDialog(
-                onDismissRequest = {
-                    showUpdateDialog = false
-                    viewModel.clearUpdateState()
-                },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.ErrorOutline,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(36.dp)
-                    )
-                },
-                title = { Text("Update Check Error", fontWeight = FontWeight.Bold) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(updateError, style = MaterialTheme.typography.bodyMedium)
-                        val helpText = when {
-                            updateError.contains("404") ->
-                                "The release or repository was not found on GitHub. If the repository is private, ensure your access token is configured, or publish an initial release via GitHub Actions."
-                            updateError.contains("401") || updateError.contains("403") ->
-                                "GitHub authentication failed or rate limit exceeded. Verify your GitHub access token permissions."
-                            updateError.contains("network", ignoreCase = true) || updateError.contains("connection", ignoreCase = true) ->
-                                "Unable to communicate with GitHub. Verify your device's Wi-Fi or mobile data connection."
-                            else ->
-                                "Verify your internet connection and that GitHub is reachable."
-                        }
-                        Text(
-                            helpText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showUpdateDialog = false
-                            viewModel.clearUpdateState()
-                        }
-                    ) {
-                        Text("Dismiss")
-                    }
-                }
-            )
-        } else if (updateInfo != null) {
-            if (!updateInfo.isNewer) {
-                // App is up to date
-                AlertDialog(
-                    onDismissRequest = {
-                        showUpdateDialog = false
-                        viewModel.clearUpdateState()
-                    },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    },
-                    title = { Text("StorePoint is Up to Date", fontWeight = FontWeight.Bold) },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                "You are currently running the latest version (v$currentVersion).",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            if (updateInfo.latestVersionTag.isNotEmpty()) {
-                                Text(
-                                    "Latest GitHub tag: ${updateInfo.latestVersionTag}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                showUpdateDialog = false
-                                viewModel.clearUpdateState()
-                            }
-                        ) {
-                            Text("Great!")
-                        }
-                    }
-                )
-            } else {
-                // Newer version available!
-                when (downloadState) {
-                    is UpdateDownloadState.Idle -> {
-                        AlertDialog(
-                            onDismissRequest = {
-                                showUpdateDialog = false
-                                viewModel.clearUpdateState()
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.Default.SystemUpdate,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(36.dp)
-                                )
-                            },
-                            title = {
-                                Text("New Update Available", fontWeight = FontWeight.Bold)
-                            },
-                            text = {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(max = 280.dp)
-                                        .verticalScroll(rememberScrollState()),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(12.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column {
-                                                Text(
-                                                    "Current: v$currentVersion",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = MaterialTheme.colorScheme.outline
-                                                )
-                                                Text(
-                                                    "Available: ${updateInfo.latestVersionTag}",
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                            if (updateInfo.assetSize > 0) {
-                                                val mb = updateInfo.assetSize / (1024.0 * 1024.0)
-                                                Text(
-                                                    String.format("%.1f MB", mb),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    if (updateInfo.releaseNotes.isNotEmpty()) {
-                                        Text(
-                                            "Release Notes:",
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.labelMedium
-                                        )
-                                        Text(
-                                            updateInfo.releaseNotes,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        viewModel.startUpdateDownload(
-                                            context = context,
-                                            downloadUrl = updateInfo.downloadUrl,
-                                            fileName = "StorePoint-${updateInfo.latestVersionTag}.apk"
-                                        )
-                                    },
-                                    shape = CircleShape,
-                                    modifier = Modifier.testTag("download_update_button")
-                                ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Download & Install", fontWeight = FontWeight.Bold)
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(
-                                    onClick = {
-                                        showUpdateDialog = false
-                                        viewModel.clearUpdateState()
-                                    }
-                                ) {
-                                    Text("Later")
-                                }
-                            }
-                        )
-                    }
-
-                    is UpdateDownloadState.Downloading -> {
-                        val progress = downloadState.progress
-                        val downloadedMb = downloadState.downloadedBytes / (1024.0 * 1024.0)
-                        val totalMb = if (downloadState.totalBytes > 0) downloadState.totalBytes / (1024.0 * 1024.0) else 0.0
-
-                        AlertDialog(
-                            onDismissRequest = { /* Non dismissable while downloading */ },
-                            icon = {
-                                CircularProgressIndicator(modifier = Modifier.size(36.dp))
-                            },
-                            title = { Text("Downloading Update...", fontWeight = FontWeight.Bold) },
-                            text = {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    if (progress >= 0f) {
-                                        LinearProgressIndicator(
-                                            progress = { progress },
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(
-                                                String.format("%.1f MB / %.1f MB", downloadedMb, totalMb),
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                            Text(
-                                                String.format("%.0f%%", progress * 100),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    } else {
-                                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                        Text(
-                                            String.format("%.1f MB downloaded...", downloadedMb),
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                    }
-                                }
-                            },
-                            confirmButton = {}
-                        )
-                    }
-
-                    is UpdateDownloadState.ReadyToInstall -> {
-                        AlertDialog(
-                            onDismissRequest = {
-                                showUpdateDialog = false
-                                viewModel.clearUpdateState()
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(36.dp)
-                                )
-                            },
-                            title = { Text("Download Complete!", fontWeight = FontWeight.Bold) },
-                            text = {
-                                Text(
-                                    "The updated APK is ready to install. Click below to launch the Android package installer.",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        viewModel.installDownloadedApk(context, downloadState.apkFile)
-                                    },
-                                    modifier = Modifier.testTag("install_apk_button")
-                                ) {
-                                    Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Install Now")
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(
-                                    onClick = {
-                                        showUpdateDialog = false
-                                        viewModel.clearUpdateState()
-                                    }
-                                ) {
-                                    Text("Close")
-                                }
-                            }
-                        )
-                    }
-
-                    is UpdateDownloadState.Error -> {
-                        AlertDialog(
-                            onDismissRequest = {
-                                showUpdateDialog = false
-                                viewModel.clearUpdateState()
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.Default.ErrorOutline,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(36.dp)
-                                )
-                            },
-                            title = { Text("Download Failed", fontWeight = FontWeight.Bold) },
-                            text = {
-                                Text(
-                                    "Error downloading APK: ${downloadState.message}",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        showUpdateDialog = false
-                                        viewModel.clearUpdateState()
-                                    }
-                                ) {
-                                    Text("OK")
-                                }
-                            }
-                        )
-                    }
-                }
+        AboutAppUpdateDialogs(
+            context = context,
+            viewModel = viewModel,
+            currentVersion = currentVersion,
+            updateInfo = updateInfo,
+            updateError = updateError,
+            downloadState = downloadState,
+            onDismiss = {
+                showUpdateDialog = false
+                viewModel.clearUpdateState()
             }
-        }
+        )
     }
 }
 }

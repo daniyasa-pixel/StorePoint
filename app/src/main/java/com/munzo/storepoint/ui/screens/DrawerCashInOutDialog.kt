@@ -200,46 +200,26 @@ fun DrawerCashInOutDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        FilterChip(
+                        HeroFilterChip(
                             selected = selectedAction == "CASH_IN",
                             onClick = { selectedAction = "CASH_IN" },
-                            label = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(Icons.Default.ArrowDownward, null, modifier = Modifier.size(16.dp), tint = Color(0xFF10B981))
-                                    Text("Cash In (Float Top-Up / Insertion)", fontWeight = FontWeight.Bold)
-                                }
-                            },
+                            label = "Cash In (Float Top-Up)",
+                            color = HeroColor.Success,
+                            icon = Icons.Default.ArrowDownward,
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("select_cash_in_chip"),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFF10B981).copy(alpha = 0.2f),
-                                selectedLabelColor = Color(0xFF047857)
-                            )
+                                .testTag("select_cash_in_chip")
                         )
 
-                        FilterChip(
+                        HeroFilterChip(
                             selected = selectedAction == "CASH_OUT",
                             onClick = { selectedAction = "CASH_OUT" },
-                            label = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(Icons.Default.ArrowUpward, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
-                                    Text("Cash Out (Disbursement / Expense)", fontWeight = FontWeight.Bold)
-                                }
-                            },
+                            label = "Cash Out (Disbursement)",
+                            color = HeroColor.Danger,
+                            icon = Icons.Default.ArrowUpward,
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("select_cash_out_chip"),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
-                                selectedLabelColor = MaterialTheme.colorScheme.error
-                            )
+                                .testTag("select_cash_out_chip")
                         )
                     }
 
@@ -307,10 +287,10 @@ fun DrawerCashInOutDialog(
                         ) {
                             currentPresets.forEach { preset ->
                                 val isSelected = reasonText.equals(preset, ignoreCase = true)
-                                FilterChip(
+                                HeroFilterChip(
                                     selected = isSelected,
                                     onClick = { reasonText = preset },
-                                    label = { Text(preset, style = MaterialTheme.typography.labelSmall) }
+                                    label = preset
                                 )
                             }
                         }
@@ -485,12 +465,11 @@ fun DrawerCashInOutDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    OutlinedButton(
+                    HeroOutlinedButton(
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Cancel")
-                    }
+                        modifier = Modifier.weight(1f),
+                        text = "Cancel"
+                    )
 
                     HeroButton(
                         onClick = {

@@ -1,14 +1,12 @@
 package com.munzo.storepoint.ui.theme
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
-import kotlinx.coroutines.launch
 
 /**
  * Material 3 Expressive micro-interactions.
@@ -37,11 +35,12 @@ fun Modifier.shakeOnTrigger(
     amplitude: Float = 8f,
     enabled: Boolean = true
 ): Modifier {
+    val reduceMotion = LocalReduceMotion.current
     val offset = remember { Animatable(0f) }
 
-    return this.composed {
-        androidx.compose.runtime.LaunchedEffect(trigger, enabled) {
-            if (!enabled || trigger == 0) return@LaunchedEffect
+    androidx.compose.runtime.LaunchedEffect(trigger, enabled, reduceMotion) {
+        if (reduceMotion || !enabled || trigger == 0) return@LaunchedEffect
+        try {
             // Three decaying oscillations: enough to read as "rejected" without
             // feeling punitive or slowing the retry.
             val steps = intArrayOf(1, -1, 1, -1, 0)
@@ -51,9 +50,11 @@ fun Modifier.shakeOnTrigger(
                     animationSpec = tween(durationMillis = 50)
                 )
             }
+        } finally {
+            offset.snapTo(0f)
         }
-        this.graphicsLayer { translationX = offset.value }
     }
+    return this.graphicsLayer { translationX = offset.value }
 }
 
 /**
@@ -67,18 +68,21 @@ fun Modifier.celebratePulse(
     trigger: Int,
     enabled: Boolean = true
 ): Modifier {
+    val reduceMotion = LocalReduceMotion.current
     val scale = remember { Animatable(1f) }
 
-    return this.composed {
-        androidx.compose.runtime.LaunchedEffect(trigger, enabled) {
-            if (!enabled || trigger == 0) return@LaunchedEffect
-            scale.animateTo(1.06f, tween(durationMillis = 120))
+    androidx.compose.runtime.LaunchedEffect(trigger, enabled, reduceMotion) {
+        if (reduceMotion || !enabled || trigger == 0) return@LaunchedEffect
+        try {
+            scale.animateTo(1.08f, tween(durationMillis = 120))
             scale.animateTo(1f, ExpressiveMotion.springSnappy())
+        } finally {
+            scale.snapTo(1f)
         }
-        this.graphicsLayer {
-            scaleX = scale.value
-            scaleY = scale.value
-        }
+    }
+    return this.graphicsLayer {
+        scaleX = scale.value
+        scaleY = scale.value
     }
 }
 
@@ -91,9 +95,11 @@ fun Modifier.celebratePulse(
  */
 @Composable
 fun Modifier.pressLift(pressed: Boolean, lift: Float = 4f): Modifier {
+    val reduceMotion = LocalReduceMotion.current
+    val shouldAnimate = !reduceMotion
     val translation = androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (pressed) -lift else 0f,
-        animationSpec = ExpressiveMotion.pressSpring(),
+        targetValue = if (shouldAnimate && pressed) -lift else 0f,
+        animationSpec = if (reduceMotion) snap() else ExpressiveMotion.pressSpring(),
         label = "pressLift"
     )
     return this.graphicsLayer { translationY = translation.value }

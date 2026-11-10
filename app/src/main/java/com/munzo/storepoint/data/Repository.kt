@@ -148,12 +148,21 @@ class StorePointRepository(private val db: AppDatabase) {
         categoryDao.insertCategory(category)
     }
 
-    suspend fun deleteCategory(id: Int) {
-        categoryDao.deleteCategory(id)
+    suspend fun deleteCategory(id: Int, softDelete: Boolean = true) {
+        if (softDelete) {
+            categoryDao.archiveCategory(id)
+        } else {
+            categoryDao.deleteCategory(id)
+        }
+    }
+
+    suspend fun unarchiveCategory(id: Int) {
+        categoryDao.unarchiveCategory(id)
     }
 
     // --- Products ---
     val allProducts: Flow<List<Product>> = productDao.getAllProducts()
+    val archivedProducts: Flow<List<Product>> = productDao.getArchivedProducts()
 
     fun getProductById(id: Int): Flow<Product?> {
         return productDao.getProductById(id)
@@ -167,8 +176,16 @@ class StorePointRepository(private val db: AppDatabase) {
         productDao.insertProduct(product)
     }
 
-    suspend fun deleteProduct(id: Int) {
-        productDao.deleteProduct(id)
+    suspend fun deleteProduct(id: Int, softDelete: Boolean = true) {
+        if (softDelete) {
+            productDao.archiveProduct(id)
+        } else {
+            productDao.deleteProduct(id)
+        }
+    }
+
+    suspend fun unarchiveProduct(id: Int) {
+        productDao.unarchiveProduct(id)
     }
 
     suspend fun updateStock(productId: Int, newStock: Int) {
@@ -608,24 +625,26 @@ class StorePointRepository(private val db: AppDatabase) {
         actorUsername: String,
         reference: String = "",
         notes: String = ""
-    ): Double {
-        val currentConfig = getStoreConfigSync() ?: return 0.0
-        val current = when (walletType) {
-            WalletType.GCASH -> currentConfig.gcashBalance
-            WalletType.SMART -> currentConfig.smartLoadBalance
-            WalletType.GLOBE -> currentConfig.globeLoadBalance
-            else -> currentConfig.gcashBalance
-        }
-        val next = roundMoney(current + delta)
-
-        val updated = when (walletType) {
-            WalletType.GCASH -> currentConfig.copy(gcashBalance = next)
-            WalletType.SMART -> currentConfig.copy(smartLoadBalance = next)
-            WalletType.GLOBE -> currentConfig.copy(globeLoadBalance = next)
-            else -> currentConfig
-        }
-
+    ): Double = withContext(Dispatchers.IO) {
+        var computedNext = 0.0
         db.runInTransaction {
+            val currentConfig = storeConfigDao.getStoreConfigBlocking() ?: return@runInTransaction
+            val current = when (walletType) {
+                WalletType.GCASH -> currentConfig.gcashBalance
+                WalletType.SMART -> currentConfig.smartLoadBalance
+                WalletType.GLOBE -> currentConfig.globeLoadBalance
+                else -> currentConfig.gcashBalance
+            }
+            val next = roundMoney(current + delta)
+            computedNext = next
+
+            val updated = when (walletType) {
+                WalletType.GCASH -> currentConfig.copy(gcashBalance = next)
+                WalletType.SMART -> currentConfig.copy(smartLoadBalance = next)
+                WalletType.GLOBE -> currentConfig.copy(globeLoadBalance = next)
+                else -> currentConfig
+            }
+
             storeConfigDao.insertStoreConfigBlocking(updated)
             walletLedgerDao.insertWalletEntryBlocking(
                 WalletLedgerEntry(
@@ -640,7 +659,7 @@ class StorePointRepository(private val db: AppDatabase) {
                 )
             )
         }
-        return next
+        computedNext
     }
 
     /**
@@ -1354,15 +1373,15 @@ class StorePointRepository(private val db: AppDatabase) {
             val rawStockCurrent = queryStock(productionRun.rawMaterialProductId)
             val rawQtyInt = productionRun.rawMaterialQtyUsed.toInt()
 
-            if (rawStockCurrent < rawQtyInt) {
+            db.openHelper.writableDatabase.execSQL(
+                "UPDATE products SET stockCount = stockCount - ? WHERE id = ? AND stockCount >= ?",
+                arrayOf<Any?>(rawQtyInt, productionRun.rawMaterialProductId, rawQtyInt)
+            )
+            if (queryChanges() == 0) {
                 throw IllegalStateException("Insufficient raw material stock: Available $rawStockCurrent, required $rawQtyInt.")
             }
 
-            val rawStockAfter = rawStockCurrent - rawQtyInt
-            db.openHelper.writableDatabase.execSQL(
-                "UPDATE products SET stockCount = ? WHERE id = ?",
-                arrayOf<Any?>(rawStockAfter, productionRun.rawMaterialProductId)
-            )
+            val rawStockAfter = queryStock(productionRun.rawMaterialProductId)
 
             // Audit movement: raw decrement
             inventoryMovementDao.insertMovementBlocking(

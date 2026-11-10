@@ -610,9 +610,7 @@ fun AnalyticsTab(
                     )
                 },
                 dismissButton = {
-                    TextButton(onClick = { showEditFeesDialog = false }) {
-                        Text("Cancel")
-                    }
+                    HeroTextButton(onClick = { showEditFeesDialog = false }, text = "Cancel")
                 }
             )
         }

@@ -53,7 +53,8 @@ data class Category(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
     val colorAccent: String = "",
-    val iconBadge: String = ""
+    val iconBadge: String = "",
+    val isArchived: Boolean = false
 )
 
 @Entity(
@@ -65,7 +66,9 @@ data class Category(
         // keystroke. This is the single hottest read in the app.
         Index(value = ["name"]),
         // Backs the "low stock" / "running out" badges without scanning every row.
-        Index(value = ["stockCount"])
+        Index(value = ["stockCount"]),
+        // Composite index: satisfies `WHERE isArchived = 0 ORDER BY name ASC` without TEMP B-TREE sorts.
+        Index(value = ["isArchived", "name"])
     ]
 )
 data class Product(
@@ -101,7 +104,8 @@ data class Product(
     val barcodeMasterCase: String = "",
     val barcodeCustomUom: String = "",
     val baseUom: String = "pc",
-    val trackInventory: Boolean = true
+    val trackInventory: Boolean = true,
+    val isArchived: Boolean = false
 )
 
 @Entity(
@@ -364,7 +368,7 @@ data class Supplier(
             entity = Supplier::class,
             parentColumns = ["id"],
             childColumns = ["supplierId"],
-            onDelete = ForeignKey.CASCADE
+            onDelete = ForeignKey.RESTRICT
         )
     ],
     indices = [

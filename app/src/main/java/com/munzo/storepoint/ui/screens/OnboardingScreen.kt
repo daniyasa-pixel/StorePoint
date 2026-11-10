@@ -232,66 +232,37 @@ fun OnboardingScreen(viewModel: StorePointViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (activePage > 0) {
-                        TextButton(
+                        HeroTextButton(
                             onClick = { activePage-- },
-                            modifier = Modifier
-                                .height(48.dp)
-                                .testTag("onboarding_back_btn")
-                        ) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Back", fontWeight = FontWeight.Bold, fontFamily = FontFamily.SansSerif)
-                        }
+                            icon = Icons.Default.ArrowBack,
+                            text = "Back",
+                            modifier = Modifier.testTag("onboarding_back_btn")
+                        )
                     } else {
                         Spacer(modifier = Modifier.width(80.dp))
                     }
 
                     if (activePage < 3) {
-                        Button(
+                        HeroButton(
                             onClick = { activePage++ },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            modifier = Modifier
-                                .height(48.dp)
-                                .testTag("onboarding_next_btn"),
-                            shape = CircleShape
-                        ) {
-                            Text(
-                                text = "Next",
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.SansSerif,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next")
-                        }
+                            trailingIcon = Icons.AutoMirrored.Filled.ArrowForward,
+                            text = "Next",
+                            shape = CircleShape,
+                            modifier = Modifier.testTag("onboarding_next_btn")
+                        )
                     } else {
-                        Button(
+                        HeroButton(
                             onClick = {
                                 if (termsAccepted) {
                                     viewModel.setOnboardingCompleted(true)
                                 }
                             },
                             enabled = termsAccepted,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            modifier = Modifier
-                                .height(48.dp)
-                                .testTag("onboarding_finish_btn"),
-                            shape = CircleShape
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = "Finish")
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Complete & Proceed",
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.SansSerif,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                            icon = Icons.Default.Check,
+                            text = "Complete & Proceed",
+                            shape = CircleShape,
+                            modifier = Modifier.testTag("onboarding_finish_btn")
+                        )
                     }
                 }
             }

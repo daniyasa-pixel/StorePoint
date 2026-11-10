@@ -255,7 +255,7 @@ fun KioskStatusBar(
                 }
             },
             confirmButton = {
-                Button(
+                HeroButton(
                     onClick = {
                         viewModel.verifyKioskUnlock(
                             pin = adminAuthPin,
@@ -275,22 +275,20 @@ fun KioskStatusBar(
                                 adminAuthError = err
                             }
                         )
-                    }
-                ) {
-                    Text("Authorize")
-                }
+                    },
+                    text = "Authorize"
+                )
             },
             dismissButton = {
-                TextButton(
+                HeroTextButton(
                     onClick = {
                         showAdminAuthDialog = false
                         adminAuthPin = ""
                         adminAuthError = ""
                         pendingAction = null
-                    }
-                ) {
-                    Text("Cancel")
-                }
+                    },
+                    text = "Cancel"
+                )
             }
         )
     }
@@ -335,25 +333,17 @@ fun KioskStatusBar(
                 }
             },
             confirmButton = {
-                Button(
+                HeroButton(
                     onClick = {
                         viewModel.verifyKioskUnlock(
                             pin = unlockInput,
                             onSuccess = {
                                 showSecretUnlockDialog = false
-                                // SECURITY (issue #7): this used to call
-                                // activity.stopLockTask() directly, making KioskStatusBar a
-                                // second, uncoordinated owner of the lock-task lifecycle. The
-                                // Activity's syncKioskLockTask() is now the only owner, so
-                                // releasing the lock here cannot leave the Activity's
-                                // lockTaskEngaged flag out of step with the OS.
                                 val activity = context.findActivity() as? MainActivity
                                 if (activity != null) {
                                     activity.releaseKioskLockTask()
                                     Toast.makeText(context, "Kiosk Lockdown Mode successfully disabled by Admin.", Toast.LENGTH_LONG).show()
                                 } else {
-                                    // No Activity reachable (should not happen): still clear
-                                    // the persisted flag so the next launch is consistent.
                                     viewModel.toggleKioskMode(false)
                                     Toast.makeText(context, "Kiosk Mode disabled.", Toast.LENGTH_SHORT).show()
                                 }
@@ -362,19 +352,19 @@ fun KioskStatusBar(
                                 unlockError = err
                             }
                         )
-                    }
-                ) {
-                    Text("Unlock")
-                }
+                    },
+                    text = "Unlock"
+                )
             },
             dismissButton = {
-                TextButton(onClick = {
-                    showSecretUnlockDialog = false
-                    unlockInput = ""
-                    unlockError = ""
-                }) {
-                    Text("Cancel")
-                }
+                HeroTextButton(
+                    onClick = {
+                        showSecretUnlockDialog = false
+                        unlockInput = ""
+                        unlockError = ""
+                    },
+                    text = "Cancel"
+                )
             }
         )
     }
