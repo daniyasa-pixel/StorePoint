@@ -1,0 +1,150 @@
+import React, { useEffect, useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Button, Card, Chip } from 'heroui-native';
+import { PinPadEntry } from '@/components/PinPadEntry';
+import { StorePointBrandBadge } from '@/components/StorePointBrandBadge';
+import { APP_ROUTES, resolveHomeRouteForRole } from '@/constants/routes';
+import { KioskEmergencyUnlockDialog } from '@/features/auth/KioskEmergencyUnlockDialog';
+import { useAuthFlow } from '@/features/auth/useAuthFlow';
+import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+
+export default function LoginRoute() {
+  const router = useRouter();
+  const storeName = useAppBootstrapStore((s) => s.storeName);
+  const { users, biometricAvailability, loginWithPin, loginWithBiometric } = useAuthFlow();
+
+  const [selectedUsername, setSelectedUsername] = useState('');
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [logoTapCount, setLogoTapCount] = useState(0);
+  const [showEmergencyUnlock, setShowEmergencyUnlock] = useState(false);
+
+  useEffect(() => {
+    if (!selectedUsername && users.length > 0 && users[0]) {
+      setSelectedUsername(users[0].username);
+    }
+  }, [selectedUsername, users]);
+
+  const handleLogoTap = () => {
+    const next = logoTapCount + 1;
+    if (next >= 5) {
+      setLogoTapCount(0);
+      setShowEmergencyUnlock(true);
+    } else {
+      setLogoTapCount(next);
+    }
+  };
+
+  const handlePinSignIn = async (candidatePin: string) => {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const outcome = await loginWithPin(selectedUsername, candidatePin);
+      if (outcome.requiresPinReset) {
+        router.push(APP_ROUTES.PIN_RESET);
+        return;
+      }
+      if (!outcome.ok || !outcome.user) {
+        setError(outcome.error ?? 'Sign-in failed.');
+        setPin('');
+        return;
+      }
+      router.replace(resolveHomeRouteForRole(outcome.user.role));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePinChange = (next: string) => {
+    setPin(next);
+    setError(null);
+    if (next.length === 4) {
+      void handlePinSignIn(next);
+    }
+  };
+
+  const handleBiometric = async () => {
+    setError(null);
+    const outcome = await loginWithBiometric();
+    if (outcome.requiresPinReset) {
+      router.push(APP_ROUTES.PIN_RESET);
+      return;
+    }
+    if (!outcome.ok || !outcome.user) {
+      setError(outcome.error ?? 'Biometric sign-in failed.');
+      return;
+    }
+    router.replace(resolveHomeRouteForRole(outcome.user.role));
+  };
+
+  return (
+    <SafeAreaView className="bg-background flex-1">
+      <ScrollView contentContainerClassName="flex-grow justify-center p-5">
+        <View className="w-full max-w-md self-center gap-5">
+          <View className="items-center gap-2">
+            <Pressable onPress={handleLogoTap} accessibilityRole="button">
+              <StorePointBrandBadge size="lg" />
+            </Pressable>
+            <Text className="text-foreground text-2xl font-bold">{storeName}</Text>
+            <Text className="text-muted text-xs">Select staff account and enter 4-digit PIN</Text>
+          </View>
+
+          <Card>
+            <Card.Body className="gap-4">
+              {users.length > 0 ? (
+                <View className="flex-row flex-wrap gap-2 justify-center">
+                  {users.map((u) => (
+                    <Chip
+                      key={u.username}
+                      color={selectedUsername === u.username ? 'accent' : 'default'}
+                      variant={selectedUsername === u.username ? 'primary' : 'soft'}
+                      onPress={() => {
+                        setSelectedUsername(u.username);
+                        setPin('');
+                        setError(null);
+                      }}
+                    >
+                      <Chip.Label>
+                        {u.username} ({u.role})
+                      </Chip.Label>
+                    </Chip>
+                  ))}
+                </View>
+              ) : null}
+
+              <PinPadEntry
+                pin={pin}
+                onPinChange={handlePinChange}
+                isDisabled={isSubmitting}
+                errorMessage={error}
+              />
+
+              {biometricAvailability === 'AVAILABLE' ? (
+                <Button variant="secondary" size="md" className="w-full" onPress={handleBiometric}>
+                  <Button.Label>Sign In with Fingerprint / Biometrics</Button.Label>
+                </Button>
+              ) : null}
+            </Card.Body>
+            <Card.Footer className="flex-row justify-between pt-3">
+              <Button variant="ghost" size="sm" onPress={() => router.push(APP_ROUTES.PIN_RESET)}>
+                <Button.Label>Reset PIN</Button.Label>
+              </Button>
+              <Button variant="ghost" size="sm" onPress={() => router.push(APP_ROUTES.ABOUT)}>
+                <Button.Label>About</Button.Label>
+              </Button>
+            </Card.Footer>
+          </Card>
+        </View>
+      </ScrollView>
+
+      <KioskEmergencyUnlockDialog
+        isOpen={showEmergencyUnlock}
+        onOpenChange={setShowEmergencyUnlock}
+      />
+    </SafeAreaView>
+  );
+}

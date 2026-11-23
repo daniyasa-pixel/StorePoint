@@ -1,0 +1,169 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { ScrollView, Text, View } from 'react-native';
+import { Alert, Button, Chip, Dialog, Surface, Switch } from 'heroui-native';
+import { getRepositories } from '@/db/repositories';
+import type { Transaction, TransactionItem } from '@/db/types';
+import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+
+interface ReturnRefundDialogProps {
+  readonly isOpen: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly currencySymbol: string;
+  readonly onRefundCompleted: () => void;
+}
+
+const REASONS = ['Defective / Spoiled', 'Expired', 'Wrong Item', 'Customer Changed Mind'] as const;
+
+export function ReturnRefundDialog({
+  isOpen,
+  onOpenChange,
+  currencySymbol,
+  onRefundCompleted,
+}: ReturnRefundDialogProps) {
+  const activeUser = useAppBootstrapStore((s) => s.activeUser);
+  const [recentTxs, setRecentTxs] = useState<Transaction[]>([]);
+  const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  const [txItems, setTxItems] = useState<TransactionItem[]>([]);
+  const [reason, setReason] = useState<string>(REASONS[0]);
+  const [restock, setRestock] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const loadRecent = useCallback(async () => {
+    const repos = await getRepositories();
+    setRecentTxs(await repos.checkout.getRecentTransactions(15));
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      void loadRecent();
+      setSelectedTx(null);
+      setTxItems([]);
+      setError(null);
+    }
+  }, [isOpen, loadRecent]);
+
+  const handleSelectTx = async (tx: Transaction) => {
+    const repos = await getRepositories();
+    setSelectedTx(tx);
+    setTxItems(await repos.checkout.getTransactionItems(tx.id));
+  };
+
+  const handleRefundAll = async () => {
+    if (!selectedTx || txItems.length === 0) return;
+    setIsProcessing(true);
+    setError(null);
+    try {
+      const repos = await getRepositories();
+      await repos.returns.processReturn({
+        originalTransactionId: selectedTx.id,
+        cashierUsername: activeUser?.username ?? 'cashier',
+        refundMethod: 'CASH',
+        returnReason: reason,
+        items: txItems.map((i) => ({
+          productId: i.productId,
+          productName: i.productName,
+          quantity: i.quantity,
+          unitPrice: i.price,
+          refundAmount: i.price * i.quantity,
+          uomName: i.uomName,
+          restockToInventory: restock,
+        })),
+      });
+      onRefundCompleted();
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Return failed.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay />
+        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center">
+          <Dialog.Title>Returns & Refunds</Dialog.Title>
+
+          {error ? (
+            <Alert status="danger">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Description>{error}</Alert.Description>
+              </Alert.Content>
+            </Alert>
+          ) : null}
+
+          {!selectedTx ? (
+            <ScrollView className="max-h-72">
+              <View className="gap-2">
+                {recentTxs.length === 0 ? (
+                  <Text className="text-muted text-xs text-center py-4">No recent sales found.</Text>
+                ) : (
+                  recentTxs.map((tx) => (
+                    <Surface
+                      key={tx.id}
+                      variant="secondary"
+                      className="rounded-xl p-3 flex-row items-center justify-between"
+                    >
+                      <View>
+                        <Text className="text-foreground text-sm font-semibold">
+                          Receipt #{tx.id} • {currencySymbol}
+                          {tx.totalAmount.toFixed(2)}
+                        </Text>
+                        <Text className="text-muted text-xs">
+                          {tx.paymentMethod} • {tx.status}
+                        </Text>
+                      </View>
+                      <Button variant="secondary" size="sm" onPress={() => void handleSelectTx(tx)}>
+                        <Button.Label>Select</Button.Label>
+                      </Button>
+                    </Surface>
+                  ))
+                )}
+              </View>
+            </ScrollView>
+          ) : (
+            <View className="gap-3">
+              <Text className="text-foreground text-sm font-semibold">
+                Refunding Receipt #{selectedTx.id} ({txItems.length} item(s))
+              </Text>
+              <View className="flex-row flex-wrap gap-1.5">
+                {REASONS.map((r) => (
+                  <Chip
+                    key={r}
+                    size="sm"
+                    color={reason === r ? 'accent' : 'default'}
+                    variant={reason === r ? 'primary' : 'soft'}
+                    onPress={() => setReason(r)}
+                  >
+                    <Chip.Label>{r}</Chip.Label>
+                  </Chip>
+                ))}
+              </View>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-foreground text-sm">Restock items to inventory</Text>
+                <Switch isSelected={restock} onSelectedChange={setRestock} />
+              </View>
+              <View className="flex-row justify-end gap-2 pt-2">
+                <Button variant="secondary" onPress={() => setSelectedTx(null)}>
+                  <Button.Label>Back</Button.Label>
+                </Button>
+                <Button variant="danger" isDisabled={isProcessing} onPress={handleRefundAll}>
+                  <Button.Label>{isProcessing ? 'Refunding...' : 'Confirm Refund'}</Button.Label>
+                </Button>
+              </View>
+            </View>
+          )}
+
+          {!selectedTx ? (
+            <Button variant="ghost" onPress={() => onOpenChange(false)}>
+              <Button.Label>Close</Button.Label>
+            </Button>
+          ) : null}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog>
+  );
+}
