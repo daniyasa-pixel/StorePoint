@@ -20,7 +20,7 @@ export default function AboutRoute() {
     <SafeAreaView className="bg-background flex-1">
       <AppTopBar
         title="About StorePoint"
-        subtitle="Version 1.0.1.10 • Android APK"
+        subtitle="Version 1.0.2.0 • Android APK"
         onBack={() => router.back()}
       />
       <ScrollView contentContainerClassName="p-5 gap-4">

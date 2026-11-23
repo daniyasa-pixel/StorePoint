@@ -7,13 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release Tag (e.g. v1.0.1)'
+        description: 'Release Tag (e.g. v1.0.2.0)'
         required: true
-        default: 'v1.0.1'
+        default: 'v1.0.2.0'
       release_title:
         description: 'Release Title'
         required: false
-        default: 'StorePoint Release v1.0.1'
+        default: 'StorePoint Release v1.0.2.0'
 
 permissions:
   contents: write
@@ -23,7 +23,7 @@ env:
 
 jobs:
   build-and-release:
-    name: Build & Release APK
+    name: Build & Release Expo Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -31,6 +31,13 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: apps/pos-mobile/package-lock.json
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -41,86 +48,66 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Prepare Environment, Keystores & Local Properties
+      - name: Install Mobile Dependencies
+        working-directory: apps/pos-mobile
+        run: npm ci
+
+      - name: Run Pre-Release Validation (TypeCheck, Lint & Unit Tests)
+        working-directory: apps/pos-mobile
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+
+      - name: Prebuild Android Native Project (Expo CNG)
+        working-directory: apps/pos-mobile
+        run: npx expo prebuild --platform android --non-interactive
+
+      - name: Prepare Android SDK & Keystore
+        working-directory: apps/pos-mobile/android
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
           chmod +x gradlew
-          # Create local.properties with Android SDK path
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-          # Create .env file from example if it doesn't exist
-          if [ ! -f ".env" ]; then
-            cp .env.example .env
-          fi
-          # Ensure local debug keystore is present for signing debugConfig
-          if [ ! -f "debug.keystore" ]; then
-            echo "Generating clean debug.keystore for CI build..."
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
 
-          # If user has set custom upload keystore secrets in GitHub Secrets, decode it
-          if [ -n "$KEYSTORE_BASE64" ]; then
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ]; then
             echo "Decoding production release keystore from secrets..."
-            echo "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+            echo "$KEYSTORE_BASE64" | base64 --decode > app/my-upload-key.jks
+          else
+            echo "::warning::Release signing secrets not configured (KEYSTORE_BASE64 + STORE_PASSWORD). Falling back to debug keystore signing."
           fi
-
-      - name: Run Unit Tests (Pre-Release Validation)
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
 
       - name: Build Signed Release APK (Primary Artifact)
+        working-directory: apps/pos-mobile/android
         env:
           KEYSTORE_PATH: ${{ secrets.KEYSTORE_PATH }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          # SECURITY / QA (audit #8): the release build (R8-minified + release signing
-          # config) is the ONLY APK published. A debug build must never be shipped as the
-          # primary release asset. When production signing secrets are absent the signing
-          # config falls back to the debug keystore (configured in build.gradle), but a
-          # warning is emitted and a real R8/signing error fails the workflow (no
-          # `|| echo skipped` masking).
-          if [ -f "my-upload-key.jks" ] && [ -n "$STORE_PASSWORD" ]; then
-            echo "Building production-signed release APK..."
-          else
-            echo "::warning::Release signing secrets not configured (KEYSTORE_BASE64 + STORE_PASSWORD). Falling back to debug keystore signing - set production secrets for Play/store distribution."
-          fi
-          ./gradlew :app:assembleRelease --stacktrace
+        run: ./gradlew assembleRelease --stacktrace
 
-      - name: Prepare Release Assets
+      - name: Prepare Release Assets & SHA-256 Checksums
         id: prepare_assets
         run: |
           TAG="${{ github.event.inputs.tag_name || github.ref_name }}"
+          APK_SRC="apps/pos-mobile/android/app/build/outputs/apk/release/app-release.apk"
           mkdir -p release-assets
 
-          # The signed release APK is the PRIMARY (and only) APK asset. A debug build is
-          # never published - audit finding #8: debug APKs must not ship as release assets.
-          if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-            cp app/build/outputs/apk/release/app-release.apk release-assets/StorePoint-${TAG}.apk
+          if [ -f "$APK_SRC" ]; then
+            cp "$APK_SRC" "release-assets/StorePoint-${TAG}.apk"
             echo "✓ Release APK copied to release-assets/StorePoint-${TAG}.apk"
           else
-            echo "::error::Release APK not found at app/build/outputs/apk/release/app-release.apk"
-            echo "Build may have failed. Listing any APK outputs:"
-            find app/build/outputs/apk/ -name "*.apk" 2>/dev/null || echo "(no APK files found)"
+            echo "::error::Release APK not found at $APK_SRC"
+            find apps/pos-mobile/android/app/build/outputs/apk/ -name "*.apk" 2>/dev/null || echo "(no APK files found)"
             exit 1
           fi
 
-          # Verify at least one APK exists before generating checksums
-          if ! ls release-assets/*.apk 1>/dev/null 2>&1; then
-            echo "::error::No APK files found in release-assets/. Cannot publish release."
-            exit 1
-          fi
-
-          # Generate SHA-256 Checksums
           cd release-assets
-          # Per-APK sidecar checksums ("<hex>  <file>") — required by the in-app updater,
-          # which scans release assets for "<apk-name>.sha256" and verifies fail-closed (H5).
           for f in *.apk; do sha256sum "$f" > "$f.sha256"; done
-          # Combined checksums file for manual verification
           sha256sum *.apk > SHA256SUMS.txt
-          echo "=== Release assets contents ==="
-          ls -la
-          echo "=== SHA256SUMS.txt ==="
+          ls -lh
           cat SHA256SUMS.txt
           cd ..
 
@@ -129,7 +116,6 @@ jobs:
           TAG="${{ github.event.inputs.tag_name || github.ref_name }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Create the tag if it doesn't already exist on this commit
           if ! git rev-parse "$TAG" >/dev/null 2>&1; then
             git tag "$TAG"
             git push origin "$TAG"
@@ -154,14 +140,14 @@ jobs:
           files: |
             release-assets/*
           body: |
-            ### StorePoint Point of Sale & Inventory System 📱
+            ### StorePoint Point of Sale & Inventory System (React Native Expo + HeroUI Native) 📱
 
-            Pre-compiled Android application package (APK) ready for direct installation on any Android phone, tablet, or POS terminal (Android 8.0+).
+            Pre-compiled standalone Android APK ready for direct installation on Android phones, tablets, and POS terminals.
 
             #### 📲 Quick Installation Guide:
             1. Download **`StorePoint-${{ github.event.inputs.tag_name || github.ref_name }}.apk`** from the **Assets** section below.
             2. Open the downloaded APK on your Android device.
             3. When prompted, select **Allow from this source** to proceed with installation.
-            4. Launch StorePoint and complete the quick 1-minute store setup wizard!
+            4. Launch StorePoint and complete the 2-step store setup wizard.
 
             *Verify SHA-256 checksums from `SHA256SUMS.txt`.*

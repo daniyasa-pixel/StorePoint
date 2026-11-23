@@ -10,7 +10,7 @@ export function AdminAboutTab() {
     <Card className="p-5 gap-3">
       <Card.Title>{storeName}</Card.Title>
       <Card.Description>
-        StorePoint POS Mobile v1.0.1.10 — Android APK Edition built with Expo, TypeScript,
+        StorePoint POS Mobile v1.0.2.0 — Android APK Edition built with Expo, TypeScript,
         HeroUI Native (v3), Uniwind, and offline SQLite v19.
       </Card.Description>
       <View className="flex-row flex-wrap gap-2 pt-1">

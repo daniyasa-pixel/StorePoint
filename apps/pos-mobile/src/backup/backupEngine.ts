@@ -44,7 +44,7 @@ export async function buildBackupSnapshot(): Promise<BackupSnapshotEnvelope> {
   return {
     schemaVersion: SCHEMA_VERSION,
     exportedAt: Date.now(),
-    appVersion: '1.0.1.10',
+    appVersion: '1.0.2.0',
     tables: {
       storeConfig,
       categories,
