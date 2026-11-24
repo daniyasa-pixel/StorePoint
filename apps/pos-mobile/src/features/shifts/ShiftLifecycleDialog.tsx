@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
-import { Alert, Button, Dialog, Input, Label, TextField } from 'heroui-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { Alert, Button, Dialog, Input, Label, Separator, Spinner, Surface, TextField } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { CashierSession } from '@/db/types';
 import {
@@ -9,6 +10,7 @@ import {
   type DenominationCount,
 } from '@/domain/cashDrawerCoordinator';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import { enterFadeUp, exitFadeUp } from '@/theme/motion';
 
 interface ShiftLifecycleDialogProps {
   readonly isOpen: boolean;
@@ -133,91 +135,121 @@ export function ShiftLifecycleDialog({
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center">
+        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
           <Dialog.Title>
             {activeSession ? `Close Shift #${activeSession.id}` : 'Open Cashier Shift'}
           </Dialog.Title>
 
           {error ? (
-            <Alert status="danger">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Content>
-            </Alert>
+            <Animated.View entering={enterFadeUp} exiting={exitFadeUp}>
+              <Alert status="danger">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Description>{error}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            </Animated.View>
           ) : null}
 
           {!activeSession ? (
-            <View className="gap-3">
-              <TextField>
-                <Label>Starting Cash Float ({currencySymbol})</Label>
-                <Input
-                  value={startingFloat}
-                  onChangeText={setStartingFloat}
-                  keyboardType="decimal-pad"
-                />
-              </TextField>
-              <View className="flex-row justify-end gap-2 pt-2">
-                <Button variant="secondary" onPress={() => onOpenChange(false)}>
+            <>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                className="shrink"
+              >
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  contentContainerClassName="gap-3 pb-1"
+                >
+                  <TextField>
+                    <Label>Starting Cash Float ({currencySymbol})</Label>
+                    <Input
+                      value={startingFloat}
+                      onChangeText={setStartingFloat}
+                      keyboardType="decimal-pad"
+                    />
+                  </TextField>
+                </ScrollView>
+              </KeyboardAvoidingView>
+              <Separator />
+              <View className="flex-row justify-end gap-2">
+                <Button variant="secondary" onPress={() => onOpenChange(false)} isDisabled={isSaving}>
                   <Button.Label>Cancel</Button.Label>
                 </Button>
                 <Button variant="primary" isDisabled={isSaving} onPress={handleOpenShift}>
+                  {isSaving ? <Spinner size="sm" /> : null}
                   <Button.Label>{isSaving ? 'Opening...' : 'Start Shift'}</Button.Label>
                 </Button>
               </View>
-            </View>
+            </>
           ) : (
-            <ScrollView className="max-h-96">
-              <View className="gap-2.5">
-                <Text className="text-muted text-xs">
-                  Blind Denomination Count (enter physical bill & coin counts)
-                </Text>
-                {(
-                  [
-                    ['count1000', `${currencySymbol}1000 Bills`],
-                    ['count500', `${currencySymbol}500 Bills`],
-                    ['count200', `${currencySymbol}200 Bills`],
-                    ['count100', `${currencySymbol}100 Bills`],
-                    ['count50', `${currencySymbol}50 Bills`],
-                    ['count20', `${currencySymbol}20 Bills`],
-                    ['countCoins', `Coins Total (${currencySymbol})`],
-                  ] as const
-                ).map(([field, label]) => (
-                  <TextField key={field}>
-                    <Label>{label}</Label>
+            <>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                className="shrink"
+              >
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  contentContainerClassName="gap-2.5 pb-1"
+                >
+                  <Text className="text-muted text-xs">
+                    Blind Denomination Count (enter physical bill & coin counts)
+                  </Text>
+                  {(
+                    [
+                      ['count1000', `${currencySymbol}1000 Bills`],
+                      ['count500', `${currencySymbol}500 Bills`],
+                      ['count200', `${currencySymbol}200 Bills`],
+                      ['count100', `${currencySymbol}100 Bills`],
+                      ['count50', `${currencySymbol}50 Bills`],
+                      ['count20', `${currencySymbol}20 Bills`],
+                      ['countCoins', `Coins Total (${currencySymbol})`],
+                    ] as const
+                  ).map(([field, label]) => (
+                    <TextField key={field}>
+                      <Label>{label}</Label>
+                      <Input
+                        value={denoms[field] ? String(denoms[field]) : ''}
+                        onChangeText={(v) => updateDenom(field, v)}
+                        keyboardType="decimal-pad"
+                        placeholder="0"
+                      />
+                    </TextField>
+                  ))}
+
+                  <TextField>
+                    <Label>Variance / Audit Note (Optional)</Label>
                     <Input
-                      value={denoms[field] ? String(denoms[field]) : ''}
-                      onChangeText={(v) => updateDenom(field, v)}
-                      keyboardType="decimal-pad"
-                      placeholder="0"
+                      value={discrepancyReason}
+                      onChangeText={setDiscrepancyReason}
+                      placeholder="Notes for manager review"
                     />
                   </TextField>
-                ))}
+                </ScrollView>
+              </KeyboardAvoidingView>
 
-                <Text className="text-accent text-sm font-bold pt-1">
-                  Counted Cash Total: {currencySymbol}
+              <Surface variant="secondary" className="rounded-xl px-3 py-2.5 flex-row items-center justify-between">
+                <Text className="text-foreground text-xs font-semibold">Counted Cash Total</Text>
+                <Text className="text-accent text-base font-bold">
+                  {currencySymbol}
                   {countedCash.toFixed(2)}
                 </Text>
+              </Surface>
 
-                <TextField>
-                  <Label>Variance / Audit Note (Optional)</Label>
-                  <Input
-                    value={discrepancyReason}
-                    onChangeText={setDiscrepancyReason}
-                    placeholder="Notes for manager review"
-                  />
-                </TextField>
+              <Separator />
 
-                <View className="flex-row justify-end gap-2 pt-2">
-                  <Button variant="secondary" onPress={() => onOpenChange(false)}>
-                    <Button.Label>Cancel</Button.Label>
-                  </Button>
-                  <Button variant="danger" isDisabled={isSaving} onPress={handleCloseShift}>
-                    <Button.Label>{isSaving ? 'Closing...' : 'Reconcile & Close'}</Button.Label>
-                  </Button>
-                </View>
+              <View className="flex-row justify-end gap-2">
+                <Button variant="secondary" onPress={() => onOpenChange(false)} isDisabled={isSaving}>
+                  <Button.Label>Cancel</Button.Label>
+                </Button>
+                <Button variant="danger" isDisabled={isSaving} onPress={handleCloseShift}>
+                  {isSaving ? <Spinner size="sm" /> : null}
+                  <Button.Label>{isSaving ? 'Closing...' : 'Reconcile & Close'}</Button.Label>
+                </Button>
               </View>
-            </ScrollView>
+            </>
           )}
         </Dialog.Content>
       </Dialog.Portal>

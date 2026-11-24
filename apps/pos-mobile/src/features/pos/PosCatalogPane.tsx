@@ -1,9 +1,11 @@
 import React from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Button, Card, Chip, PressableFeedback, SearchField } from 'heroui-native';
 import type { Category, Product } from '@/db/types';
 import { resolveScanSearchCopy } from '@/layout/adaptiveLayout';
 import { useWindowLayout } from '@/layout/useWindowLayout';
+import { staggerFadeUp } from '@/theme/motion';
 
 interface PosCatalogPaneProps {
   readonly categories: readonly Category[];
@@ -50,6 +52,7 @@ export function PosCatalogPane({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        className="shrink-0 grow-0"
         contentContainerClassName="flex-row gap-2 py-1"
       >
         <Chip
@@ -86,39 +89,41 @@ export function PosCatalogPane({
             </Card.Description>
           </Card>
         }
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const lowStock = item.trackInventory && item.stockCount <= 5;
           const outOfStock = item.trackInventory && item.stockCount <= 0;
           return (
-            <PressableFeedback
-              className="flex-1"
-              isDisabled={outOfStock}
-              onPress={() => onSelectProduct(item)}
-            >
-              <Card className="flex-1 p-3 gap-2">
-                <View className="flex-row items-start justify-between gap-2">
-                  <Text
-                    className="text-foreground text-sm font-semibold flex-1"
-                    numberOfLines={2}
-                  >
-                    {item.name}
+            <Animated.View entering={staggerFadeUp(index)} className="flex-1">
+              <PressableFeedback
+                className="flex-1"
+                isDisabled={outOfStock}
+                onPress={() => onSelectProduct(item)}
+              >
+                <Card className="flex-1 p-3 gap-2">
+                  <View className="flex-row items-start justify-between gap-2">
+                    <Text
+                      className="text-foreground text-sm font-semibold flex-1"
+                      numberOfLines={2}
+                    >
+                      {item.name}
+                    </Text>
+                    <Chip
+                      size="sm"
+                      variant="soft"
+                      color={outOfStock ? 'danger' : lowStock ? 'warning' : 'success'}
+                    >
+                      <Chip.Label>
+                        {item.trackInventory ? `${item.stockCount} ${item.baseUom}` : 'Service'}
+                      </Chip.Label>
+                    </Chip>
+                  </View>
+                  <Text className="text-accent text-base font-bold">
+                    {currencySymbol}
+                    {item.price.toFixed(2)}
                   </Text>
-                  <Chip
-                    size="sm"
-                    variant="soft"
-                    color={outOfStock ? 'danger' : lowStock ? 'warning' : 'success'}
-                  >
-                    <Chip.Label>
-                      {item.trackInventory ? `${item.stockCount} ${item.baseUom}` : 'Service'}
-                    </Chip.Label>
-                  </Chip>
-                </View>
-                <Text className="text-accent text-base font-bold">
-                  {currencySymbol}
-                  {item.price.toFixed(2)}
-                </Text>
-              </Card>
-            </PressableFeedback>
+                </Card>
+              </PressableFeedback>
+            </Animated.View>
           );
         }}
       />

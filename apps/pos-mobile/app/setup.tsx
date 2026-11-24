@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -9,6 +10,9 @@ import {
   Chip,
   Input,
   Label,
+  Separator,
+  Spinner,
+  Surface,
   Switch,
   TextField,
 } from 'heroui-native';
@@ -18,6 +22,13 @@ import { APP_ROUTES } from '@/constants/routes';
 import { getRepositories } from '@/db/repositories';
 import { hashPin, isValidPin, isWeakPin, pinPolicyHint } from '@/security/securityHelper';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import {
+  enterFadeUp,
+  enterSlideRight,
+  exitFadeUp,
+  exitSlideLeft,
+  layoutTransition,
+} from '@/theme/motion';
 
 const CURRENCIES = ['₱', '$', '€', '£', '¥'] as const;
 
@@ -122,127 +133,142 @@ export default function SetupRoute() {
         }
       />
 
-      <ScrollView contentContainerClassName="p-5 pb-10">
-        <View className="w-full max-w-xl self-center gap-4">
-          {error ? (
-            <Alert status="danger">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Title>Check Setup Input</Alert.Title>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Content>
-            </Alert>
-          ) : null}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
+        <ScrollView contentContainerClassName="p-5 pb-10" keyboardShouldPersistTaps="handled">
+          <Animated.View
+            layout={layoutTransition}
+            className="w-full max-w-xl self-center gap-4"
+          >
+            {error ? (
+              <Animated.View entering={enterFadeUp} exiting={exitFadeUp}>
+                <Alert status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Title>Check Setup Input</Alert.Title>
+                    <Alert.Description>{error}</Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              </Animated.View>
+            ) : null}
 
-          {step === 1 ? (
-            <Card>
-              <Card.Header>
-                <Card.Title>Store Profile & Currency</Card.Title>
-                <Card.Description>
-                  Configure your store identity, VAT rate, and digital services.
-                </Card.Description>
-              </Card.Header>
-              <Card.Body className="gap-4 pt-4">
-                <TextField isRequired>
-                  <Label>Store Name</Label>
-                  <Input
-                    value={storeName}
-                    onChangeText={setStoreName}
-                    placeholder="e.g. Munzo Sari-Sari & Mini Mart"
-                  />
-                </TextField>
+            <Animated.View key={step} entering={enterSlideRight} exiting={exitSlideLeft}>
+              {step === 1 ? (
+                <Card>
+                  <Card.Header>
+                    <Card.Title>Store Profile & Currency</Card.Title>
+                    <Card.Description>
+                      Configure your store identity, VAT rate, and digital services.
+                    </Card.Description>
+                  </Card.Header>
+                  <Card.Body className="gap-4 pt-4">
+                    <TextField isRequired>
+                      <Label>Store Name</Label>
+                      <Input
+                        value={storeName}
+                        onChangeText={setStoreName}
+                        placeholder="e.g. Munzo Sari-Sari & Mini Mart"
+                      />
+                    </TextField>
 
-                <View className="gap-2">
-                  <Text className="text-foreground text-sm font-medium">Currency Symbol</Text>
-                  <View className="flex-row flex-wrap gap-2">
-                    {CURRENCIES.map((symbol) => (
-                      <Chip
-                        key={symbol}
-                        color={currencySymbol === symbol ? 'accent' : 'default'}
-                        variant={currencySymbol === symbol ? 'primary' : 'soft'}
-                        onPress={() => setCurrencySymbol(symbol)}
-                      >
-                        <Chip.Label>{symbol}</Chip.Label>
-                      </Chip>
-                    ))}
-                  </View>
-                </View>
+                    <View className="gap-2">
+                      <Label>Currency Symbol</Label>
+                      <View className="flex-row flex-wrap gap-2">
+                        {CURRENCIES.map((symbol) => (
+                          <Chip
+                            key={symbol}
+                            color={currencySymbol === symbol ? 'accent' : 'default'}
+                            variant={currencySymbol === symbol ? 'primary' : 'soft'}
+                            onPress={() => setCurrencySymbol(symbol)}
+                          >
+                            <Chip.Label>{symbol}</Chip.Label>
+                          </Chip>
+                        ))}
+                      </View>
+                    </View>
 
-                <TextField>
-                  <Label>VAT Percentage (%)</Label>
-                  <Input
-                    value={taxPercentage}
-                    onChangeText={setTaxPercentage}
-                    keyboardType="decimal-pad"
-                    placeholder="12.0"
-                  />
-                </TextField>
+                    <TextField>
+                      <Label>VAT Percentage (%)</Label>
+                      <Input
+                        value={taxPercentage}
+                        onChangeText={setTaxPercentage}
+                        keyboardType="decimal-pad"
+                        placeholder="12.0"
+                      />
+                    </TextField>
 
-                <View className="gap-3 pt-1">
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-foreground text-sm">Enable GCash Services</Text>
-                    <Switch isSelected={hasGCash} onSelectedChange={setHasGCash} />
-                  </View>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-foreground text-sm">Enable Maya Services</Text>
-                    <Switch isSelected={hasMaya} onSelectedChange={setHasMaya} />
-                  </View>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-foreground text-sm">Enable Prepaid Load</Text>
-                    <Switch isSelected={hasLoad} onSelectedChange={setHasLoad} />
-                  </View>
-                </View>
-              </Card.Body>
-              <Card.Footer className="pt-4">
-                <Button variant="primary" size="lg" className="w-full" onPress={handleNextStep}>
-                  <Button.Label>Next: Admin Security</Button.Label>
-                </Button>
-              </Card.Footer>
-            </Card>
-          ) : (
-            <Card>
-              <Card.Header>
-                <Card.Title>Create Owner / Admin PIN</Card.Title>
-                <Card.Description>{pinPolicyHint()}</Card.Description>
-              </Card.Header>
-              <Card.Body className="gap-4 pt-4">
-                <TextField isRequired>
-                  <Label>Admin Username</Label>
-                  <Input
-                    value={adminUsername}
-                    onChangeText={setAdminUsername}
-                    autoCapitalize="none"
-                    placeholder="admin"
-                  />
-                </TextField>
+                    <Surface variant="secondary" className="rounded-xl p-3 gap-3">
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-foreground text-sm">Enable GCash Services</Text>
+                        <Switch isSelected={hasGCash} onSelectedChange={setHasGCash} />
+                      </View>
+                      <Separator />
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-foreground text-sm">Enable Maya Services</Text>
+                        <Switch isSelected={hasMaya} onSelectedChange={setHasMaya} />
+                      </View>
+                      <Separator />
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-foreground text-sm">Enable Prepaid Load</Text>
+                        <Switch isSelected={hasLoad} onSelectedChange={setHasLoad} />
+                      </View>
+                    </Surface>
+                  </Card.Body>
+                  <Card.Footer className="pt-4">
+                    <Button variant="primary" size="lg" className="w-full" onPress={handleNextStep}>
+                      <Button.Label>Next: Admin Security</Button.Label>
+                    </Button>
+                  </Card.Footer>
+                </Card>
+              ) : (
+                <Card>
+                  <Card.Header>
+                    <Card.Title>Create Owner / Admin PIN</Card.Title>
+                    <Card.Description>{pinPolicyHint()}</Card.Description>
+                  </Card.Header>
+                  <Card.Body className="gap-4 pt-4">
+                    <TextField isRequired>
+                      <Label>Admin Username</Label>
+                      <Input
+                        value={adminUsername}
+                        onChangeText={setAdminUsername}
+                        autoCapitalize="none"
+                        placeholder="admin"
+                      />
+                    </TextField>
 
-                <PinPadEntry
-                  pin={adminPin}
-                  onPinChange={(next) => {
-                    setAdminPin(next);
-                    setError(null);
-                  }}
-                  isDisabled={isSaving}
-                  helperText="Enter a strong 4-digit Admin PIN"
-                />
-              </Card.Body>
-              <Card.Footer className="flex-row justify-between gap-3 pt-4">
-                <Button variant="secondary" onPress={() => setStep(1)} isDisabled={isSaving}>
-                  <Button.Label>Back</Button.Label>
-                </Button>
-                <Button
-                  variant="primary"
-                  className="flex-1"
-                  onPress={handleCompleteSetup}
-                  isDisabled={isSaving || adminPin.length < 4}
-                >
-                  <Button.Label>{isSaving ? 'Saving...' : 'Complete Setup'}</Button.Label>
-                </Button>
-              </Card.Footer>
-            </Card>
-          )}
-        </View>
-      </ScrollView>
+                    <PinPadEntry
+                      pin={adminPin}
+                      onPinChange={(next) => {
+                        setAdminPin(next);
+                        setError(null);
+                      }}
+                      isDisabled={isSaving}
+                      helperText="Enter a strong 4-digit Admin PIN"
+                    />
+                  </Card.Body>
+                  <Card.Footer className="flex-row justify-between gap-3 pt-4">
+                    <Button variant="secondary" onPress={() => setStep(1)} isDisabled={isSaving}>
+                      <Button.Label>Back</Button.Label>
+                    </Button>
+                    <Button
+                      variant="primary"
+                      className="flex-1"
+                      onPress={handleCompleteSetup}
+                      isDisabled={isSaving || adminPin.length < 4}
+                    >
+                      {isSaving ? <Spinner size="sm" /> : null}
+                      <Button.Label>{isSaving ? 'Saving...' : 'Complete Setup'}</Button.Label>
+                    </Button>
+                  </Card.Footer>
+                </Card>
+              )}
+            </Animated.View>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
-import { Alert, Button, Chip, Dialog, Input, Label, TextField } from 'heroui-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { Alert, Button, Chip, Dialog, Input, Label, Separator, Spinner, TextField } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Product } from '@/db/types';
 import { analyzeCostAndMargin, computeDerivedUnitCost } from '@/domain/productionBomCoordinator';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import { enterFadeUp, exitFadeUp } from '@/theme/motion';
 
 interface BulkProductionDialogProps {
   readonly isOpen: boolean;
@@ -81,79 +83,95 @@ export function BulkProductionDialog({
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center">
+        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
           <Dialog.Title>Bulk Repackaging & BOM Production</Dialog.Title>
 
-          {error ? (
-            <Alert status="danger">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Content>
-            </Alert>
-          ) : null}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="shrink"
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerClassName="gap-3 pb-1"
+            >
+              {error ? (
+                <Animated.View entering={enterFadeUp} exiting={exitFadeUp}>
+                  <Alert status="danger">
+                    <Alert.Indicator />
+                    <Alert.Content>
+                      <Alert.Description>{error}</Alert.Description>
+                    </Alert.Content>
+                  </Alert>
+                </Animated.View>
+              ) : null}
 
-          <View className="gap-1.5">
-            <Text className="text-foreground text-xs font-semibold">Raw Material</Text>
-            <View className="flex-row flex-wrap gap-1.5">
-              {products.slice(0, 6).map((p) => (
-                <Chip
-                  key={`raw-${p.id}`}
-                  size="sm"
-                  color={rawId === p.id ? 'accent' : 'default'}
-                  variant={rawId === p.id ? 'primary' : 'soft'}
-                  onPress={() => setRawId(p.id)}
-                >
-                  <Chip.Label>{p.name} ({p.stockCount})</Chip.Label>
-                </Chip>
-              ))}
-            </View>
-          </View>
+              <View className="gap-1.5">
+                <Text className="text-foreground text-xs font-semibold">Raw Material</Text>
+                <View className="flex-row flex-wrap gap-1.5">
+                  {products.slice(0, 6).map((p) => (
+                    <Chip
+                      key={`raw-${p.id}`}
+                      size="sm"
+                      color={rawId === p.id ? 'accent' : 'default'}
+                      variant={rawId === p.id ? 'primary' : 'soft'}
+                      onPress={() => setRawId(p.id)}
+                    >
+                      <Chip.Label>{p.name} ({p.stockCount})</Chip.Label>
+                    </Chip>
+                  ))}
+                </View>
+              </View>
 
-          <View className="gap-1.5">
-            <Text className="text-foreground text-xs font-semibold">Target Retail Product</Text>
-            <View className="flex-row flex-wrap gap-1.5">
-              {products.slice(0, 6).map((p) => (
-                <Chip
-                  key={`target-${p.id}`}
-                  size="sm"
-                  color={targetId === p.id ? 'success' : 'default'}
-                  variant={targetId === p.id ? 'primary' : 'soft'}
-                  onPress={() => setTargetId(p.id)}
-                >
-                  <Chip.Label>{p.name}</Chip.Label>
-                </Chip>
-              ))}
-            </View>
-          </View>
+              <View className="gap-1.5">
+                <Text className="text-foreground text-xs font-semibold">Target Retail Product</Text>
+                <View className="flex-row flex-wrap gap-1.5">
+                  {products.slice(0, 6).map((p) => (
+                    <Chip
+                      key={`target-${p.id}`}
+                      size="sm"
+                      color={targetId === p.id ? 'success' : 'default'}
+                      variant={targetId === p.id ? 'primary' : 'soft'}
+                      onPress={() => setTargetId(p.id)}
+                    >
+                      <Chip.Label>{p.name}</Chip.Label>
+                    </Chip>
+                  ))}
+                </View>
+              </View>
 
-          <View className="flex-row gap-2">
-            <TextField className="flex-1">
-              <Label>Raw Used</Label>
-              <Input value={rawQty} onChangeText={setRawQty} keyboardType="decimal-pad" />
-            </TextField>
-            <TextField className="flex-1">
-              <Label>Yield Qty</Label>
-              <Input value={yieldQty} onChangeText={setYieldQty} keyboardType="decimal-pad" />
-            </TextField>
-            <TextField className="flex-1">
-              <Label>Waste %</Label>
-              <Input value={scrapPct} onChangeText={setScrapPct} keyboardType="decimal-pad" />
-            </TextField>
-          </View>
+              <View className="flex-row gap-2">
+                <TextField className="flex-1">
+                  <Label>Raw Used</Label>
+                  <Input value={rawQty} onChangeText={setRawQty} keyboardType="decimal-pad" />
+                </TextField>
+                <TextField className="flex-1">
+                  <Label>Yield Qty</Label>
+                  <Input value={yieldQty} onChangeText={setYieldQty} keyboardType="decimal-pad" />
+                </TextField>
+                <TextField className="flex-1">
+                  <Label>Waste %</Label>
+                  <Input value={scrapPct} onChangeText={setScrapPct} keyboardType="decimal-pad" />
+                </TextField>
+              </View>
 
-          {margin ? (
-            <Text className="text-muted text-xs">
-              Derived Cost: {currency}
-              {margin.derivedUnitCost.toFixed(2)} • Margin: {margin.marginPercentage.toFixed(1)}%
-            </Text>
-          ) : null}
+              {margin ? (
+                <Text className="text-muted text-xs">
+                  Derived Cost: {currency}
+                  {margin.derivedUnitCost.toFixed(2)} • Margin: {margin.marginPercentage.toFixed(1)}%
+                </Text>
+              ) : null}
+            </ScrollView>
+          </KeyboardAvoidingView>
 
-          <View className="flex-row justify-end gap-2 pt-2">
-            <Button variant="secondary" onPress={() => onOpenChange(false)}>
+          <Separator />
+
+          <View className="flex-row justify-end gap-2">
+            <Button variant="secondary" onPress={() => onOpenChange(false)} isDisabled={isRunning}>
               <Button.Label>Cancel</Button.Label>
             </Button>
             <Button variant="primary" isDisabled={isRunning} onPress={() => void handleRun()}>
+              {isRunning ? <Spinner size="sm" /> : null}
               <Button.Label>{isRunning ? 'Running...' : 'Execute Repack'}</Button.Label>
             </Button>
           </View>

@@ -1,6 +1,8 @@
 import React from 'react';
 import { View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Button, Card } from 'heroui-native';
+import { enterFadeUp } from '@/theme/motion';
 
 interface InventoryQuickShareTabProps {
   readonly onExportCatalog?: () => void;
@@ -9,16 +11,18 @@ interface InventoryQuickShareTabProps {
 export function InventoryQuickShareTab({ onExportCatalog }: InventoryQuickShareTabProps) {
   return (
     <View className="flex-1 gap-3">
-      <Card className="p-5 gap-3">
-        <Card.Title>Offline Quick Share Hub</Card.Title>
-        <Card.Description>
-          Export your full StorePoint SQLite catalog and audit snapshot as a portable JSON file for
-          Android Nearby / Quick Share transfer to another counter terminal.
-        </Card.Description>
-        <Button variant="primary" onPress={onExportCatalog} isDisabled={!onExportCatalog}>
-          <Button.Label>Export & Share Snapshot</Button.Label>
-        </Button>
-      </Card>
+      <Animated.View entering={enterFadeUp}>
+        <Card className="p-5 gap-3">
+          <Card.Title>Offline Quick Share Hub</Card.Title>
+          <Card.Description>
+            Export your full StorePoint SQLite catalog and audit snapshot as a portable JSON file for
+            Android Nearby / Quick Share transfer to another counter terminal.
+          </Card.Description>
+          <Button variant="primary" onPress={onExportCatalog} isDisabled={!onExportCatalog}>
+            <Button.Label>Export & Share Snapshot</Button.Label>
+          </Button>
+        </Card>
+      </Animated.View>
     </View>
   );
 }

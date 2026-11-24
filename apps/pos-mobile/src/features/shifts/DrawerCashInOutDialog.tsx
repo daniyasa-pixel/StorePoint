@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
-import { Alert, Button, Chip, Dialog, Input, Label, TextField } from 'heroui-native';
+import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { Alert, Button, Chip, Dialog, Input, Label, Separator, Spinner, TextField } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { CashierSession } from '@/db/types';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import { enterFadeUp, exitFadeUp } from '@/theme/motion';
 
 interface DrawerCashInOutDialogProps {
   readonly isOpen: boolean;
@@ -65,50 +67,66 @@ export function DrawerCashInOutDialog({
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center">
+        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
           <Dialog.Title>Cash Drawer In / Out</Dialog.Title>
 
-          {error ? (
-            <Alert status="danger">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Content>
-            </Alert>
-          ) : null}
-
-          <View className="flex-row gap-2">
-            <Chip
-              color={direction === 'PAYOUT' ? 'danger' : 'default'}
-              variant={direction === 'PAYOUT' ? 'primary' : 'soft'}
-              onPress={() => setDirection('PAYOUT')}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="shrink"
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerClassName="gap-3 pb-1"
             >
-              <Chip.Label>Cash Out / Payout</Chip.Label>
-            </Chip>
-            <Chip
-              color={direction === 'CASH_IN' ? 'success' : 'default'}
-              variant={direction === 'CASH_IN' ? 'primary' : 'soft'}
-              onPress={() => setDirection('CASH_IN')}
-            >
-              <Chip.Label>Cash In / Top-Up</Chip.Label>
-            </Chip>
-          </View>
+              {error ? (
+                <Animated.View entering={enterFadeUp} exiting={exitFadeUp}>
+                  <Alert status="danger">
+                    <Alert.Indicator />
+                    <Alert.Content>
+                      <Alert.Description>{error}</Alert.Description>
+                    </Alert.Content>
+                  </Alert>
+                </Animated.View>
+              ) : null}
 
-          <TextField>
-            <Label>Amount ({currencySymbol})</Label>
-            <Input value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
-          </TextField>
+              <View className="flex-row flex-wrap gap-2">
+                <Chip
+                  color={direction === 'PAYOUT' ? 'danger' : 'default'}
+                  variant={direction === 'PAYOUT' ? 'primary' : 'soft'}
+                  onPress={() => setDirection('PAYOUT')}
+                >
+                  <Chip.Label>Cash Out / Payout</Chip.Label>
+                </Chip>
+                <Chip
+                  color={direction === 'CASH_IN' ? 'success' : 'default'}
+                  variant={direction === 'CASH_IN' ? 'primary' : 'soft'}
+                  onPress={() => setDirection('CASH_IN')}
+                >
+                  <Chip.Label>Cash In / Top-Up</Chip.Label>
+                </Chip>
+              </View>
 
-          <TextField>
-            <Label>Reason</Label>
-            <Input value={reason} onChangeText={setReason} placeholder="e.g. Ice delivery, petty cash, bank drop" />
-          </TextField>
+              <TextField>
+                <Label>Amount ({currencySymbol})</Label>
+                <Input value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
+              </TextField>
 
-          <View className="flex-row justify-end gap-2 pt-2">
-            <Button variant="secondary" onPress={() => onOpenChange(false)}>
+              <TextField>
+                <Label>Reason</Label>
+                <Input value={reason} onChangeText={setReason} placeholder="e.g. Ice delivery, petty cash, bank drop" />
+              </TextField>
+            </ScrollView>
+          </KeyboardAvoidingView>
+
+          <Separator />
+
+          <View className="flex-row justify-end gap-2">
+            <Button variant="secondary" onPress={() => onOpenChange(false)} isDisabled={isSaving}>
               <Button.Label>Cancel</Button.Label>
             </Button>
             <Button variant="primary" isDisabled={isSaving} onPress={handleSubmit}>
+              {isSaving ? <Spinner size="sm" /> : null}
               <Button.Label>{isSaving ? 'Saving...' : 'Record Movement'}</Button.Label>
             </Button>
           </View>

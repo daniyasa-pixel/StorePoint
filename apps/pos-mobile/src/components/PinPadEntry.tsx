@@ -1,7 +1,15 @@
-import React from 'react';
-import { Text, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Text, View, useWindowDimensions } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { Button, Surface } from 'heroui-native';
+import { isCompactLayout } from '@/layout/adaptiveLayout';
 import { PIN_LENGTH } from '@/security/securityHelper';
+import { enterFade, enterPop, exitFade, layoutTransition } from '@/theme/motion';
 
 interface PinPadEntryProps {
   readonly pin: string;
@@ -32,6 +40,25 @@ export function PinPadEntry({
   errorMessage,
   helperText,
 }: PinPadEntryProps) {
+  const { width } = useWindowDimensions();
+  const isCompact = isCompactLayout(width);
+  const shakeX = useSharedValue(0);
+
+  useEffect(() => {
+    if (!errorMessage) return;
+    shakeX.value = withSequence(
+      withTiming(-8, { duration: 45 }),
+      withTiming(8, { duration: 45 }),
+      withTiming(-6, { duration: 45 }),
+      withTiming(6, { duration: 45 }),
+      withTiming(0, { duration: 45 }),
+    );
+  }, [errorMessage, shakeX]);
+
+  const dotsAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shakeX.value }],
+  }));
+
   const handleKeyPress = (key: string) => {
     if (isDisabled) return;
     if (key === 'CLR') {
@@ -48,30 +75,50 @@ export function PinPadEntry({
   };
 
   return (
-    <View className="w-full gap-4">
-      <View className="flex-row items-center justify-center gap-3 py-1">
+    <Animated.View layout={layoutTransition} className="w-full gap-4">
+      <Animated.View
+        style={dotsAnimatedStyle}
+        className="flex-row items-center justify-center gap-3 py-1"
+      >
         {Array.from({ length: maxLength }).map((_, idx) => {
           const filled = idx < pin.length;
           return (
             <Surface
               key={idx}
               variant={filled ? 'default' : 'secondary'}
-              className={`h-12 w-12 rounded-xl items-center justify-center border ${
+              className={`${
+                isCompact ? 'h-11 w-11' : 'h-12 w-12'
+              } rounded-xl items-center justify-center border ${
                 errorMessage
-                  ? 'border-danger'
+                  ? 'border-danger bg-danger/10'
                   : filled
                     ? 'border-accent bg-accent/10'
                     : 'border-border'
               }`}
             >
-              <Text className="text-foreground text-xl font-bold">{filled ? '●' : ''}</Text>
+              {filled ? (
+                <Animated.Text
+                  key={`dot-${idx}`}
+                  entering={enterPop}
+                  className="text-foreground text-xl font-bold"
+                >
+                  ●
+                </Animated.Text>
+              ) : null}
             </Surface>
           );
         })}
-      </View>
+      </Animated.View>
 
       {errorMessage ? (
-        <Text className="text-danger text-xs text-center font-medium">{errorMessage}</Text>
+        <Animated.Text
+          key={errorMessage}
+          entering={enterFade}
+          exiting={exitFade}
+          className="text-danger text-xs text-center font-medium"
+        >
+          {errorMessage}
+        </Animated.Text>
       ) : helperText ? (
         <Text className="text-muted text-xs text-center">{helperText}</Text>
       ) : null}
@@ -87,7 +134,7 @@ export function PinPadEntry({
                   variant={isAction ? 'tertiary' : 'secondary'}
                   size="lg"
                   isDisabled={isDisabled}
-                  className="flex-1 h-14"
+                  className={`flex-1 ${isCompact ? 'h-13' : 'h-14'}`}
                   onPress={() => handleKeyPress(key)}
                 >
                   <Button.Label className="text-lg font-semibold">{key}</Button.Label>
@@ -97,6 +144,6 @@ export function PinPadEntry({
           </View>
         ))}
       </View>
-    </View>
+    </Animated.View>
   );
 }

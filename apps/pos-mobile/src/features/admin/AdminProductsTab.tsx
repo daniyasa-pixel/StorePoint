@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { FlatList, ScrollView, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import {
   Button,
   Card,
@@ -8,12 +9,14 @@ import {
   Input,
   Label,
   SearchField,
+  Separator,
   Surface,
   TextField,
 } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Category, Product } from '@/db/types';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function AdminProductsTab() {
   const currency = useAppBootstrapStore((s) => s.currencySymbol);
@@ -128,60 +131,65 @@ export function AdminProductsTab() {
             <Card.Description>Tap + Product to add your first SKU.</Card.Description>
           </Card>
         }
-        renderItem={({ item }) => (
-          <Surface variant="default" className="rounded-xl p-3 border border-border flex-row items-center justify-between gap-2">
-            <View className="flex-1">
-              <Text className="text-foreground text-sm font-semibold">{item.name}</Text>
-              <Text className="text-muted text-xs">
-                {currency}
-                {item.price.toFixed(2)} • Cost {currency}
-                {item.cost.toFixed(2)} {item.barcode ? `• ${item.barcode}` : ''}
-              </Text>
-            </View>
-            <Chip
-              size="sm"
-              variant="soft"
-              color={item.stockCount <= 5 ? 'warning' : 'success'}
-            >
-              <Chip.Label>{item.stockCount} {item.baseUom}</Chip.Label>
-            </Chip>
-            <Button variant="secondary" size="sm" onPress={() => void handleQuickRestock(item)}>
-              <Button.Label>+10</Button.Label>
-            </Button>
-          </Surface>
+        renderItem={({ item, index }) => (
+          <Animated.View entering={staggerFadeUp(index)} layout={layoutTransition}>
+            <Surface variant="default" className="rounded-xl p-3 border border-border flex-row items-center justify-between gap-2">
+              <View className="flex-1 min-w-0">
+                <Text numberOfLines={1} className="text-foreground text-sm font-semibold">{item.name}</Text>
+                <Text numberOfLines={1} className="text-muted text-xs">
+                  {currency}
+                  {item.price.toFixed(2)} • Cost {currency}
+                  {item.cost.toFixed(2)} {item.barcode ? `• ${item.barcode}` : ''}
+                </Text>
+              </View>
+              <Chip
+                size="sm"
+                variant="soft"
+                color={item.stockCount <= 5 ? 'warning' : 'success'}
+              >
+                <Chip.Label>{item.stockCount} {item.baseUom}</Chip.Label>
+              </Chip>
+              <Button variant="secondary" size="sm" onPress={() => void handleQuickRestock(item)}>
+                <Button.Label>+10</Button.Label>
+              </Button>
+            </Surface>
+          </Animated.View>
         )}
       />
 
       <Dialog isOpen={showAdd} onOpenChange={setShowAdd}>
         <Dialog.Portal>
           <Dialog.Overlay />
-          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center">
+          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
             <Dialog.Title>Add Product</Dialog.Title>
-            <TextField isRequired>
-              <Label>Product Name</Label>
-              <Input value={name} onChangeText={setName} placeholder="e.g. Bottled Water 500ml" />
-            </TextField>
-            <View className="flex-row gap-2">
-              <TextField className="flex-1">
-                <Label>Price ({currency})</Label>
-                <Input value={price} onChangeText={setPrice} keyboardType="decimal-pad" placeholder="0.00" />
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
+              <TextField isRequired>
+                <Label>Product Name</Label>
+                <Input value={name} onChangeText={setName} placeholder="e.g. Bottled Water 500ml" />
               </TextField>
-              <TextField className="flex-1">
-                <Label>Cost ({currency})</Label>
-                <Input value={cost} onChangeText={setCost} keyboardType="decimal-pad" placeholder="0.00" />
-              </TextField>
-            </View>
-            <View className="flex-row gap-2">
-              <TextField className="flex-1">
-                <Label>Opening Stock</Label>
-                <Input value={stock} onChangeText={setStock} keyboardType="number-pad" />
-              </TextField>
-              <TextField className="flex-1">
-                <Label>Barcode</Label>
-                <Input value={barcode} onChangeText={setBarcode} placeholder="Optional" />
-              </TextField>
-            </View>
-            <View className="flex-row justify-end gap-2 pt-2">
+              <View className="flex-row gap-2">
+                <TextField className="flex-1">
+                  <Label>Price ({currency})</Label>
+                  <Input value={price} onChangeText={setPrice} keyboardType="decimal-pad" placeholder="0.00" />
+                </TextField>
+                <TextField className="flex-1">
+                  <Label>Cost ({currency})</Label>
+                  <Input value={cost} onChangeText={setCost} keyboardType="decimal-pad" placeholder="0.00" />
+                </TextField>
+              </View>
+              <View className="flex-row gap-2">
+                <TextField className="flex-1">
+                  <Label>Opening Stock</Label>
+                  <Input value={stock} onChangeText={setStock} keyboardType="number-pad" />
+                </TextField>
+                <TextField className="flex-1">
+                  <Label>Barcode</Label>
+                  <Input value={barcode} onChangeText={setBarcode} placeholder="Optional" />
+                </TextField>
+              </View>
+            </ScrollView>
+            <Separator />
+            <View className="flex-row justify-end gap-2">
               <Button variant="secondary" onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Button, Tabs } from 'heroui-native';
@@ -11,6 +12,7 @@ import { InventoryStocktakeTab } from '@/features/inventory/InventoryStocktakeTa
 import { BulkProductionDialog } from '@/features/production/BulkProductionDialog';
 import { exportAndShareBackupSnapshot } from '@/backup/backupEngine';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import { enterFade } from '@/theme/motion';
 
 export default function InventoryPortalRoute() {
   const router = useRouter();
@@ -61,19 +63,25 @@ export default function InventoryPortalRoute() {
           </Tabs.List>
 
           <Tabs.Content value="price-checker" className="flex-1">
-            <InventoryPriceCheckerTab />
+            <Animated.View entering={enterFade} className="flex-1">
+              <InventoryPriceCheckerTab />
+            </Animated.View>
           </Tabs.Content>
 
           <Tabs.Content value="stocktake" className="flex-1">
-            <InventoryStocktakeTab />
+            <Animated.View entering={enterFade} className="flex-1">
+              <InventoryStocktakeTab />
+            </Animated.View>
           </Tabs.Content>
 
           <Tabs.Content value="quick-share" className="flex-1">
-            <InventoryQuickShareTab
-              onExportCatalog={() => {
-                void exportAndShareBackupSnapshot();
-              }}
-            />
+            <Animated.View entering={enterFade} className="flex-1">
+              <InventoryQuickShareTab
+                onExportCatalog={() => {
+                  void exportAndShareBackupSnapshot();
+                }}
+              />
+            </Animated.View>
           </Tabs.Content>
         </Tabs>
       </View>

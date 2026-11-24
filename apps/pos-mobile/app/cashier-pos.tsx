@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Alert, Button, Chip, Tabs } from 'heroui-native';
@@ -20,13 +21,16 @@ import { DrawerCashInOutDialog } from '@/features/shifts/DrawerCashInOutDialog';
 import { ReturnRefundDialog } from '@/features/shifts/ReturnRefundDialog';
 import { ShiftLifecycleDialog } from '@/features/shifts/ShiftLifecycleDialog';
 import { BarcodeScannerModal } from '@/hardware/BarcodeScannerModal';
+import { getWindowLayout } from '@/layout/adaptiveLayout';
 import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { usePosCartStore } from '@/store/posCartStore';
+import { enterFadeDown, exitFadeUp, layoutTransition } from '@/theme/motion';
 
 export default function CashierPosRoute() {
   const router = useRouter();
-  const { isLandscape } = useWindowLayout();
+  const { width } = useWindowLayout();
+  const windowLayout = getWindowLayout(width);
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const storeName = useAppBootstrapStore((s) => s.storeName);
   const currencySymbol = useAppBootstrapStore((s) => s.currencySymbol);
@@ -148,20 +152,28 @@ export default function CashierPosRoute() {
 
       <View className="flex-1 p-4 gap-3">
         {restoredNoticeCount > 0 ? (
-          <Alert status="accent">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>Restored your basket ({restoredNoticeCount} item(s))</Alert.Title>
-            </Alert.Content>
-            <Button variant="ghost" size="sm" onPress={acknowledgeRestoreNotice}>
-              <Button.Label>OK</Button.Label>
-            </Button>
-          </Alert>
+          <Animated.View
+            entering={enterFadeDown}
+            exiting={exitFadeUp}
+            layout={layoutTransition}
+          >
+            <Alert status="accent">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>Restored your basket ({restoredNoticeCount} item(s))</Alert.Title>
+              </Alert.Content>
+              <Button variant="ghost" size="sm" onPress={acknowledgeRestoreNotice}>
+                <Button.Label>OK</Button.Label>
+              </Button>
+            </Alert>
+          </Animated.View>
         ) : null}
 
-        {isLandscape ? (
+        {windowLayout !== 'Compact' ? (
           <View className="flex-1 flex-row gap-4">
-            <View className="flex-[1.35]">{catalogPane}</View>
+            <View className={windowLayout === 'Expanded' ? 'flex-[1.5]' : 'flex-[1.2]'}>
+              {catalogPane}
+            </View>
             <View className="flex-1">{cartPane}</View>
           </View>
         ) : (

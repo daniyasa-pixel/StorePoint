@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { Alert, Button, Chip, Dialog, Surface, Switch } from 'heroui-native';
+import Animated from 'react-native-reanimated';
+import { Alert, Button, Chip, Dialog, Separator, Spinner, Surface, Switch } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Transaction, TransactionItem } from '@/db/types';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import { enterFadeUp, enterSlideRight, exitFadeUp, exitSlideLeft } from '@/theme/motion';
 
 interface ReturnRefundDialogProps {
   readonly isOpen: boolean;
@@ -83,21 +85,32 @@ export function ReturnRefundDialog({
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center">
+        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
           <Dialog.Title>Returns & Refunds</Dialog.Title>
 
           {error ? (
-            <Alert status="danger">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Content>
-            </Alert>
+            <Animated.View entering={enterFadeUp} exiting={exitFadeUp}>
+              <Alert status="danger">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Description>{error}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            </Animated.View>
           ) : null}
 
           {!selectedTx ? (
-            <ScrollView className="max-h-72">
-              <View className="gap-2">
+            <Animated.View
+              key="return-step-1"
+              entering={enterSlideRight}
+              exiting={exitSlideLeft}
+              className="shrink"
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerClassName="gap-2 pb-1"
+              >
                 {recentTxs.length === 0 ? (
                   <Text className="text-muted text-xs text-center py-4">No recent sales found.</Text>
                 ) : (
@@ -105,14 +118,14 @@ export function ReturnRefundDialog({
                     <Surface
                       key={tx.id}
                       variant="secondary"
-                      className="rounded-xl p-3 flex-row items-center justify-between"
+                      className="rounded-xl p-3 flex-row items-center justify-between gap-2"
                     >
-                      <View>
-                        <Text className="text-foreground text-sm font-semibold">
+                      <View className="flex-1 min-w-0">
+                        <Text className="text-foreground text-sm font-semibold" numberOfLines={1}>
                           Receipt #{tx.id} • {currencySymbol}
                           {tx.totalAmount.toFixed(2)}
                         </Text>
-                        <Text className="text-muted text-xs">
+                        <Text className="text-muted text-xs" numberOfLines={1}>
                           {tx.paymentMethod} • {tx.status}
                         </Text>
                       </View>
@@ -122,46 +135,61 @@ export function ReturnRefundDialog({
                     </Surface>
                   ))
                 )}
-              </View>
-            </ScrollView>
+              </ScrollView>
+            </Animated.View>
           ) : (
-            <View className="gap-3">
-              <Text className="text-foreground text-sm font-semibold">
-                Refunding Receipt #{selectedTx.id} ({txItems.length} item(s))
-              </Text>
-              <View className="flex-row flex-wrap gap-1.5">
-                {REASONS.map((r) => (
-                  <Chip
-                    key={r}
-                    size="sm"
-                    color={reason === r ? 'accent' : 'default'}
-                    variant={reason === r ? 'primary' : 'soft'}
-                    onPress={() => setReason(r)}
-                  >
-                    <Chip.Label>{r}</Chip.Label>
-                  </Chip>
-                ))}
-              </View>
-              <View className="flex-row items-center justify-between">
-                <Text className="text-foreground text-sm">Restock items to inventory</Text>
-                <Switch isSelected={restock} onSelectedChange={setRestock} />
-              </View>
-              <View className="flex-row justify-end gap-2 pt-2">
-                <Button variant="secondary" onPress={() => setSelectedTx(null)}>
-                  <Button.Label>Back</Button.Label>
-                </Button>
-                <Button variant="danger" isDisabled={isProcessing} onPress={handleRefundAll}>
-                  <Button.Label>{isProcessing ? 'Refunding...' : 'Confirm Refund'}</Button.Label>
-                </Button>
-              </View>
-            </View>
+            <Animated.View
+              key="return-step-2"
+              entering={enterSlideRight}
+              exiting={exitSlideLeft}
+              className="shrink"
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerClassName="gap-3 pb-1"
+              >
+                <Text className="text-foreground text-sm font-semibold">
+                  Refunding Receipt #{selectedTx.id} ({txItems.length} item(s))
+                </Text>
+                <View className="flex-row flex-wrap gap-1.5">
+                  {REASONS.map((r) => (
+                    <Chip
+                      key={r}
+                      size="sm"
+                      color={reason === r ? 'accent' : 'default'}
+                      variant={reason === r ? 'primary' : 'soft'}
+                      onPress={() => setReason(r)}
+                    >
+                      <Chip.Label>{r}</Chip.Label>
+                    </Chip>
+                  ))}
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-foreground text-sm">Restock items to inventory</Text>
+                  <Switch isSelected={restock} onSelectedChange={setRestock} />
+                </View>
+              </ScrollView>
+            </Animated.View>
           )}
+
+          <Separator />
 
           {!selectedTx ? (
             <Button variant="ghost" onPress={() => onOpenChange(false)}>
               <Button.Label>Close</Button.Label>
             </Button>
-          ) : null}
+          ) : (
+            <View className="flex-row justify-end gap-2">
+              <Button variant="secondary" onPress={() => setSelectedTx(null)} isDisabled={isProcessing}>
+                <Button.Label>Back</Button.Label>
+              </Button>
+              <Button variant="danger" isDisabled={isProcessing} onPress={handleRefundAll}>
+                {isProcessing ? <Spinner size="sm" /> : null}
+                <Button.Label>{isProcessing ? 'Refunding...' : 'Confirm Refund'}</Button.Label>
+              </Button>
+            </View>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog>

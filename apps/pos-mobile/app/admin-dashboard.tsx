@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -24,6 +25,7 @@ import { SuppliersAndPurchasesTab } from '@/features/suppliers/SuppliersAndPurch
 import { exportAndShareBackupSnapshot } from '@/backup/backupEngine';
 import { exportAuditReportPdf } from '@/reports/pdfReportExporter';
 import { useWindowLayout } from '@/layout/useWindowLayout';
+import { enterFade } from '@/theme/motion';
 
 type AdminTabId =
   | 'analytics'
@@ -144,7 +146,11 @@ export default function AdminDashboardRoute() {
         </Surface>
       ) : null}
 
-      <View className="flex-1 p-4">{renderTab()}</View>
+      <View className="flex-1 p-4">
+        <Animated.View key={activeTab} entering={enterFade} className="flex-1">
+          {renderTab()}
+        </Animated.View>
+      </View>
 
       {isCompact ? (
         <Surface variant="default">
@@ -158,18 +164,20 @@ export default function AdminDashboardRoute() {
                   key={id}
                   variant={selected ? 'primary' : 'ghost'}
                   size="sm"
+                  className="flex-1"
                   onPress={() => setActiveTab(id)}
                 >
-                  <Button.Label>{tab.shortLabel}</Button.Label>
+                  <Button.Label numberOfLines={1}>{tab.shortLabel}</Button.Label>
                 </Button>
               );
             })}
             <Button
               variant={COMPACT_MORE_IDS.includes(activeTab) ? 'primary' : 'ghost'}
               size="sm"
+              className="flex-1"
               onPress={() => moreSheetRef.current?.present()}
             >
-              <Button.Label>More</Button.Label>
+              <Button.Label numberOfLines={1}>More</Button.Label>
             </Button>
           </View>
         </Surface>

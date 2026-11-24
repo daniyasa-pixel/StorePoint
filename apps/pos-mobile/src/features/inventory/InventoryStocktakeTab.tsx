@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Button, Input, Surface } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Product } from '@/db/types';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function InventoryStocktakeTab() {
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
@@ -48,30 +50,33 @@ export function InventoryStocktakeTab() {
     <FlatList
       data={products}
       keyExtractor={(p) => String(p.id)}
+      keyboardShouldPersistTaps="handled"
       contentContainerClassName="gap-2 pb-6"
       ListEmptyComponent={
         <Text className="text-muted text-xs text-center py-6">No products in catalog.</Text>
       }
-      renderItem={({ item }) => (
-        <Surface variant="default" className="rounded-xl p-3 border border-border flex-row items-center gap-2">
-          <View className="flex-1">
-            <Text className="text-foreground text-sm font-semibold">{item.name}</Text>
-            <Text className="text-muted text-xs">
-              System: {item.stockCount} {item.baseUom}
-            </Text>
-          </View>
-          <View className="w-20">
-            <Input
-              value={counts[item.id] ?? ''}
-              onChangeText={(v) => setCounts((prev) => ({ ...prev, [item.id]: v }))}
-              keyboardType="number-pad"
-              placeholder={String(item.stockCount)}
-            />
-          </View>
-          <Button variant="secondary" size="sm" onPress={() => void handleApplyVariance(item)}>
-            <Button.Label>Apply</Button.Label>
-          </Button>
-        </Surface>
+      renderItem={({ item, index }) => (
+        <Animated.View entering={staggerFadeUp(index)} layout={layoutTransition}>
+          <Surface variant="default" className="rounded-xl p-3 border border-border flex-row items-center gap-2">
+            <View className="flex-1 min-w-0">
+              <Text numberOfLines={2} className="text-foreground text-sm font-semibold">{item.name}</Text>
+              <Text numberOfLines={1} className="text-muted text-xs">
+                System: {item.stockCount} {item.baseUom}
+              </Text>
+            </View>
+            <View className="w-20">
+              <Input
+                value={counts[item.id] ?? ''}
+                onChangeText={(v) => setCounts((prev) => ({ ...prev, [item.id]: v }))}
+                keyboardType="number-pad"
+                placeholder={String(item.stockCount)}
+              />
+            </View>
+            <Button variant="secondary" size="sm" onPress={() => void handleApplyVariance(item)}>
+              <Button.Label>Apply</Button.Label>
+            </Button>
+          </Surface>
+        </Animated.View>
       )}
     />
   );

@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Card, Chip, SearchField, Surface } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Product } from '@/db/types';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function InventoryPriceCheckerTab() {
   const currency = useAppBootstrapStore((s) => s.currencySymbol);
@@ -42,21 +44,23 @@ export function InventoryPriceCheckerTab() {
             <Card.Title>No matching item</Card.Title>
           </Card>
         }
-        renderItem={({ item }) => (
-          <Surface variant="default" className="rounded-xl p-4 border border-border flex-row justify-between items-center">
-            <View className="flex-1 pr-3">
-              <Text className="text-foreground text-base font-bold">{item.name}</Text>
-              <Text className="text-muted text-xs">
-                Barcode: {item.barcode || 'None'} • Stock: {item.stockCount} {item.baseUom}
-              </Text>
-            </View>
-            <Chip color="accent" variant="primary" size="md">
-              <Chip.Label>
-                {currency}
-                {item.price.toFixed(2)}
-              </Chip.Label>
-            </Chip>
-          </Surface>
+        renderItem={({ item, index }) => (
+          <Animated.View entering={staggerFadeUp(index)} layout={layoutTransition}>
+            <Surface variant="default" className="rounded-xl p-4 border border-border flex-row justify-between items-center gap-2">
+              <View className="flex-1 min-w-0 pr-3">
+                <Text numberOfLines={2} className="text-foreground text-base font-bold">{item.name}</Text>
+                <Text numberOfLines={1} className="text-muted text-xs">
+                  Barcode: {item.barcode || 'None'} • Stock: {item.stockCount} {item.baseUom}
+                </Text>
+              </View>
+              <Chip color="accent" variant="primary" size="md">
+                <Chip.Label>
+                  {currency}
+                  {item.price.toFixed(2)}
+                </Chip.Label>
+              </Chip>
+            </Surface>
+          </Animated.View>
         )}
       />
     </View>

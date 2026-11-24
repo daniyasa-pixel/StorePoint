@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { Button, Card, Chip, Dialog, Input, Label, Surface, TextField } from 'heroui-native';
+import Animated from 'react-native-reanimated';
+import { Button, Card, Chip, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { PurchaseOrder, Supplier } from '@/db/types';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function SuppliersAndPurchasesTab() {
   const currency = useAppBootstrapStore((s) => s.currencySymbol);
@@ -70,13 +72,17 @@ export function SuppliersAndPurchasesTab() {
         {suppliers.length === 0 ? (
           <Text className="text-muted text-xs">No suppliers added yet.</Text>
         ) : (
-          suppliers.map((sup) => (
-            <Surface key={sup.id} variant="secondary" className="rounded-xl p-3 gap-0.5">
-              <Text className="text-foreground text-sm font-semibold">{sup.name}</Text>
-              <Text className="text-muted text-xs">
-                {sup.contactPerson || 'No contact'} • {sup.phone || 'No phone'} • {sup.paymentTerms}
-              </Text>
-            </Surface>
+          suppliers.map((sup, index) => (
+            <Animated.View key={sup.id} entering={staggerFadeUp(index)} layout={layoutTransition}>
+              <Surface variant="secondary" className="rounded-xl p-3 gap-0.5">
+                <View className="min-w-0">
+                  <Text numberOfLines={1} className="text-foreground text-sm font-semibold">{sup.name}</Text>
+                  <Text numberOfLines={1} className="text-muted text-xs">
+                    {sup.contactPerson || 'No contact'} • {sup.phone || 'No phone'} • {sup.paymentTerms}
+                  </Text>
+                </View>
+              </Surface>
+            </Animated.View>
           ))
         )}
       </Card>
@@ -86,31 +92,32 @@ export function SuppliersAndPurchasesTab() {
         {orders.length === 0 ? (
           <Text className="text-muted text-xs">No purchase orders recorded yet.</Text>
         ) : (
-          orders.map((po) => (
-            <Surface
-              key={po.id}
-              variant="secondary"
-              className="rounded-xl p-3 flex-row items-center justify-between gap-2"
-            >
-              <View className="flex-1">
-                <Text className="text-foreground text-sm font-semibold">
-                  {po.poNumber} • {po.supplierName}
-                </Text>
-                <Text className="text-muted text-xs">
-                  {currency}
-                  {po.totalCost.toFixed(2)} • {po.paymentStatus}
-                </Text>
-              </View>
-              {po.status === 'ORDERED' ? (
-                <Button variant="primary" size="sm" onPress={() => void handleReceivePo(po)}>
-                  <Button.Label>Receive</Button.Label>
-                </Button>
-              ) : (
-                <Chip size="sm" variant="soft" color={po.status === 'RECEIVED' ? 'success' : 'danger'}>
-                  <Chip.Label>{po.status}</Chip.Label>
-                </Chip>
-              )}
-            </Surface>
+          orders.map((po, index) => (
+            <Animated.View key={po.id} entering={staggerFadeUp(index)} layout={layoutTransition}>
+              <Surface
+                variant="secondary"
+                className="rounded-xl p-3 flex-row items-center justify-between gap-2"
+              >
+                <View className="flex-1 min-w-0">
+                  <Text numberOfLines={1} className="text-foreground text-sm font-semibold">
+                    {po.poNumber} • {po.supplierName}
+                  </Text>
+                  <Text numberOfLines={1} className="text-muted text-xs">
+                    {currency}
+                    {po.totalCost.toFixed(2)} • {po.paymentStatus}
+                  </Text>
+                </View>
+                {po.status === 'ORDERED' ? (
+                  <Button variant="primary" size="sm" onPress={() => void handleReceivePo(po)}>
+                    <Button.Label>Receive</Button.Label>
+                  </Button>
+                ) : (
+                  <Chip size="sm" variant="soft" color={po.status === 'RECEIVED' ? 'success' : 'danger'}>
+                    <Chip.Label>{po.status}</Chip.Label>
+                  </Chip>
+                )}
+              </Surface>
+            </Animated.View>
           ))
         )}
       </Card>
@@ -118,25 +125,28 @@ export function SuppliersAndPurchasesTab() {
       <Dialog isOpen={showAddSupplier} onOpenChange={setShowAddSupplier}>
         <Dialog.Portal>
           <Dialog.Overlay />
-          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center">
+          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
             <Dialog.Title>New Supplier</Dialog.Title>
-            <TextField isRequired>
-              <Label>Supplier Name</Label>
-              <Input value={name} onChangeText={setName} placeholder="e.g. Metro Beverage Distributors" />
-            </TextField>
-            <TextField>
-              <Label>Contact Person</Label>
-              <Input value={contact} onChangeText={setContact} />
-            </TextField>
-            <TextField>
-              <Label>Phone</Label>
-              <Input value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-            </TextField>
-            <TextField>
-              <Label>Payment Terms</Label>
-              <Input value={terms} onChangeText={setTerms} />
-            </TextField>
-            <View className="flex-row justify-end gap-2 pt-2">
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
+              <TextField isRequired>
+                <Label>Supplier Name</Label>
+                <Input value={name} onChangeText={setName} placeholder="e.g. Metro Beverage Distributors" />
+              </TextField>
+              <TextField>
+                <Label>Contact Person</Label>
+                <Input value={contact} onChangeText={setContact} />
+              </TextField>
+              <TextField>
+                <Label>Phone</Label>
+                <Input value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+              </TextField>
+              <TextField>
+                <Label>Payment Terms</Label>
+                <Input value={terms} onChangeText={setTerms} />
+              </TextField>
+            </ScrollView>
+            <Separator />
+            <View className="flex-row justify-end gap-2">
               <Button variant="secondary" onPress={() => setShowAddSupplier(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>

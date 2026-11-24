@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Avatar } from 'heroui-native';
 
 interface StorePointBrandBadgeProps {
   readonly size?: 'sm' | 'md' | 'lg';
@@ -15,10 +15,15 @@ export function StorePointBrandBadge({ size = 'sm' }: StorePointBrandBadgeProps)
   const styles = SIZE_CLASSES[size];
 
   return (
-    <View className={`bg-accent items-center justify-center ${styles.box}`}>
-      <Text className={`text-accent-foreground font-bold tracking-tight ${styles.text}`}>
+    <Avatar
+      alt="StorePoint"
+      size={size}
+      color="accent"
+      className={`bg-accent ${styles.box}`}
+    >
+      <Avatar.Fallback className="bg-accent" textProps={{ className: `text-accent-foreground font-bold tracking-tight ${styles.text}` }}>
         SP
-      </Text>
-    </View>
+      </Avatar.Fallback>
+    </Avatar>
   );
 }

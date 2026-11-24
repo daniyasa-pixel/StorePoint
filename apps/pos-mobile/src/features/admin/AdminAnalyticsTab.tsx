@@ -1,29 +1,44 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { Card, Chip, Separator, Surface } from 'heroui-native';
+import Animated from 'react-native-reanimated';
+import { Card, Chip, Separator, Spinner, Surface } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Product, StoreConfig, Transaction } from '@/db/types';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+import { enterFadeUp, staggerFadeUp } from '@/theme/motion';
 
 export function AdminAnalyticsTab() {
   const currency = useAppBootstrapStore((s) => s.currencySymbol);
   const [txs, setTxs] = useState<Transaction[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [config, setConfig] = useState<StoreConfig | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     void (async () => {
-      const repos = await getRepositories();
-      const [recent, allProds, cfg] = await Promise.all([
-        repos.checkout.getRecentTransactions(200),
-        repos.catalog.getProducts(false),
-        repos.storeConfig.getConfig(),
-      ]);
-      setTxs(recent);
-      setProducts(allProds);
-      setConfig(cfg);
+      try {
+        const repos = await getRepositories();
+        const [recent, allProds, cfg] = await Promise.all([
+          repos.checkout.getRecentTransactions(200),
+          repos.catalog.getProducts(false),
+          repos.storeConfig.getConfig(),
+        ]);
+        setTxs(recent);
+        setProducts(allProds);
+        setConfig(cfg);
+      } finally {
+        setIsLoading(false);
+      }
     })();
   }, []);
+
+  if (isLoading) {
+    return (
+      <View className="flex-1 items-center justify-center py-12">
+        <Spinner size="md" />
+      </View>
+    );
+  }
 
   const totalSales = txs.reduce((s, t) => s + t.totalAmount, 0);
   const lowStockCount = products.filter((p) => p.trackInventory && p.stockCount <= 5).length;
@@ -32,73 +47,88 @@ export function AdminAnalyticsTab() {
     return acc;
   }, {});
 
+  const kpis = [
+    {
+      label: 'Gross Sales',
+      value: `${currency}${totalSales.toFixed(2)}`,
+      valueClass: 'text-accent text-xl font-bold',
+    },
+    {
+      label: 'Transactions',
+      value: String(txs.length),
+      valueClass: 'text-foreground text-xl font-bold',
+    },
+    {
+      label: 'Low Stock Alerts',
+      value: String(lowStockCount),
+      valueClass: 'text-warning text-xl font-bold',
+    },
+  ];
+
   return (
     <ScrollView contentContainerClassName="gap-4 pb-6">
       <View className="flex-row flex-wrap gap-3">
-        <Card className="flex-1 min-w-36 p-4 gap-1">
-          <Text className="text-muted text-xs">Gross Sales</Text>
-          <Text className="text-accent text-xl font-bold">
-            {currency}
-            {totalSales.toFixed(2)}
-          </Text>
-        </Card>
-        <Card className="flex-1 min-w-36 p-4 gap-1">
-          <Text className="text-muted text-xs">Transactions</Text>
-          <Text className="text-foreground text-xl font-bold">{txs.length}</Text>
-        </Card>
-        <Card className="flex-1 min-w-36 p-4 gap-1">
-          <Text className="text-muted text-xs">Low Stock Alerts</Text>
-          <Text className="text-warning text-xl font-bold">{lowStockCount}</Text>
-        </Card>
+        {kpis.map((kpi, i) => (
+          <Animated.View key={kpi.label} entering={staggerFadeUp(i)} className="flex-1 min-w-36">
+            <Card className="p-4 gap-1">
+              <Text className="text-muted text-xs">{kpi.label}</Text>
+              <Text className={kpi.valueClass}>{kpi.value}</Text>
+            </Card>
+          </Animated.View>
+        ))}
       </View>
 
       {config ? (
-        <Card className="p-4 gap-2">
-          <Card.Title>E-Wallet & Load Floats</Card.Title>
-          <View className="flex-row flex-wrap gap-2 pt-1">
-            <Chip color="accent" variant="soft" size="sm">
-              <Chip.Label>
-                GCash: {currency}
-                {config.gcashBalance.toFixed(2)}
-              </Chip.Label>
-            </Chip>
-            <Chip color="success" variant="soft" size="sm">
-              <Chip.Label>
-                Smart: {currency}
-                {config.smartLoadBalance.toFixed(2)}
-              </Chip.Label>
-            </Chip>
-            <Chip color="warning" variant="soft" size="sm">
-              <Chip.Label>
-                Globe: {currency}
-                {config.globeLoadBalance.toFixed(2)}
-              </Chip.Label>
-            </Chip>
-          </View>
-        </Card>
+        <Animated.View entering={enterFadeUp}>
+          <Card className="p-4 gap-2">
+            <Card.Title>E-Wallet & Load Floats</Card.Title>
+            <View className="flex-row flex-wrap gap-2 pt-1">
+              <Chip color="accent" variant="soft" size="sm">
+                <Chip.Label>
+                  GCash: {currency}
+                  {config.gcashBalance.toFixed(2)}
+                </Chip.Label>
+              </Chip>
+              <Chip color="success" variant="soft" size="sm">
+                <Chip.Label>
+                  Smart: {currency}
+                  {config.smartLoadBalance.toFixed(2)}
+                </Chip.Label>
+              </Chip>
+              <Chip color="warning" variant="soft" size="sm">
+                <Chip.Label>
+                  Globe: {currency}
+                  {config.globeLoadBalance.toFixed(2)}
+                </Chip.Label>
+              </Chip>
+            </View>
+          </Card>
+        </Animated.View>
       ) : null}
 
-      <Card className="p-4 gap-2">
-        <Card.Title>Payment Method Split</Card.Title>
-        <Separator />
-        {Object.keys(byMethod).length === 0 ? (
-          <Text className="text-muted text-xs py-2">No sales recorded yet.</Text>
-        ) : (
-          Object.entries(byMethod).map(([method, amount]) => (
-            <Surface
-              key={method}
-              variant="secondary"
-              className="rounded-lg px-3 py-2 flex-row justify-between"
-            >
-              <Text className="text-foreground text-sm font-medium">{method}</Text>
-              <Text className="text-foreground text-sm font-bold">
-                {currency}
-                {amount.toFixed(2)}
-              </Text>
-            </Surface>
-          ))
-        )}
-      </Card>
+      <Animated.View entering={enterFadeUp}>
+        <Card className="p-4 gap-2">
+          <Card.Title>Payment Method Split</Card.Title>
+          <Separator />
+          {Object.keys(byMethod).length === 0 ? (
+            <Text className="text-muted text-xs py-2">No sales recorded yet.</Text>
+          ) : (
+            Object.entries(byMethod).map(([method, amount]) => (
+              <Surface
+                key={method}
+                variant="secondary"
+                className="rounded-lg px-3 py-2 flex-row justify-between"
+              >
+                <Text className="text-foreground text-sm font-medium">{method}</Text>
+                <Text className="text-foreground text-sm font-bold">
+                  {currency}
+                  {amount.toFixed(2)}
+                </Text>
+              </Surface>
+            ))
+          )}
+        </Card>
+      </Animated.View>
     </ScrollView>
   );
 }

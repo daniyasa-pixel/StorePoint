@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
-import { Button, Dialog, Input, Label, Surface, TextField } from 'heroui-native';
+import { FlatList, ScrollView, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { Button, Card, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Category } from '@/db/types';
+import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function AdminCategoriesTab() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -45,23 +47,36 @@ export function AdminCategoriesTab() {
         data={categories}
         keyExtractor={(c) => String(c.id)}
         contentContainerClassName="gap-2 pb-6"
-        renderItem={({ item }) => (
-          <Surface variant="default" className="rounded-xl p-3.5 border border-border">
-            <Text className="text-foreground text-sm font-semibold">{item.name}</Text>
-          </Surface>
+        ListEmptyComponent={
+          <Card className="p-6 items-center">
+            <Card.Title>No categories yet</Card.Title>
+            <Card.Description>Tap + Category to organize your catalog.</Card.Description>
+          </Card>
+        }
+        renderItem={({ item, index }) => (
+          <Animated.View entering={staggerFadeUp(index)} layout={layoutTransition}>
+            <Surface variant="default" className="rounded-xl p-3.5 border border-border">
+              <View className="min-w-0">
+                <Text numberOfLines={1} className="text-foreground text-sm font-semibold">{item.name}</Text>
+              </View>
+            </Surface>
+          </Animated.View>
         )}
       />
 
       <Dialog isOpen={showAdd} onOpenChange={setShowAdd}>
         <Dialog.Portal>
           <Dialog.Overlay />
-          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center">
+          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
             <Dialog.Title>New Category</Dialog.Title>
-            <TextField isRequired>
-              <Label>Category Name</Label>
-              <Input value={name} onChangeText={setName} placeholder="e.g. Beverages" />
-            </TextField>
-            <View className="flex-row justify-end gap-2 pt-2">
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
+              <TextField isRequired>
+                <Label>Category Name</Label>
+                <Input value={name} onChangeText={setName} placeholder="e.g. Beverages" />
+              </TextField>
+            </ScrollView>
+            <Separator />
+            <View className="flex-row justify-end gap-2">
               <Button variant="secondary" onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>

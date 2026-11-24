@@ -1,8 +1,10 @@
 import React from 'react';
 import { FlatList, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Button, Card, Checkbox, Chip, Separator, Surface } from 'heroui-native';
 import { computeCheckoutTotals } from '@/domain/posCheckoutCoordinator';
 import { usePosCartStore } from '@/store/posCartStore';
+import { enterSlideRight, exitSlideLeft, layoutTransition } from '@/theme/motion';
 
 interface PosCartPaneProps {
   readonly currencySymbol: string;
@@ -63,6 +65,7 @@ export function PosCartPane({
       <Separator />
 
       <FlatList
+        className="flex-1"
         data={lines}
         keyExtractor={(item) => `${item.product.id}-${item.uomName}`}
         contentContainerClassName="gap-2 pb-2"
@@ -75,44 +78,50 @@ export function PosCartPane({
           const unitNet = Math.max(0, item.selectedPrice - item.itemDiscount);
           const lineTotal = unitNet * item.quantity;
           return (
-            <Surface variant="secondary" className="rounded-xl p-2.5 flex-row items-center gap-2">
-              <Checkbox
-                isSelected={item.checked}
-                onSelectedChange={() => toggleChecked(item.product.id, item.uomName)}
-              />
-              <View className="flex-1 min-w-0">
-                <Text className="text-foreground text-sm font-semibold" numberOfLines={1}>
-                  {item.product.name}
+            <Animated.View
+              entering={enterSlideRight}
+              exiting={exitSlideLeft}
+              layout={layoutTransition}
+            >
+              <Surface variant="secondary" className="rounded-xl p-2.5 flex-row items-center gap-2">
+                <Checkbox
+                  isSelected={item.checked}
+                  onSelectedChange={() => toggleChecked(item.product.id, item.uomName)}
+                />
+                <View className="flex-1 min-w-0">
+                  <Text className="text-foreground text-sm font-semibold" numberOfLines={1}>
+                    {item.product.name}
+                  </Text>
+                  <Text className="text-muted text-xs" numberOfLines={1}>
+                    {item.uomName} • {currencySymbol}
+                    {unitNet.toFixed(2)}
+                  </Text>
+                </View>
+                <View className="flex-row items-center gap-1.5">
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    onPress={() => updateQuantity(item.product.id, item.uomName, -1)}
+                  >
+                    <Button.Label>−</Button.Label>
+                  </Button>
+                  <Text className="text-foreground text-sm font-bold min-w-6 text-center">
+                    {item.quantity}
+                  </Text>
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    onPress={() => updateQuantity(item.product.id, item.uomName, 1)}
+                  >
+                    <Button.Label>+</Button.Label>
+                  </Button>
+                </View>
+                <Text className="text-foreground text-sm font-bold min-w-16 text-right">
+                  {currencySymbol}
+                  {lineTotal.toFixed(2)}
                 </Text>
-                <Text className="text-muted text-xs">
-                  {item.uomName} • {currencySymbol}
-                  {unitNet.toFixed(2)}
-                </Text>
-              </View>
-              <View className="flex-row items-center gap-1.5">
-                <Button
-                  variant="tertiary"
-                  size="sm"
-                  onPress={() => updateQuantity(item.product.id, item.uomName, -1)}
-                >
-                  <Button.Label>−</Button.Label>
-                </Button>
-                <Text className="text-foreground text-sm font-bold min-w-6 text-center">
-                  {item.quantity}
-                </Text>
-                <Button
-                  variant="tertiary"
-                  size="sm"
-                  onPress={() => updateQuantity(item.product.id, item.uomName, 1)}
-                >
-                  <Button.Label>+</Button.Label>
-                </Button>
-              </View>
-              <Text className="text-foreground text-sm font-bold min-w-16 text-right">
-                {currencySymbol}
-                {lineTotal.toFixed(2)}
-              </Text>
-            </Surface>
+              </Surface>
+            </Animated.View>
           );
         }}
       />

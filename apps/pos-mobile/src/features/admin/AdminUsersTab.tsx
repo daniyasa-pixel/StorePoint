@@ -1,10 +1,24 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
-import { Alert, Button, Chip, Dialog, Input, Label, Surface, Switch, TextField } from 'heroui-native';
+import { FlatList, ScrollView, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import {
+  Alert,
+  Avatar,
+  Button,
+  Chip,
+  Dialog,
+  Input,
+  Label,
+  Separator,
+  Surface,
+  Switch,
+  TextField,
+} from 'heroui-native';
 import type { UserRole } from '@/constants/routes';
 import { getRepositories } from '@/db/repositories';
 import type { User } from '@/db/types';
 import { hashPin, isValidPin, isWeakPin, pinPolicyHint } from '@/security/securityHelper';
+import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 const ROLES: readonly UserRole[] = ['CASHIER', 'INVENTORY', 'ADMIN'];
 
@@ -69,65 +83,80 @@ export function AdminUsersTab() {
         data={users}
         keyExtractor={(u) => u.username}
         contentContainerClassName="gap-2 pb-6"
-        renderItem={({ item }) => (
-          <Surface variant="default" className="rounded-xl p-3.5 border border-border flex-row items-center justify-between gap-2">
-            <View className="gap-1">
-              <Text className="text-foreground text-sm font-semibold">{item.username}</Text>
-              <Chip size="sm" variant="soft" color={item.role === 'ADMIN' ? 'accent' : 'default'}>
-                <Chip.Label>{item.role}</Chip.Label>
-              </Chip>
-            </View>
-            <View className="flex-row items-center gap-2">
-              <Text className="text-muted text-xs">Biometric</Text>
-              <Switch
-                isSelected={item.biometricEnrolled}
-                onSelectedChange={(val) => void toggleBiometric(item, val)}
-              />
-            </View>
-          </Surface>
-        )}
+        renderItem={({ item, index }) => {
+          const initials = item.username.trim().slice(0, 2).toUpperCase() || 'ST';
+          return (
+            <Animated.View entering={staggerFadeUp(index)} layout={layoutTransition}>
+              <Surface variant="default" className="rounded-xl p-3.5 border border-border flex-row items-center justify-between gap-2">
+                <View className="flex-row items-center gap-3 flex-1 min-w-0">
+                  <Avatar size="sm" alt={item.username}>
+                    <Avatar.Fallback>{initials}</Avatar.Fallback>
+                  </Avatar>
+                  <View className="gap-1 flex-1 min-w-0">
+                    <Text numberOfLines={1} className="text-foreground text-sm font-semibold">{item.username}</Text>
+                    <View className="flex-row">
+                      <Chip size="sm" variant="soft" color={item.role === 'ADMIN' ? 'accent' : 'default'}>
+                        <Chip.Label>{item.role}</Chip.Label>
+                      </Chip>
+                    </View>
+                  </View>
+                </View>
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-muted text-xs">Biometric</Text>
+                  <Switch
+                    isSelected={item.biometricEnrolled}
+                    onSelectedChange={(val) => void toggleBiometric(item, val)}
+                  />
+                </View>
+              </Surface>
+            </Animated.View>
+          );
+        }}
       />
 
       <Dialog isOpen={showAdd} onOpenChange={setShowAdd}>
         <Dialog.Portal>
           <Dialog.Overlay />
-          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center">
+          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
             <Dialog.Title>Create Staff Account</Dialog.Title>
-            {error ? (
-              <Alert status="danger">
-                <Alert.Indicator />
-                <Alert.Content>
-                  <Alert.Description>{error}</Alert.Description>
-                </Alert.Content>
-              </Alert>
-            ) : null}
-            <TextField isRequired>
-              <Label>Username</Label>
-              <Input value={username} onChangeText={setUsername} autoCapitalize="none" />
-            </TextField>
-            <TextField isRequired>
-              <Label>4-Digit PIN</Label>
-              <Input
-                value={pin}
-                onChangeText={setPin}
-                keyboardType="number-pad"
-                maxLength={4}
-                secureTextEntry
-              />
-            </TextField>
-            <View className="flex-row gap-2">
-              {ROLES.map((r) => (
-                <Chip
-                  key={r}
-                  color={role === r ? 'accent' : 'default'}
-                  variant={role === r ? 'primary' : 'soft'}
-                  onPress={() => setRole(r)}
-                >
-                  <Chip.Label>{r}</Chip.Label>
-                </Chip>
-              ))}
-            </View>
-            <View className="flex-row justify-end gap-2 pt-2">
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
+              {error ? (
+                <Alert status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Description>{error}</Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              ) : null}
+              <TextField isRequired>
+                <Label>Username</Label>
+                <Input value={username} onChangeText={setUsername} autoCapitalize="none" />
+              </TextField>
+              <TextField isRequired>
+                <Label>4-Digit PIN</Label>
+                <Input
+                  value={pin}
+                  onChangeText={setPin}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  secureTextEntry
+                />
+              </TextField>
+              <View className="flex-row flex-wrap gap-2">
+                {ROLES.map((r) => (
+                  <Chip
+                    key={r}
+                    color={role === r ? 'accent' : 'default'}
+                    variant={role === r ? 'primary' : 'soft'}
+                    onPress={() => setRole(r)}
+                  >
+                    <Chip.Label>{r}</Chip.Label>
+                  </Chip>
+                ))}
+              </View>
+            </ScrollView>
+            <Separator />
+            <View className="flex-row justify-end gap-2">
               <Button variant="secondary" onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
