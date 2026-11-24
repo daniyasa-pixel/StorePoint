@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Button, Card, Chip } from 'heroui-native';
+import { Button, Card, Chip, PressableFeedback } from 'heroui-native';
 import { PinPadEntry } from '@/components/PinPadEntry';
 import { StorePointBrandBadge } from '@/components/StorePointBrandBadge';
 import { APP_ROUTES, resolveHomeRouteForRole } from '@/constants/routes';
@@ -86,9 +86,9 @@ export default function LoginRoute() {
       <ScrollView contentContainerClassName="flex-grow justify-center p-5">
         <View className="w-full max-w-md self-center gap-5">
           <View className="items-center gap-2">
-            <Pressable onPress={handleLogoTap} accessibilityRole="button">
+            <PressableFeedback onPress={handleLogoTap} accessibilityRole="button">
               <StorePointBrandBadge size="lg" />
-            </Pressable>
+            </PressableFeedback>
             <Text className="text-foreground text-2xl font-bold">{storeName}</Text>
             <Text className="text-muted text-xs">Select staff account and enter 4-digit PIN</Text>
           </View>
