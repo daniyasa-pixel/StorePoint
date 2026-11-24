@@ -2,7 +2,7 @@
   "expo": {
     "name": "StorePoint POS",
     "slug": "storepoint-pos",
-    "version": "1.0.2.2",
+    "version": "1.0.2.3",
     "orientation": "default",
     "scheme": "storepoint",
     "platforms": [
@@ -13,7 +13,7 @@
     "newArchEnabled": true,
     "android": {
       "package": "com.munzo.storepoint",
-      "versionCode": 122,
+      "versionCode": 123,
       "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#120A8F",
