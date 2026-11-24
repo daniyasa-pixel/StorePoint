@@ -38,7 +38,7 @@ class ExpoSqliteExecutor implements SqlExecutor {
 
   async withTransactionAsync<T>(task: () => Promise<T>): Promise<T> {
     let result!: T;
-    await this.db.withExclusiveTransactionAsync(async () => {
+    await this.db.withTransactionAsync(async () => {
       result = await task();
     });
     return result;
@@ -71,12 +71,11 @@ async function applySchemaIfNeeded(executor: SqlExecutor): Promise<void> {
   }
 
   if (currentVersion === 0) {
-    await executor.withTransactionAsync(async () => {
-      for (const stmt of SCHEMA_V19_STATEMENTS) {
-        await executor.execAsync(stmt);
-      }
-      await executor.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION};`);
-    });
+    const batchSql = [
+      ...SCHEMA_V19_STATEMENTS,
+      `PRAGMA user_version = ${SCHEMA_VERSION};`,
+    ].join('\n');
+    await executor.execAsync(batchSql);
   }
 }
 

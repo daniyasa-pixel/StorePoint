@@ -1,5 +1,6 @@
 import '../src/global.css';
 import React, { useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -17,7 +18,6 @@ export default function RootLayout() {
 
   useEffect(() => {
     let active = true;
-    useAppBootstrapStore.getState().setDatabaseReady(false);
 
     (async () => {
       try {
@@ -60,9 +60,7 @@ export default function RootLayout() {
           }}
         >
           <StatusBar style="auto" />
-          {!isDatabaseReady ? (
-            <DatabaseLoadingView />
-          ) : (
+          <View style={{ flex: 1 }}>
             <Stack
               screenOptions={{
                 headerShown: false,
@@ -80,7 +78,12 @@ export default function RootLayout() {
               <Stack.Screen name="admin-dashboard" />
               <Stack.Screen name="inventory-portal" />
             </Stack>
-          )}
+            {!isDatabaseReady ? (
+              <View style={StyleSheet.absoluteFill}>
+                <DatabaseLoadingView />
+              </View>
+            ) : null}
+          </View>
         </HeroUINativeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

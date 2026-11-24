@@ -29,7 +29,9 @@ export function useKioskDisplayController(): void {
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    void NavigationBar.setVisibilityAsync(isKioskActive ? 'hidden' : 'visible');
+    NavigationBar.setVisibilityAsync(isKioskActive ? 'hidden' : 'visible').catch(() => {
+      // Ignored on Android edge-to-edge devices where system bar visibility is managed by OS
+    });
   }, [isKioskActive]);
 
   useEffect(() => {

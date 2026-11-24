@@ -2,7 +2,7 @@
   "expo": {
     "name": "StorePoint POS",
     "slug": "storepoint-pos",
-    "version": "1.0.2.0",
+    "version": "1.0.2.1",
     "orientation": "default",
     "scheme": "storepoint",
     "platforms": [
@@ -13,10 +13,10 @@
     "newArchEnabled": true,
     "android": {
       "package": "com.munzo.storepoint",
-      "versionCode": 120,
+      "versionCode": 121,
       "allowBackup": false,
       "adaptiveIcon": {
-        "backgroundColor": "#006FEE",
+        "backgroundColor": "#120A8F",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

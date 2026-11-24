@@ -29,7 +29,7 @@ export interface AppBootstrapState {
 }
 
 export const useAppBootstrapStore = create<AppBootstrapState>((set) => ({
-  isDatabaseReady: true,
+  isDatabaseReady: false,
   isOnboardingCompleted: false,
   isSetupCompleted: false,
   storeName: 'StorePoint',
