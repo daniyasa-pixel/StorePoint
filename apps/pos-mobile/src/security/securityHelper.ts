@@ -4,6 +4,8 @@ import { bytesToHex, hexToBytes, randomBytes } from '@noble/hashes/utils.js';
 
 export const PIN_LENGTH = 4;
 const PBKDF2_ITERATIONS = 120_000;
+const MIN_PBKDF2_ITERATIONS = 1_000;
+const MAX_PBKDF2_ITERATIONS = 500_000;
 const KEY_LENGTH_BYTES = 32; // 256 bits
 const SALT_BYTES_LENGTH = 16;
 
@@ -84,26 +86,37 @@ export function verifyPin(pin: string, storedHash: string): VerificationResult {
 
   if (storedHash.startsWith('pbkdf2$')) {
     const parts = storedHash.split('$');
-    if (parts.length === 4) {
-      const iterStr = parts[1] ?? '';
-      const saltHex = parts[2] ?? '';
-      const expectedHex = parts[3] ?? '';
-      const iterations = Number.parseInt(iterStr, 10) || PBKDF2_ITERATIONS;
-      try {
-        const salt = hexToBytes(saltHex);
-        const computed = pbkdf2(sha256, pin, salt, {
-          c: iterations,
-          dkLen: KEY_LENGTH_BYTES,
-        });
-        const computedHex = bytesToHex(computed);
-        const isMatch = constantTimeEquals(computedHex.toLowerCase(), expectedHex.toLowerCase());
-        return {
-          isMatch,
-          needsUpgrade: isMatch && iterations < PBKDF2_ITERATIONS,
-        };
-      } catch {
-        return { isMatch: false, needsUpgrade: false };
-      }
+    if (parts.length !== 4) {
+      return { isMatch: false, needsUpgrade: false };
+    }
+    const iterStr = parts[1] ?? '';
+    const saltHex = parts[2] ?? '';
+    const expectedHex = parts[3] ?? '';
+    if (!/^\d+$/.test(iterStr)) {
+      return { isMatch: false, needsUpgrade: false };
+    }
+    const iterations = Number(iterStr);
+    if (
+      !Number.isSafeInteger(iterations) ||
+      iterations < MIN_PBKDF2_ITERATIONS ||
+      iterations > MAX_PBKDF2_ITERATIONS
+    ) {
+      return { isMatch: false, needsUpgrade: false };
+    }
+    try {
+      const salt = hexToBytes(saltHex);
+      const computed = pbkdf2(sha256, pin, salt, {
+        c: iterations,
+        dkLen: KEY_LENGTH_BYTES,
+      });
+      const computedHex = bytesToHex(computed);
+      const isMatch = constantTimeEquals(computedHex.toLowerCase(), expectedHex.toLowerCase());
+      return {
+        isMatch,
+        needsUpgrade: isMatch && iterations < PBKDF2_ITERATIONS,
+      };
+    } catch {
+      return { isMatch: false, needsUpgrade: false };
     }
   }
 

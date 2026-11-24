@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import {
+  Alert,
   Button,
   Card,
   Chip,
@@ -12,6 +13,7 @@ import {
   Separator,
   Surface,
   TextField,
+  useToast,
 } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Category, Product } from '@/db/types';
@@ -19,11 +21,13 @@ import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function AdminProductsTab() {
+  const { toast } = useToast();
   const currency = useAppBootstrapStore((s) => s.currencySymbol);
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [showAdd, setShowAdd] = useState(false);
 
   const [name, setName] = useState('');
@@ -31,6 +35,10 @@ export function AdminProductsTab() {
   const [cost, setCost] = useState('');
   const [stock, setStock] = useState('10');
   const [barcode, setBarcode] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [restockingId, setRestockingId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const repos = await getRepositories();
@@ -47,64 +55,120 @@ export function AdminProductsTab() {
   }, [load]);
 
   const handleSave = async () => {
-    if (!name.trim()) return;
-    const repos = await getRepositories();
-    await repos.catalog.saveProduct({
-      name: name.trim(),
-      categoryId: categories[0]?.id ?? 1,
-      price: Number.parseFloat(price) || 0,
-      cost: Number.parseFloat(cost) || 0,
-      stockCount: Number.parseInt(stock, 10) || 0,
-      barcode: barcode.trim(),
-      expirationDate: null,
-      hasStick10s: false,
-      priceStick10s: 0,
-      hasStick20s: false,
-      priceStick20s: 0,
-      hasReam: false,
-      priceReam: 0,
-      hasMasterCase: false,
-      priceMasterCase: 0,
-      hasCustomUom: false,
-      customUomName: 'Pack',
-      customUomMultiplier: 1,
-      customUomPrice: 0,
-      barcode10s: '',
-      barcode20s: '',
-      barcodeReam: '',
-      barcodeMasterCase: '',
-      barcodeCustomUom: '',
-      baseUom: 'pc',
-      trackInventory: true,
-      isArchived: false,
-    });
-    setName('');
-    setPrice('');
-    setCost('');
-    setStock('10');
-    setBarcode('');
-    setShowAdd(false);
-    await load();
+    if (isSaving) return;
+    setDialogError(null);
+    if (!name.trim()) {
+      setDialogError('Product name is required.');
+      return;
+    }
+    const parsedPrice = price.trim() === '' ? 0 : Number(price.trim());
+    const parsedCost = cost.trim() === '' ? 0 : Number(cost.trim());
+    const parsedStock = stock.trim() === '' ? 0 : Number(stock.trim());
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      setDialogError('Price must be a valid non-negative number.');
+      return;
+    }
+    if (!Number.isFinite(parsedCost) || parsedCost < 0) {
+      setDialogError('Cost must be a valid non-negative number.');
+      return;
+    }
+    if (!Number.isInteger(parsedStock) || parsedStock < 0) {
+      setDialogError('Opening stock must be a valid non-negative whole number.');
+      return;
+    }
+
+    setIsSaving(true);
+    const savedName = name.trim();
+    try {
+      const repos = await getRepositories();
+      await repos.catalog.saveProduct({
+        name: savedName,
+        categoryId: categories[0]?.id ?? 1,
+        price: parsedPrice,
+        cost: parsedCost,
+        stockCount: parsedStock,
+        barcode: barcode.trim(),
+        expirationDate: null,
+        hasStick10s: false,
+        priceStick10s: 0,
+        hasStick20s: false,
+        priceStick20s: 0,
+        hasReam: false,
+        priceReam: 0,
+        hasMasterCase: false,
+        priceMasterCase: 0,
+        hasCustomUom: false,
+        customUomName: 'Pack',
+        customUomMultiplier: 1,
+        customUomPrice: 0,
+        barcode10s: '',
+        barcode20s: '',
+        barcodeReam: '',
+        barcodeMasterCase: '',
+        barcodeCustomUom: '',
+        baseUom: 'pc',
+        trackInventory: true,
+        isArchived: false,
+      });
+      setName('');
+      setPrice('');
+      setCost('');
+      setStock('10');
+      setBarcode('');
+      setShowAdd(false);
+      await load();
+      toast.show({
+        label: 'Product saved',
+        description: savedName,
+        variant: 'success',
+      });
+    } catch (err) {
+      setDialogError(err instanceof Error ? err.message : 'Failed to save product.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleQuickRestock = async (product: Product) => {
-    const repos = await getRepositories();
-    await repos.catalog.adjustStock({
-      productId: product.id,
-      delta: 10,
-      actorUsername: activeUser?.username ?? 'admin',
-      movementType: 'RESTOCK',
-      notes: 'Quick +10 Admin Restock',
-    });
-    await load();
+    if (restockingId !== null) return;
+    setError(null);
+    setRestockingId(product.id);
+    try {
+      const repos = await getRepositories();
+      await repos.catalog.adjustStock({
+        productId: product.id,
+        delta: 10,
+        actorUsername: activeUser?.username ?? 'admin',
+        movementType: 'RESTOCK',
+        notes: 'Quick +10 Admin Restock',
+      });
+      await load();
+      toast.show({
+        label: 'Restocked +10',
+        description: `${product.name} (+10 ${product.baseUom})`,
+        variant: 'success',
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to restock product.');
+    } finally {
+      setRestockingId(null);
+    }
   };
 
-  const filtered = products.filter(
-    (p) =>
-      !query.trim() ||
-      p.name.toLowerCase().includes(query.trim().toLowerCase()) ||
-      p.barcode.toLowerCase().includes(query.trim().toLowerCase()),
-  );
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 150);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const filtered = useMemo(() => {
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.barcode.toLowerCase().includes(q),
+    );
+  }, [products, debouncedQuery]);
 
   return (
     <View className="flex-1 gap-3">
@@ -121,9 +185,22 @@ export function AdminProductsTab() {
         </Button>
       </View>
 
+      {error ? (
+        <Alert status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>{error}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
+
       <FlatList
         data={filtered}
         keyExtractor={(item) => String(item.id)}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        removeClippedSubviews
         contentContainerClassName="gap-2 pb-6"
         ListEmptyComponent={
           <Card className="p-6 items-center">
@@ -149,8 +226,13 @@ export function AdminProductsTab() {
               >
                 <Chip.Label>{item.stockCount} {item.baseUom}</Chip.Label>
               </Chip>
-              <Button variant="secondary" size="sm" onPress={() => void handleQuickRestock(item)}>
-                <Button.Label>+10</Button.Label>
+              <Button
+                variant="secondary"
+                size="sm"
+                isDisabled={restockingId !== null}
+                onPress={() => void handleQuickRestock(item)}
+              >
+                <Button.Label>{restockingId === item.id ? '...' : '+10'}</Button.Label>
               </Button>
             </Surface>
           </Animated.View>
@@ -163,6 +245,14 @@ export function AdminProductsTab() {
           <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
             <Dialog.Title>Add Product</Dialog.Title>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
+              {dialogError ? (
+                <Alert status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Description>{dialogError}</Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              ) : null}
               <TextField isRequired>
                 <Label>Product Name</Label>
                 <Input value={name} onChangeText={setName} placeholder="e.g. Bottled Water 500ml" />
@@ -190,11 +280,11 @@ export function AdminProductsTab() {
             </ScrollView>
             <Separator />
             <View className="flex-row justify-end gap-2">
-              <Button variant="secondary" onPress={() => setShowAdd(false)}>
+              <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <Button variant="primary" onPress={() => void handleSave()}>
-                <Button.Label>Save Product</Button.Label>
+              <Button variant="primary" isDisabled={isSaving} onPress={() => void handleSave()}>
+                <Button.Label>{isSaving ? 'Saving...' : 'Save Product'}</Button.Label>
               </Button>
             </View>
           </Dialog.Content>

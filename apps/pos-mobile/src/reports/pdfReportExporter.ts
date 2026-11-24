@@ -1,6 +1,8 @@
+import { File } from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { getRepositories } from '@/db/repositories';
+import { DEFAULT_CURRENCY_SYMBOL } from '@/domain/money';
 
 function escapeHtml(text: string): string {
   return text
@@ -19,7 +21,7 @@ export async function exportAuditReportPdf(): Promise<string> {
   ]);
 
   const storeName = escapeHtml(config?.storeName ?? 'StorePoint POS');
-  const curr = escapeHtml(config?.currencySymbol ?? '₱');
+  const curr = escapeHtml(config?.currencySymbol ?? DEFAULT_CURRENCY_SYMBOL);
   const totalRevenue = txs.reduce((sum, t) => sum + t.totalAmount, 0);
 
   const productRows = products
@@ -53,11 +55,19 @@ export async function exportAuditReportPdf(): Promise<string> {
   `;
 
   const { uri } = await Print.printToFileAsync({ html });
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, {
-      mimeType: 'application/pdf',
-      dialogTitle: 'Share StorePoint Audit PDF',
-    });
+  try {
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: 'Share StorePoint Audit PDF',
+      });
+    }
+  } finally {
+    try {
+      new File(uri).delete();
+    } catch {
+      // Ignore temporary cache file cleanup errors
+    }
   }
   return uri;
 }

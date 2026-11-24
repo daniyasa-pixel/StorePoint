@@ -20,6 +20,7 @@ import { AppTopBar } from '@/components/AppTopBar';
 import { PinPadEntry } from '@/components/PinPadEntry';
 import { APP_ROUTES } from '@/constants/routes';
 import { getRepositories } from '@/db/repositories';
+import { DEFAULT_CURRENCY_SYMBOL } from '@/domain/money';
 import { hashPin, isValidPin, isWeakPin, pinPolicyHint } from '@/security/securityHelper';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import {
@@ -30,13 +31,13 @@ import {
   layoutTransition,
 } from '@/theme/motion';
 
-const CURRENCIES = ['₱', '$', '€', '£', '¥'] as const;
+const CURRENCIES = [DEFAULT_CURRENCY_SYMBOL, '$', '€', '£', '¥'] as const;
 
 export default function SetupRoute() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [storeName, setStoreName] = useState('');
-  const [currencySymbol, setCurrencySymbol] = useState<string>('₱');
+  const [currencySymbol, setCurrencySymbol] = useState<string>(DEFAULT_CURRENCY_SYMBOL);
   const [taxPercentage, setTaxPercentage] = useState('12.0');
   const [hasGCash, setHasGCash] = useState(true);
   const [hasMaya, setHasMaya] = useState(true);

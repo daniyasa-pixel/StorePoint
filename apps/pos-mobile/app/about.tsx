@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Alert, Card, Chip, Separator, Spinner } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
+import { APP_VERSION } from '@/constants/appInfo';
 import { checkDatabaseHealth, type DatabaseHealthReport } from '@/db/database';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { enterFadeUp } from '@/theme/motion';
@@ -22,7 +23,7 @@ export default function AboutRoute() {
     <SafeAreaView className="bg-background flex-1">
       <AppTopBar
         title="About StorePoint"
-        subtitle="Version 1.0.2.0 • Android APK"
+        subtitle={`Version ${APP_VERSION} • Android APK`}
         onBack={() => router.back()}
       />
       <ScrollView contentContainerClassName="p-5 gap-4">

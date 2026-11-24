@@ -29,6 +29,9 @@ export function AdminUsersTab() {
   const [pin, setPin] = useState('');
   const [role, setRole] = useState<UserRole>('CASHIER');
   const [error, setError] = useState<string | null>(null);
+  const [tabError, setTabError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const repos = await getRepositories();
@@ -40,6 +43,7 @@ export function AdminUsersTab() {
   }, [load]);
 
   const handleSave = async () => {
+    if (isSaving) return;
     setError(null);
     if (!username.trim()) {
       setError('Username is required.');
@@ -49,25 +53,41 @@ export function AdminUsersTab() {
       setError(pinPolicyHint());
       return;
     }
-    const repos = await getRepositories();
-    await repos.users.saveUser({
-      username: username.trim(),
-      pinHash: hashPin(pin),
-      role,
-      barcodeId: '',
-      biometricEnrolled: false,
-      pinResetRequired: false,
-    });
-    setUsername('');
-    setPin('');
-    setShowAdd(false);
-    await load();
+    setIsSaving(true);
+    try {
+      const repos = await getRepositories();
+      await repos.users.saveUser({
+        username: username.trim(),
+        pinHash: hashPin(pin),
+        role,
+        barcodeId: '',
+        biometricEnrolled: false,
+        pinResetRequired: false,
+      });
+      setUsername('');
+      setPin('');
+      setShowAdd(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create staff account.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const toggleBiometric = async (user: User, next: boolean) => {
-    const repos = await getRepositories();
-    await repos.users.setBiometricEnrolled(user.username, next);
-    await load();
+    if (togglingId !== null) return;
+    setTabError(null);
+    setTogglingId(user.username);
+    try {
+      const repos = await getRepositories();
+      await repos.users.setBiometricEnrolled(user.username, next);
+      await load();
+    } catch (err) {
+      setTabError(err instanceof Error ? err.message : 'Failed to update biometric setting.');
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   return (
@@ -78,6 +98,15 @@ export function AdminUsersTab() {
           <Button.Label>+ Staff</Button.Label>
         </Button>
       </View>
+
+      {tabError ? (
+        <Alert status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>{tabError}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
 
       <FlatList
         data={users}
@@ -105,6 +134,7 @@ export function AdminUsersTab() {
                   <Text className="text-muted text-xs">Biometric</Text>
                   <Switch
                     isSelected={item.biometricEnrolled}
+                    isDisabled={togglingId !== null}
                     onSelectedChange={(val) => void toggleBiometric(item, val)}
                   />
                 </View>
@@ -157,11 +187,11 @@ export function AdminUsersTab() {
             </ScrollView>
             <Separator />
             <View className="flex-row justify-end gap-2">
-              <Button variant="secondary" onPress={() => setShowAdd(false)}>
+              <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <Button variant="primary" onPress={() => void handleSave()}>
-                <Button.Label>Create Account</Button.Label>
+              <Button variant="primary" isDisabled={isSaving} onPress={() => void handleSave()}>
+                <Button.Label>{isSaving ? 'Creating...' : 'Create Account'}</Button.Label>
               </Button>
             </View>
           </Dialog.Content>

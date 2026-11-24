@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { UserRole } from '@/constants/routes';
+import { DEFAULT_CURRENCY_SYMBOL } from '@/domain/money';
 
 export interface ActiveSessionUser {
   readonly id: number;
@@ -33,7 +34,7 @@ export const useAppBootstrapStore = create<AppBootstrapState>((set) => ({
   isOnboardingCompleted: false,
   isSetupCompleted: false,
   storeName: 'StorePoint',
-  currencySymbol: '₱',
+  currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   activeUser: null,
   isKioskModeActive: false,
   isAlwaysOnEnabled: false,
@@ -44,7 +45,7 @@ export const useAppBootstrapStore = create<AppBootstrapState>((set) => ({
     set({
       isSetupCompleted: true,
       storeName: storeName.trim() || 'StorePoint',
-      currencySymbol: currencySymbol || '₱',
+      currencySymbol: currencySymbol || DEFAULT_CURRENCY_SYMBOL,
     }),
   setActiveUser: (user) => set({ activeUser: user }),
   setKioskModeActive: (active) => set({ isKioskModeActive: active }),

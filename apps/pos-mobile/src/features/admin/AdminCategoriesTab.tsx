@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { Button, Card, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
+import { Alert, Button, Card, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Category } from '@/db/types';
 import { layoutTransition, staggerFadeUp } from '@/theme/motion';
@@ -10,6 +10,8 @@ export function AdminCategoriesTab() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const repos = await getRepositories();
@@ -21,17 +23,29 @@ export function AdminCategoriesTab() {
   }, [load]);
 
   const handleSave = async () => {
-    if (!name.trim()) return;
-    const repos = await getRepositories();
-    await repos.catalog.saveCategory({
-      name: name.trim(),
-      colorAccent: '#006FEE',
-      iconBadge: 'tag',
-      isArchived: false,
-    });
-    setName('');
-    setShowAdd(false);
-    await load();
+    if (isSaving) return;
+    setError(null);
+    if (!name.trim()) {
+      setError('Category name is required.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const repos = await getRepositories();
+      await repos.catalog.saveCategory({
+        name: name.trim(),
+        colorAccent: '#006FEE',
+        iconBadge: 'tag',
+        isArchived: false,
+      });
+      setName('');
+      setShowAdd(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create category.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -70,6 +84,14 @@ export function AdminCategoriesTab() {
           <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
             <Dialog.Title>New Category</Dialog.Title>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
+              {error ? (
+                <Alert status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Description>{error}</Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              ) : null}
               <TextField isRequired>
                 <Label>Category Name</Label>
                 <Input value={name} onChangeText={setName} placeholder="e.g. Beverages" />
@@ -77,11 +99,11 @@ export function AdminCategoriesTab() {
             </ScrollView>
             <Separator />
             <View className="flex-row justify-end gap-2">
-              <Button variant="secondary" onPress={() => setShowAdd(false)}>
+              <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <Button variant="primary" onPress={() => void handleSave()}>
-                <Button.Label>Create</Button.Label>
+              <Button variant="primary" isDisabled={isSaving} onPress={() => void handleSave()}>
+                <Button.Label>{isSaving ? 'Creating...' : 'Create'}</Button.Label>
               </Button>
             </View>
           </Dialog.Content>

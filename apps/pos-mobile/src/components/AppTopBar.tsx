@@ -40,6 +40,7 @@ export function AppTopBar({
               variant="ghost"
               size="sm"
               isIconOnly={isCompact}
+              accessibilityLabel="Go back"
               className="shrink-0"
               onPress={onBack}
             >

@@ -27,7 +27,14 @@ interface PosCartState {
   acknowledgeRestoreNotice: () => void;
 }
 
-function persistLines(lines: readonly PosCartLine[]): void {
+const PERSIST_DEBOUNCE_MS = 250;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushPersistLines(lines: readonly PosCartLine[]): void {
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
   void sessionStateCache.saveCartDraft(
     lines.map((l) => ({
       productId: l.product.id,
@@ -38,6 +45,20 @@ function persistLines(lines: readonly PosCartLine[]): void {
       discount: l.itemDiscount,
     })),
   );
+}
+
+function persistLines(lines: readonly PosCartLine[]): void {
+  if (lines.length === 0) {
+    flushPersistLines(lines);
+    return;
+  }
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+  }
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    flushPersistLines(lines);
+  }, PERSIST_DEBOUNCE_MS);
 }
 
 export const usePosCartStore = create<PosCartState>((set, get) => ({
@@ -122,6 +143,10 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   },
 
   clearCart: () => {
+    if (persistTimer !== null) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
     set({ lines: [], orderDiscountType: 'NONE', orderDiscountValue: 0 });
     void sessionStateCache.clearCartDraft();
   },

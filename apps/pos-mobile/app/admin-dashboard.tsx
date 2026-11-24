@@ -4,12 +4,14 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
+  Alert,
   BottomSheet,
   type BottomSheetRef,
   Button,
   Chip,
   Separator,
   Surface,
+  useToast,
 } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
 import { APP_ROUTES } from '@/constants/routes';
@@ -59,12 +61,42 @@ const COMPACT_MORE_IDS: readonly AdminTabId[] = ['categories', 'calendar', 'secu
 
 export default function AdminDashboardRoute() {
   const router = useRouter();
+  const { toast } = useToast();
   const { isCompact, layout } = useWindowLayout();
   const [activeTab, setActiveTab] = useState<AdminTabId>('products');
   const [showProduction, setShowProduction] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const moreSheetRef = useRef<BottomSheetRef>(null);
 
   const activeSpec = ADMIN_TABS.find((t) => t.id === activeTab) ?? ADMIN_TABS[1]!;
+
+  const handleExportBackup = async () => {
+    setExportError(null);
+    try {
+      await exportAndShareBackupSnapshot();
+      toast.show({
+        label: 'Backup exported',
+        description: 'Database backup snapshot is ready to share.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Failed to export backup snapshot.');
+    }
+  };
+
+  const handleExportPdf = async () => {
+    setExportError(null);
+    try {
+      await exportAuditReportPdf();
+      toast.show({
+        label: 'Audit report exported',
+        description: 'PDF audit report generated successfully.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Failed to export audit report PDF.');
+    }
+  };
 
   const renderTab = () => {
     switch (activeTab) {
@@ -84,7 +116,7 @@ export default function AdminDashboardRoute() {
         return (
           <AdminSecurityTab
             onExportBackup={() => {
-              void exportAndShareBackupSnapshot();
+              void handleExportBackup();
             }}
           />
         );
@@ -105,7 +137,7 @@ export default function AdminDashboardRoute() {
               variant="ghost"
               size="sm"
               onPress={() => {
-                void exportAuditReportPdf();
+                void handleExportPdf();
               }}
             >
               <Button.Label>PDF</Button.Label>
@@ -146,7 +178,18 @@ export default function AdminDashboardRoute() {
         </Surface>
       ) : null}
 
-      <View className="flex-1 p-4">
+      <View className="flex-1 p-4 gap-3">
+        {exportError ? (
+          <Alert status="danger">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Description>{exportError}</Alert.Description>
+            </Alert.Content>
+            <Button variant="ghost" size="sm" onPress={() => setExportError(null)}>
+              <Button.Label>Dismiss</Button.Label>
+            </Button>
+          </Alert>
+        ) : null}
         <Animated.View key={activeTab} entering={enterFade} className="flex-1">
           {renderTab()}
         </Animated.View>

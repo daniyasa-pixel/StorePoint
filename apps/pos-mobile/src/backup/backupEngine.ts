@@ -1,5 +1,6 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { APP_VERSION } from '@/constants/appInfo';
 import { getRepositories } from '@/db/repositories';
 import { SCHEMA_VERSION } from '@/db/schemaV19';
 
@@ -44,7 +45,7 @@ export async function buildBackupSnapshot(): Promise<BackupSnapshotEnvelope> {
   return {
     schemaVersion: SCHEMA_VERSION,
     exportedAt: Date.now(),
-    appVersion: '1.0.2.0',
+    appVersion: APP_VERSION,
     tables: {
       storeConfig,
       categories,
@@ -64,11 +65,19 @@ export async function exportAndShareBackupSnapshot(): Promise<string> {
   const file = new File(Paths.cache, filename);
   file.write(JSON.stringify(snapshot, null, 2));
 
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(file.uri, {
-      mimeType: 'application/json',
-      dialogTitle: 'Share StorePoint POS Backup',
-    });
+  try {
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(file.uri, {
+        mimeType: 'application/json',
+        dialogTitle: 'Share StorePoint POS Backup',
+      });
+    }
+  } finally {
+    try {
+      file.delete();
+    } catch {
+      // Ignore temporary cache file cleanup errors
+    }
   }
 
   return file.uri;

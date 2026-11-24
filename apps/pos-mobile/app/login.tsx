@@ -122,7 +122,11 @@ export default function LoginRoute() {
             entering={enterFadeDown}
             className={isExpanded ? 'flex-1 items-center gap-4' : 'items-center gap-2'}
           >
-            <PressableFeedback onPress={handleLogoTap} accessibilityRole="button">
+            <PressableFeedback
+              onPress={handleLogoTap}
+              accessibilityRole="button"
+              accessibilityLabel="StorePoint logo"
+            >
               <StorePointBrandBadge size="lg" />
             </PressableFeedback>
             <Text className="text-foreground text-2xl font-bold text-center">{storeName}</Text>

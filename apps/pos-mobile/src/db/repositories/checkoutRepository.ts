@@ -220,18 +220,28 @@ export class CheckoutRepository {
     const headers = await this.db.getAllAsync<ParkedTransaction>(
       'SELECT * FROM parked_transactions ORDER BY timestamp DESC;',
     );
-    const result: Array<{
-      readonly header: ParkedTransaction;
-      readonly items: readonly ParkedTransactionItem[];
-    }> = [];
-    for (const header of headers) {
-      const items = await this.db.getAllAsync<ParkedTransactionItem>(
-        'SELECT * FROM parked_transaction_items WHERE parkedTransactionId = ?;',
-        [header.id],
-      );
-      result.push({ header, items });
+    if (headers.length === 0) {
+      return [];
     }
-    return result;
+    const ids = headers.map((h) => h.id);
+    const placeholders = ids.map(() => '?').join(', ');
+    const allItems = await this.db.getAllAsync<ParkedTransactionItem>(
+      `SELECT * FROM parked_transaction_items WHERE parkedTransactionId IN (${placeholders});`,
+      ids,
+    );
+    const itemsByParkedId = new Map<number, ParkedTransactionItem[]>();
+    for (const item of allItems) {
+      const list = itemsByParkedId.get(item.parkedTransactionId);
+      if (list) {
+        list.push(item);
+      } else {
+        itemsByParkedId.set(item.parkedTransactionId, [item]);
+      }
+    }
+    return headers.map((header) => ({
+      header,
+      items: itemsByParkedId.get(header.id) ?? [],
+    }));
   }
 
   async deleteParkedTransaction(id: number): Promise<void> {

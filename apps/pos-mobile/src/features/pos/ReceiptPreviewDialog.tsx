@@ -2,6 +2,7 @@ import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Button, Dialog, Separator } from 'heroui-native';
 import type { CheckoutReceipt } from '@/db/repositories/checkoutRepository';
+import { formatMoney } from '@/domain/money';
 
 interface ReceiptPreviewDialogProps {
   readonly receipt: CheckoutReceipt | null;
@@ -42,8 +43,7 @@ export function ReceiptPreviewDialog({
                     {item.quantity}× {item.productName} ({item.uomName})
                   </Text>
                   <Text className="text-foreground text-xs font-semibold">
-                    {currencySymbol}
-                    {(item.price * item.quantity).toFixed(2)}
+                    {formatMoney(item.price * item.quantity, currencySymbol)}
                   </Text>
                 </View>
               ))}
@@ -56,22 +56,19 @@ export function ReceiptPreviewDialog({
                 <View className="flex-row justify-between">
                   <Text className="text-foreground text-sm font-bold">Total</Text>
                   <Text className="text-foreground text-sm font-bold">
-                    {currencySymbol}
-                    {receipt.transaction.totalAmount.toFixed(2)}
+                    {formatMoney(receipt.transaction.totalAmount, currencySymbol)}
                   </Text>
                 </View>
                 <View className="flex-row justify-between">
                   <Text className="text-muted text-xs">Paid</Text>
                   <Text className="text-muted text-xs">
-                    {currencySymbol}
-                    {receipt.transaction.cashPaid.toFixed(2)}
+                    {formatMoney(receipt.transaction.cashPaid, currencySymbol)}
                   </Text>
                 </View>
                 <View className="flex-row justify-between">
                   <Text className="text-success text-xs font-semibold">Change</Text>
                   <Text className="text-success text-xs font-semibold">
-                    {currencySymbol}
-                    {receipt.transaction.changeAmount.toFixed(2)}
+                    {formatMoney(receipt.transaction.changeAmount, currencySymbol)}
                   </Text>
                 </View>
               </View>

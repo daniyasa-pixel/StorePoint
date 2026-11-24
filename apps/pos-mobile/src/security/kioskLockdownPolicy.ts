@@ -65,7 +65,7 @@ export class KioskLockout {
     if (windowMs > 0) {
       const currentNow = this.now();
       const lockedUntil = currentNow + windowMs;
-      this.adapter.writeState(key, 0, lockedUntil);
+      this.adapter.writeState(key, fails, lockedUntil);
       return formatLockoutMessage(lockedUntil, currentNow);
     }
     this.adapter.writeState(key, fails, 0);

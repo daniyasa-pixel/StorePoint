@@ -78,6 +78,7 @@ export function PinPadEntry({
     <Animated.View layout={layoutTransition} className="w-full gap-4">
       <Animated.View
         style={dotsAnimatedStyle}
+        accessibilityLabel={`${pin.length} of ${maxLength} digits entered`}
         className="flex-row items-center justify-center gap-3 py-1"
       >
         {Array.from({ length: maxLength }).map((_, idx) => {
@@ -128,12 +129,15 @@ export function PinPadEntry({
           <View key={rowIdx} className="flex-row gap-2.5">
             {row.map((key) => {
               const isAction = key === 'CLR' || key === '⌫';
+              const keyLabel =
+                key === 'CLR' ? 'Clear PIN' : key === '⌫' ? 'Backspace' : `Digit ${key}`;
               return (
                 <Button
                   key={key}
                   variant={isAction ? 'tertiary' : 'secondary'}
                   size="lg"
                   isDisabled={isDisabled}
+                  accessibilityLabel={keyLabel}
                   className={`flex-1 ${isCompact ? 'h-13' : 'h-14'}`}
                   onPress={() => handleKeyPress(key)}
                 >

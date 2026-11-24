@@ -1,9 +1,10 @@
-import React from 'react';
-import { FlatList, Text, View } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { Alert, FlatList, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Button, Card, Checkbox, Chip, Separator, Surface } from 'heroui-native';
+import { formatMoney } from '@/domain/money';
 import { computeCheckoutTotals } from '@/domain/posCheckoutCoordinator';
-import { usePosCartStore } from '@/store/posCartStore';
+import { type PosCartLine, usePosCartStore } from '@/store/posCartStore';
 import { enterSlideRight, exitSlideLeft, layoutTransition } from '@/theme/motion';
 
 interface PosCartPaneProps {
@@ -12,6 +13,8 @@ interface PosCartPaneProps {
   readonly onOpenPayment: () => void;
   readonly onOpenParked: () => void;
 }
+
+const cartKeyExtractor = (item: PosCartLine) => `${item.product.id}-${item.uomName}`;
 
 export function PosCartPane({
   currencySymbol,
@@ -26,19 +29,82 @@ export function PosCartPane({
   const toggleChecked = usePosCartStore((s) => s.toggleChecked);
   const clearCart = usePosCartStore((s) => s.clearCart);
 
-  const activeLines = lines
-    .filter((l) => l.checked)
-    .map((l) => ({
-      ...l,
-      selectedPrice: Math.max(0, l.selectedPrice - l.itemDiscount),
-    }));
+  const activeLines = useMemo(
+    () =>
+      lines
+        .filter((l) => l.checked)
+        .map((l) => ({
+          ...l,
+          selectedPrice: Math.max(0, l.selectedPrice - l.itemDiscount),
+        })),
+    [lines],
+  );
 
-  const totals = computeCheckoutTotals(
-    activeLines,
-    orderDiscountType,
-    orderDiscountValue,
-    true,
-    vatRate,
+  const totals = useMemo(
+    () =>
+      computeCheckoutTotals(
+        activeLines,
+        orderDiscountType,
+        orderDiscountValue,
+        true,
+        vatRate,
+      ),
+    [activeLines, orderDiscountType, orderDiscountValue, vatRate],
+  );
+
+  const renderCartItem = useCallback(
+    ({ item }: { item: PosCartLine }) => {
+      const unitNet = Math.max(0, item.selectedPrice - item.itemDiscount);
+      const lineTotal = unitNet * item.quantity;
+      return (
+        <Animated.View
+          entering={enterSlideRight}
+          exiting={exitSlideLeft}
+          layout={layoutTransition}
+        >
+          <Surface variant="secondary" className="rounded-xl p-2.5 flex-row items-center gap-2">
+            <Checkbox
+              isSelected={item.checked}
+              accessibilityLabel={`Select ${item.product.name}`}
+              onSelectedChange={() => toggleChecked(item.product.id, item.uomName)}
+            />
+            <View className="flex-1 min-w-0">
+              <Text className="text-foreground text-sm font-semibold" numberOfLines={1}>
+                {item.product.name}
+              </Text>
+              <Text className="text-muted text-xs" numberOfLines={1}>
+                {item.uomName} • {formatMoney(unitNet, currencySymbol)}
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-1.5">
+              <Button
+                variant="tertiary"
+                size="sm"
+                accessibilityLabel={`Decrease quantity of ${item.product.name}`}
+                onPress={() => updateQuantity(item.product.id, item.uomName, -1)}
+              >
+                <Button.Label>−</Button.Label>
+              </Button>
+              <Text className="text-foreground text-sm font-bold min-w-6 text-center">
+                {item.quantity}
+              </Text>
+              <Button
+                variant="tertiary"
+                size="sm"
+                accessibilityLabel={`Increase quantity of ${item.product.name}`}
+                onPress={() => updateQuantity(item.product.id, item.uomName, 1)}
+              >
+                <Button.Label>+</Button.Label>
+              </Button>
+            </View>
+            <Text className="text-foreground text-sm font-bold min-w-16 text-right">
+              {formatMoney(lineTotal, currencySymbol)}
+            </Text>
+          </Surface>
+        </Animated.View>
+      );
+    },
+    [currencySymbol, toggleChecked, updateQuantity],
   );
 
   return (
@@ -55,7 +121,16 @@ export function PosCartPane({
             <Button.Label>Hold</Button.Label>
           </Button>
           {lines.length > 0 ? (
-            <Button variant="danger-soft" size="sm" onPress={clearCart}>
+            <Button
+              variant="danger-soft"
+              size="sm"
+              onPress={() =>
+                Alert.alert('Clear Cart', 'Remove all items from the current cart?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Clear', style: 'destructive', onPress: clearCart },
+                ])
+              }
+            >
               <Button.Label>Clear</Button.Label>
             </Button>
           ) : null}
@@ -67,63 +142,18 @@ export function PosCartPane({
       <FlatList
         className="flex-1"
         data={lines}
-        keyExtractor={(item) => `${item.product.id}-${item.uomName}`}
+        keyExtractor={cartKeyExtractor}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        removeClippedSubviews
         contentContainerClassName="gap-2 pb-2"
         ListEmptyComponent={
           <View className="py-10 items-center">
             <Text className="text-muted text-sm">Tap any product or scan a barcode to start</Text>
           </View>
         }
-        renderItem={({ item }) => {
-          const unitNet = Math.max(0, item.selectedPrice - item.itemDiscount);
-          const lineTotal = unitNet * item.quantity;
-          return (
-            <Animated.View
-              entering={enterSlideRight}
-              exiting={exitSlideLeft}
-              layout={layoutTransition}
-            >
-              <Surface variant="secondary" className="rounded-xl p-2.5 flex-row items-center gap-2">
-                <Checkbox
-                  isSelected={item.checked}
-                  onSelectedChange={() => toggleChecked(item.product.id, item.uomName)}
-                />
-                <View className="flex-1 min-w-0">
-                  <Text className="text-foreground text-sm font-semibold" numberOfLines={1}>
-                    {item.product.name}
-                  </Text>
-                  <Text className="text-muted text-xs" numberOfLines={1}>
-                    {item.uomName} • {currencySymbol}
-                    {unitNet.toFixed(2)}
-                  </Text>
-                </View>
-                <View className="flex-row items-center gap-1.5">
-                  <Button
-                    variant="tertiary"
-                    size="sm"
-                    onPress={() => updateQuantity(item.product.id, item.uomName, -1)}
-                  >
-                    <Button.Label>−</Button.Label>
-                  </Button>
-                  <Text className="text-foreground text-sm font-bold min-w-6 text-center">
-                    {item.quantity}
-                  </Text>
-                  <Button
-                    variant="tertiary"
-                    size="sm"
-                    onPress={() => updateQuantity(item.product.id, item.uomName, 1)}
-                  >
-                    <Button.Label>+</Button.Label>
-                  </Button>
-                </View>
-                <Text className="text-foreground text-sm font-bold min-w-16 text-right">
-                  {currencySymbol}
-                  {lineTotal.toFixed(2)}
-                </Text>
-              </Surface>
-            </Animated.View>
-          );
-        }}
+        renderItem={renderCartItem}
       />
 
       <Separator />
@@ -132,22 +162,19 @@ export function PosCartPane({
         <View className="flex-row justify-between">
           <Text className="text-muted text-xs">Subtotal</Text>
           <Text className="text-foreground text-xs font-medium">
-            {currencySymbol}
-            {totals.subtotal.toFixed(2)}
+            {formatMoney(totals.subtotal, currencySymbol)}
           </Text>
         </View>
         <View className="flex-row justify-between">
           <Text className="text-muted text-xs">VAT ({vatRate}%)</Text>
           <Text className="text-foreground text-xs font-medium">
-            {currencySymbol}
-            {totals.vatAmount.toFixed(2)}
+            {formatMoney(totals.vatAmount, currencySymbol)}
           </Text>
         </View>
         <View className="flex-row justify-between pt-1">
           <Text className="text-foreground text-base font-bold">Total Due</Text>
           <Text className="text-accent text-lg font-bold">
-            {currencySymbol}
-            {totals.netTotal.toFixed(2)}
+            {formatMoney(totals.netTotal, currencySymbol)}
           </Text>
         </View>
       </View>
@@ -159,10 +186,7 @@ export function PosCartPane({
         isDisabled={activeLines.length === 0}
         onPress={onOpenPayment}
       >
-        <Button.Label>
-          Charge {currencySymbol}
-          {totals.netTotal.toFixed(2)}
-        </Button.Label>
+        <Button.Label>Charge {formatMoney(totals.netTotal, currencySymbol)}</Button.Label>
       </Button>
     </Card>
   );

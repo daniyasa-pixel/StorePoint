@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { Button, Card, Chip, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
+import { Alert, Button, Card, Chip, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { PurchaseOrder, Supplier } from '@/db/types';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
@@ -18,6 +18,10 @@ export function SuppliersAndPurchasesTab() {
   const [contact, setContact] = useState('');
   const [phone, setPhone] = useState('');
   const [terms, setTerms] = useState('Cash on Delivery');
+  const [isSaving, setIsSaving] = useState(false);
+  const [receivingPoId, setReceivingPoId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const repos = await getRepositories();
@@ -34,33 +38,62 @@ export function SuppliersAndPurchasesTab() {
   }, [load]);
 
   const handleSaveSupplier = async () => {
-    if (!name.trim()) return;
-    const repos = await getRepositories();
-    await repos.purchasing.saveSupplier({
-      name: name.trim(),
-      contactPerson: contact.trim(),
-      phone: phone.trim(),
-      email: '',
-      address: '',
-      deliverySchedule: '',
-      paymentTerms: terms.trim() || 'Cash on Delivery',
-      notes: '',
-    });
-    setName('');
-    setContact('');
-    setPhone('');
-    setShowAddSupplier(false);
-    await load();
+    if (isSaving) return;
+    setDialogError(null);
+    if (!name.trim()) {
+      setDialogError('Supplier name is required.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const repos = await getRepositories();
+      await repos.purchasing.saveSupplier({
+        name: name.trim(),
+        contactPerson: contact.trim(),
+        phone: phone.trim(),
+        email: '',
+        address: '',
+        deliverySchedule: '',
+        paymentTerms: terms.trim() || 'Cash on Delivery',
+        notes: '',
+      });
+      setName('');
+      setContact('');
+      setPhone('');
+      setShowAddSupplier(false);
+      await load();
+    } catch (err) {
+      setDialogError(err instanceof Error ? err.message : 'Failed to save supplier.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleReceivePo = async (po: PurchaseOrder) => {
-    const repos = await getRepositories();
-    await repos.purchasing.receivePurchaseOrder(po.id, activeUser?.username ?? 'admin', true);
-    await load();
+    if (receivingPoId !== null) return;
+    setError(null);
+    setReceivingPoId(po.id);
+    try {
+      const repos = await getRepositories();
+      await repos.purchasing.receivePurchaseOrder(po.id, activeUser?.username ?? 'admin', true);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to receive purchase order.');
+    } finally {
+      setReceivingPoId(null);
+    }
   };
 
   return (
     <ScrollView contentContainerClassName="gap-4 pb-6">
+      {error ? (
+        <Alert status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>{error}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
       <Card className="p-4 gap-3">
         <View className="flex-row justify-between items-center">
           <Card.Title>Suppliers ({suppliers.length})</Card.Title>
@@ -108,8 +141,13 @@ export function SuppliersAndPurchasesTab() {
                   </Text>
                 </View>
                 {po.status === 'ORDERED' ? (
-                  <Button variant="primary" size="sm" onPress={() => void handleReceivePo(po)}>
-                    <Button.Label>Receive</Button.Label>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    isDisabled={receivingPoId !== null}
+                    onPress={() => void handleReceivePo(po)}
+                  >
+                    <Button.Label>{receivingPoId === po.id ? 'Receiving...' : 'Receive'}</Button.Label>
                   </Button>
                 ) : (
                   <Chip size="sm" variant="soft" color={po.status === 'RECEIVED' ? 'success' : 'danger'}>
@@ -128,6 +166,14 @@ export function SuppliersAndPurchasesTab() {
           <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
             <Dialog.Title>New Supplier</Dialog.Title>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
+              {dialogError ? (
+                <Alert status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Description>{dialogError}</Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              ) : null}
               <TextField isRequired>
                 <Label>Supplier Name</Label>
                 <Input value={name} onChangeText={setName} placeholder="e.g. Metro Beverage Distributors" />
@@ -147,11 +193,11 @@ export function SuppliersAndPurchasesTab() {
             </ScrollView>
             <Separator />
             <View className="flex-row justify-end gap-2">
-              <Button variant="secondary" onPress={() => setShowAddSupplier(false)}>
+              <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAddSupplier(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <Button variant="primary" onPress={() => void handleSaveSupplier()}>
-                <Button.Label>Save Supplier</Button.Label>
+              <Button variant="primary" isDisabled={isSaving} onPress={() => void handleSaveSupplier()}>
+                <Button.Label>{isSaving ? 'Saving...' : 'Save Supplier'}</Button.Label>
               </Button>
             </View>
           </Dialog.Content>

@@ -4,6 +4,7 @@ import Animated from 'react-native-reanimated';
 import { Alert, Button, Chip, Dialog, Input, Label, Separator, Spinner, TextField } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { CheckoutReceipt } from '@/db/repositories/checkoutRepository';
+import { formatMoney } from '@/domain/money';
 import {
   computeCheckoutTotals,
   type DiscountType,
@@ -68,7 +69,7 @@ export function PaymentCheckoutDialog({
   const handleConfirm = async () => {
     setError(null);
     if (paid < totals.netTotal) {
-      setError(`Tendered amount must be at least ${currencySymbol}${totals.netTotal.toFixed(2)}.`);
+      setError(`Tendered amount must be at least ${formatMoney(totals.netTotal, currencySymbol)}.`);
       return;
     }
 
@@ -105,9 +106,8 @@ export function PaymentCheckoutDialog({
         <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
           <Dialog.Title>Checkout Settlement</Dialog.Title>
           <Dialog.Description>
-            Net Total: {currencySymbol}
-            {totals.netTotal.toFixed(2)} (VAT {currencySymbol}
-            {totals.vatAmount.toFixed(2)})
+            Net Total: {formatMoney(totals.netTotal, currencySymbol)} (VAT{' '}
+            {formatMoney(totals.vatAmount, currencySymbol)})
           </Dialog.Description>
 
           <KeyboardAvoidingView
@@ -201,8 +201,7 @@ export function PaymentCheckoutDialog({
                     </Button>
                   </View>
                   <Text className="text-success text-sm font-bold">
-                    Change: {currencySymbol}
-                    {change.toFixed(2)}
+                    Change: {formatMoney(change, currencySymbol)}
                   </Text>
                 </View>
               ) : null}

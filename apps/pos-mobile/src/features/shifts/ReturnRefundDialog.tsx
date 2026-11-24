@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Alert, Button, Chip, Dialog, Separator, Spinner, Surface, Switch } from 'heroui-native';
@@ -31,19 +31,24 @@ export function ReturnRefundDialog({
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const loadRecent = useCallback(async () => {
-    const repos = await getRepositories();
-    setRecentTxs(await repos.checkout.getRecentTransactions(15));
-  }, []);
-
   useEffect(() => {
-    if (isOpen) {
-      void loadRecent();
-      setSelectedTx(null);
-      setTxItems([]);
-      setError(null);
-    }
-  }, [isOpen, loadRecent]);
+    if (!isOpen) return;
+    let active = true;
+    setSelectedTx(null);
+    setTxItems([]);
+    setError(null);
+    void getRepositories()
+      .then((repos) => repos.checkout.getRecentTransactions(15))
+      .then((txs) => {
+        if (active) setRecentTxs(txs);
+      })
+      .catch(() => {
+        // Ignore load errors if dialog unmounts or DB query fails
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
 
   const handleSelectTx = async (tx: Transaction) => {
     const repos = await getRepositories();

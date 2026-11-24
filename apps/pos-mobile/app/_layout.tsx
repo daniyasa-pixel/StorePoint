@@ -1,11 +1,11 @@
 import '../src/global.css';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { HeroUINativeProvider } from 'heroui-native';
+import { Alert, Button, HeroUINativeProvider } from 'heroui-native';
 import { DatabaseLoadingView } from '@/components/DatabaseLoadingView';
 import { getRepositories } from '@/db/repositories';
 import { useKioskDisplayController } from '@/hardware/useKioskDisplayController';
@@ -14,12 +14,15 @@ import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 
 export default function RootLayout() {
   const isDatabaseReady = useAppBootstrapStore((state) => state.isDatabaseReady);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   useKioskDisplayController();
 
   useEffect(() => {
     let active = true;
 
     (async () => {
+      setBootstrapError(null);
       try {
         const [repos, onboardingDone] = await Promise.all([
           getRepositories(),
@@ -35,11 +38,13 @@ export default function RootLayout() {
         if (config?.setupCompleted) {
           store.completeSetup(config.storeName, config.currencySymbol);
         }
+        store.setDatabaseReady(true);
       } catch (error) {
         console.error('StorePoint database bootstrap failed:', error);
-      } finally {
         if (active) {
-          useAppBootstrapStore.getState().setDatabaseReady(true);
+          setBootstrapError(
+            error instanceof Error ? error.message : 'Failed to initialize local database.',
+          );
         }
       }
     })();
@@ -47,7 +52,7 @@ export default function RootLayout() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [retryCount]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -80,7 +85,22 @@ export default function RootLayout() {
             </Stack>
             {!isDatabaseReady ? (
               <View style={StyleSheet.absoluteFill}>
-                <DatabaseLoadingView />
+                {bootstrapError ? (
+                  <View className="flex-1 bg-background items-center justify-center p-6 gap-4">
+                    <Alert status="danger" className="max-w-md w-full">
+                      <Alert.Indicator />
+                      <Alert.Content>
+                        <Alert.Title>Database Initialization Failed</Alert.Title>
+                        <Alert.Description>{bootstrapError}</Alert.Description>
+                      </Alert.Content>
+                    </Alert>
+                    <Button variant="primary" onPress={() => setRetryCount((c) => c + 1)}>
+                      <Button.Label>Retry</Button.Label>
+                    </Button>
+                  </View>
+                ) : (
+                  <DatabaseLoadingView />
+                )}
               </View>
             ) : null}
           </View>

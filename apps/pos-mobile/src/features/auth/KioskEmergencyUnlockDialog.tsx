@@ -3,8 +3,11 @@ import { ScrollView, View } from 'react-native';
 import { Button, Dialog, Spinner } from 'heroui-native';
 import { PinPadEntry } from '@/components/PinPadEntry';
 import { getRepositories } from '@/db/repositories';
+import { hydratePersistentLockout, sharedKioskLockout } from '@/security/persistentLockout';
 import { isValidPin, verifyPin } from '@/security/securityHelper';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
+
+const KIOSK_UNLOCK_LOCKOUT_KEY = 'kiosk_emergency_unlock';
 
 interface KioskEmergencyUnlockDialogProps {
   readonly isOpen: boolean;
@@ -32,16 +35,26 @@ export function KioskEmergencyUnlockDialog({
     }
     setIsVerifying(true);
     try {
+      await hydratePersistentLockout();
+      const lockMsg = sharedKioskLockout.lockoutMessage(KIOSK_UNLOCK_LOCKOUT_KEY);
+      if (lockMsg) {
+        setError(lockMsg);
+        setPin('');
+        return;
+      }
+
       const repos = await getRepositories();
       const users = await repos.users.getAllUsers();
       const matchedAdmin = users.find(
         (u) => u.role === 'ADMIN' && verifyPin(pin, u.pinHash).isMatch,
       );
       if (!matchedAdmin) {
-        setError('Invalid Admin PIN. Lockdown remains active.');
+        const failureMsg = sharedKioskLockout.onFailure(KIOSK_UNLOCK_LOCKOUT_KEY);
+        setError(failureMsg);
         setPin('');
         return;
       }
+      sharedKioskLockout.onSuccess(KIOSK_UNLOCK_LOCKOUT_KEY);
       useAppBootstrapStore.getState().setKioskModeActive(false);
       handleClose();
     } finally {

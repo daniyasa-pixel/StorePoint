@@ -1,7 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { Alert, Button, Chip, Dialog, Input, Label, Separator, Spinner, TextField } from 'heroui-native';
+import {
+  Alert,
+  Button,
+  Chip,
+  Dialog,
+  Input,
+  Label,
+  SearchField,
+  Separator,
+  Spinner,
+  TextField,
+  useToast,
+} from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Product } from '@/db/types';
 import { analyzeCostAndMargin, computeDerivedUnitCost } from '@/domain/productionBomCoordinator';
@@ -19,9 +31,11 @@ export function BulkProductionDialog({
   onOpenChange,
   onCompleted,
 }: BulkProductionDialogProps) {
+  const { toast } = useToast();
   const currency = useAppBootstrapStore((s) => s.currencySymbol);
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productQuery, setProductQuery] = useState('');
   const [rawId, setRawId] = useState<number | null>(null);
   const [targetId, setTargetId] = useState<number | null>(null);
   const [rawQty, setRawQty] = useState('1');
@@ -32,14 +46,31 @@ export function BulkProductionDialog({
 
   useEffect(() => {
     if (!isOpen) return;
+    let active = true;
+    setProductQuery('');
     void getRepositories()
       .then((r) => r.catalog.getProducts(false))
       .then((list) => {
+        if (!active) return;
         setProducts(list);
         if (list[0]) setRawId(list[0].id);
         if (list[1]) setTargetId(list[1].id);
+      })
+      .catch(() => {
+        // Ignore load errors if dialog unmounts or DB query fails
       });
+    return () => {
+      active = false;
+    };
   }, [isOpen]);
+
+  const filteredProducts = useMemo(() => {
+    const q = productQuery.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.barcode.toLowerCase().includes(q),
+    );
+  }, [products, productQuery]);
 
   const rawProd = products.find((p) => p.id === rawId) ?? null;
   const targetProd = products.find((p) => p.id === targetId) ?? null;
@@ -59,16 +90,40 @@ export function BulkProductionDialog({
       setError('Select distinct raw material and target retail products.');
       return;
     }
+    const parsedRawQty = Number(rawQty.trim());
+    const parsedProducedQty = Number(yieldQty.trim());
+    const parsedWastePct = scrapPct.trim() === '' ? 0 : Number(scrapPct.trim());
+
+    if (!rawQty.trim() || !Number.isFinite(parsedRawQty) || parsedRawQty <= 0) {
+      setError('Raw quantity used must be a valid number greater than 0.');
+      return;
+    }
+    if (!yieldQty.trim() || !Number.isFinite(parsedProducedQty) || parsedProducedQty <= 0) {
+      setError('Produced yield quantity must be a valid number greater than 0.');
+      return;
+    }
+    if (!Number.isFinite(parsedWastePct) || parsedWastePct < 0 || parsedWastePct >= 100) {
+      setError('Waste loss percentage must be at least 0 and less than 100.');
+      return;
+    }
+
     setIsRunning(true);
     try {
       const repos = await getRepositories();
       await repos.production.executeProductionRun({
         rawMaterialProductId: rawId,
         targetRetailProductId: targetId,
-        rawQtyUsed: Number.parseFloat(rawQty) || 0,
-        producedQty: Number.parseFloat(yieldQty) || 0,
-        wasteLossPercentage: Number.parseFloat(scrapPct) || 0,
+        rawQtyUsed: parsedRawQty,
+        producedQty: parsedProducedQty,
+        wasteLossPercentage: parsedWastePct,
         operatorUsername: activeUser?.username ?? 'admin',
+      });
+      toast.show({
+        label: 'Production run complete',
+        description: targetProd
+          ? `Produced ${parsedProducedQty} ${targetProd.baseUom} of ${targetProd.name}`
+          : `Produced ${parsedProducedQty} unit(s)`,
+        variant: 'success',
       });
       onCompleted?.();
       onOpenChange(false);
@@ -106,38 +161,62 @@ export function BulkProductionDialog({
                 </Animated.View>
               ) : null}
 
+              <SearchField value={productQuery} onChange={setProductQuery}>
+                <SearchField.Group>
+                  <SearchField.SearchIcon />
+                  <SearchField.Input placeholder="Filter products by name or barcode..." />
+                  <SearchField.ClearButton />
+                </SearchField.Group>
+              </SearchField>
+
               <View className="gap-1.5">
                 <Text className="text-foreground text-xs font-semibold">Raw Material</Text>
-                <View className="flex-row flex-wrap gap-1.5">
-                  {products.slice(0, 6).map((p) => (
-                    <Chip
-                      key={`raw-${p.id}`}
-                      size="sm"
-                      color={rawId === p.id ? 'accent' : 'default'}
-                      variant={rawId === p.id ? 'primary' : 'soft'}
-                      onPress={() => setRawId(p.id)}
-                    >
-                      <Chip.Label>{p.name} ({p.stockCount})</Chip.Label>
-                    </Chip>
-                  ))}
-                </View>
+                {filteredProducts.length === 0 ? (
+                  <Text className="text-muted text-xs">No matching products.</Text>
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerClassName="flex-row gap-1.5 py-0.5"
+                  >
+                    {filteredProducts.map((p) => (
+                      <Chip
+                        key={`raw-${p.id}`}
+                        size="sm"
+                        color={rawId === p.id ? 'accent' : 'default'}
+                        variant={rawId === p.id ? 'primary' : 'soft'}
+                        onPress={() => setRawId(p.id)}
+                      >
+                        <Chip.Label>{p.name} ({p.stockCount})</Chip.Label>
+                      </Chip>
+                    ))}
+                  </ScrollView>
+                )}
               </View>
 
               <View className="gap-1.5">
                 <Text className="text-foreground text-xs font-semibold">Target Retail Product</Text>
-                <View className="flex-row flex-wrap gap-1.5">
-                  {products.slice(0, 6).map((p) => (
-                    <Chip
-                      key={`target-${p.id}`}
-                      size="sm"
-                      color={targetId === p.id ? 'success' : 'default'}
-                      variant={targetId === p.id ? 'primary' : 'soft'}
-                      onPress={() => setTargetId(p.id)}
-                    >
-                      <Chip.Label>{p.name}</Chip.Label>
-                    </Chip>
-                  ))}
-                </View>
+                {filteredProducts.length === 0 ? (
+                  <Text className="text-muted text-xs">No matching products.</Text>
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerClassName="flex-row gap-1.5 py-0.5"
+                  >
+                    {filteredProducts.map((p) => (
+                      <Chip
+                        key={`target-${p.id}`}
+                        size="sm"
+                        color={targetId === p.id ? 'success' : 'default'}
+                        variant={targetId === p.id ? 'primary' : 'soft'}
+                        onPress={() => setTargetId(p.id)}
+                      >
+                        <Chip.Label>{p.name}</Chip.Label>
+                      </Chip>
+                    ))}
+                  </ScrollView>
+                )}
               </View>
 
               <View className="flex-row gap-2">

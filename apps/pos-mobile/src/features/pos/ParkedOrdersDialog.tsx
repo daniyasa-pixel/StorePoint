@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
-import { Button, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
+import { Alert as RNAlert, KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { Alert, Button, Dialog, Input, Label, Separator, Surface, TextField, useToast } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { ParkedTransaction, ParkedTransactionItem, Product } from '@/db/types';
 import { usePosCartStore } from '@/store/posCartStore';
@@ -16,11 +16,14 @@ export function ParkedOrdersDialog({
   onOpenChange,
   products,
 }: ParkedOrdersDialogProps) {
+  const { toast } = useToast();
   const lines = usePosCartStore((s) => s.lines);
   const clearCart = usePosCartStore((s) => s.clearCart);
   const addProduct = usePosCartStore((s) => s.addProduct);
 
   const [note, setNote] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [parked, setParked] = useState<
     Array<{ readonly header: ParkedTransaction; readonly items: readonly ParkedTransactionItem[] }>
   >([]);
@@ -31,34 +34,91 @@ export function ParkedOrdersDialog({
   }, []);
 
   useEffect(() => {
-    if (isOpen) {
-      void loadParked();
-    }
-  }, [isOpen, loadParked]);
+    if (!isOpen) return;
+    let active = true;
+    setError(null);
+    void getRepositories()
+      .then((repos) => repos.checkout.getParkedTransactions())
+      .then((list) => {
+        if (active) setParked(list);
+      })
+      .catch(() => {
+        // Ignore load errors if dialog unmounts or DB query fails
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
 
   const handleParkCurrent = async () => {
-    if (lines.length === 0) return;
-    const repos = await getRepositories();
-    await repos.checkout.parkCart(note || 'Held Order', lines);
-    clearCart();
-    setNote('');
-    await loadParked();
+    if (lines.length === 0 || isBusy) return;
+    setError(null);
+    setIsBusy(true);
+    try {
+      const repos = await getRepositories();
+      const label = note.trim() || 'Held Order';
+      await repos.checkout.parkCart(label, lines);
+      clearCart();
+      setNote('');
+      await loadParked();
+      toast.show({
+        label: 'Order parked',
+        description: label,
+        variant: 'success',
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to park current order.');
+    } finally {
+      setIsBusy(false);
+    }
   };
 
-  const handleResume = async (
+  const executeResume = async (
     entry: { readonly header: ParkedTransaction; readonly items: readonly ParkedTransactionItem[] },
   ) => {
-    const byId = new Map(products.map((p) => [p.id, p]));
-    clearCart();
-    for (const item of entry.items) {
-      const prod = byId.get(item.productId);
-      if (prod) {
-        addProduct(prod, { name: prod.baseUom || 'pc', multiplier: 1, price: item.price }, item.quantity);
+    if (isBusy) return;
+    setError(null);
+    setIsBusy(true);
+    try {
+      const repos = await getRepositories();
+      await repos.checkout.deleteParkedTransaction(entry.header.id);
+      const byId = new Map(products.map((p) => [p.id, p]));
+      clearCart();
+      for (const item of entry.items) {
+        const prod = byId.get(item.productId);
+        if (prod) {
+          addProduct(prod, { name: prod.baseUom || 'pc', multiplier: 1, price: item.price }, item.quantity);
+        }
       }
+      toast.show({
+        label: 'Order resumed',
+        description: entry.header.note,
+        variant: 'accent',
+      });
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resume parked order.');
+    } finally {
+      setIsBusy(false);
     }
-    const repos = await getRepositories();
-    await repos.checkout.deleteParkedTransaction(entry.header.id);
-    onOpenChange(false);
+  };
+
+  const handleResume = (
+    entry: { readonly header: ParkedTransaction; readonly items: readonly ParkedTransactionItem[] },
+  ) => {
+    if (isBusy) return;
+    if (lines.length > 0) {
+      RNAlert.alert(
+        'Resume Parked Order',
+        'Resuming this parked order will replace the items currently in your cart. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Resume', style: 'destructive', onPress: () => void executeResume(entry) },
+        ],
+      );
+      return;
+    }
+    void executeResume(entry);
   };
 
   return (
@@ -77,13 +137,21 @@ export function ParkedOrdersDialog({
               showsVerticalScrollIndicator={false}
               contentContainerClassName="gap-3 pb-1"
             >
+              {error ? (
+                <Alert status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Description>{error}</Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              ) : null}
               {lines.length > 0 ? (
                 <View className="gap-2">
                   <TextField>
                     <Label>Hold Note</Label>
                     <Input value={note} onChangeText={setNote} placeholder="e.g. Table 3 / Customer getting cash" />
                   </TextField>
-                  <Button variant="primary" onPress={handleParkCurrent}>
+                  <Button variant="primary" isDisabled={isBusy} onPress={() => void handleParkCurrent()}>
                     <Button.Label>Hold Current Cart ({lines.length} items)</Button.Label>
                   </Button>
                 </View>
@@ -107,7 +175,7 @@ export function ParkedOrdersDialog({
                         </Text>
                         <Text className="text-muted text-xs">{entry.items.length} line item(s)</Text>
                       </View>
-                      <Button variant="secondary" size="sm" onPress={() => handleResume(entry)}>
+                      <Button variant="secondary" size="sm" isDisabled={isBusy} onPress={() => void handleResume(entry)}>
                         <Button.Label>Resume</Button.Label>
                       </Button>
                     </Surface>
@@ -119,7 +187,7 @@ export function ParkedOrdersDialog({
 
           <Separator />
 
-          <Button variant="ghost" onPress={() => onOpenChange(false)}>
+          <Button variant="ghost" isDisabled={isBusy} onPress={() => onOpenChange(false)}>
             <Button.Label>Close</Button.Label>
           </Button>
         </Dialog.Content>

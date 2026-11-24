@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { Button, Card, Chip, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
+import { Alert, Button, Card, Chip, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { PaymentSchedule } from '@/db/types';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
@@ -14,6 +14,10 @@ export function AdminCalendarTab() {
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('2026-12-01');
+  const [isSaving, setIsSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const repos = await getRepositories();
@@ -25,27 +29,58 @@ export function AdminCalendarTab() {
   }, [load]);
 
   const handleSave = async () => {
-    if (!title.trim()) return;
-    const repos = await getRepositories();
-    await repos.schedules.save({
-      title: title.trim(),
-      amount: Number.parseFloat(amount) || 0,
-      dueDate: dueDate.trim(),
-      category: 'Supplier',
-      priority: 'High',
-      isPaid: false,
-      paymentMethod: 'CASH',
-    });
-    setTitle('');
-    setAmount('');
-    setShowAdd(false);
-    await load();
+    if (isSaving) return;
+    setDialogError(null);
+    if (!title.trim()) {
+      setDialogError('Title is required.');
+      return;
+    }
+    const parsedAmount = Number(amount.trim());
+    if (!amount.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setDialogError('Amount must be a valid number greater than 0.');
+      return;
+    }
+    if (!dueDate.trim()) {
+      setDialogError('Due date is required.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const repos = await getRepositories();
+      await repos.schedules.save({
+        title: title.trim(),
+        amount: parsedAmount,
+        dueDate: dueDate.trim(),
+        category: 'Supplier',
+        priority: 'High',
+        isPaid: false,
+        paymentMethod: 'CASH',
+      });
+      setTitle('');
+      setAmount('');
+      setShowAdd(false);
+      await load();
+    } catch (err) {
+      setDialogError(err instanceof Error ? err.message : 'Failed to save scheduled payment.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const togglePaid = async (item: PaymentSchedule) => {
-    const repos = await getRepositories();
-    await repos.schedules.setPaid(item.id, !item.isPaid);
-    await load();
+    if (togglingId !== null) return;
+    setError(null);
+    setTogglingId(item.id);
+    try {
+      const repos = await getRepositories();
+      await repos.schedules.setPaid(item.id, !item.isPaid);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update payment status.');
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   return (
@@ -56,6 +91,15 @@ export function AdminCalendarTab() {
           <Button.Label>+ Schedule Bill</Button.Label>
         </Button>
       </View>
+
+      {error ? (
+        <Alert status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>{error}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
 
       <FlatList
         data={schedules}
@@ -81,9 +125,9 @@ export function AdminCalendarTab() {
                 size="sm"
                 variant="soft"
                 color={item.isPaid ? 'success' : 'warning'}
-                onPress={() => void togglePaid(item)}
+                onPress={togglingId === null ? () => void togglePaid(item) : undefined}
               >
-                <Chip.Label>{item.isPaid ? 'Paid' : 'Mark Paid'}</Chip.Label>
+                <Chip.Label>{togglingId === item.id ? '...' : item.isPaid ? 'Paid' : 'Mark Paid'}</Chip.Label>
               </Chip>
             </Surface>
           </Animated.View>
@@ -96,6 +140,14 @@ export function AdminCalendarTab() {
           <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
             <Dialog.Title>Schedule Payment</Dialog.Title>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
+              {dialogError ? (
+                <Alert status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Description>{dialogError}</Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              ) : null}
               <TextField isRequired>
                 <Label>Title</Label>
                 <Input value={title} onChangeText={setTitle} placeholder="e.g. Electric Bill / Rent" />
@@ -111,11 +163,11 @@ export function AdminCalendarTab() {
             </ScrollView>
             <Separator />
             <View className="flex-row justify-end gap-2">
-              <Button variant="secondary" onPress={() => setShowAdd(false)}>
+              <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <Button variant="primary" onPress={() => void handleSave()}>
-                <Button.Label>Save</Button.Label>
+              <Button variant="primary" isDisabled={isSaving} onPress={() => void handleSave()}>
+                <Button.Label>{isSaving ? 'Saving...' : 'Save'}</Button.Label>
               </Button>
             </View>
           </Dialog.Content>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getRepositories } from '@/db/repositories';
 import type { Category, Product, ProductVariant, UomOption } from '@/db/types';
 import { usePosCartStore } from '@/store/posCartStore';
@@ -49,6 +49,7 @@ export function usePosCatalog() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedQuery(searchQuery.trim().toLowerCase()), 140);
@@ -56,6 +57,7 @@ export function usePosCatalog() {
   }, [searchQuery]);
 
   const refreshCatalog = useCallback(async () => {
+    const reqId = ++requestIdRef.current;
     setIsLoading(true);
     try {
       const repos = await getRepositories();
@@ -63,16 +65,22 @@ export function usePosCatalog() {
         repos.catalog.getCategories(false),
         repos.catalog.getProducts(false),
       ]);
+      if (reqId !== requestIdRef.current) return;
       setCategories(cats);
       setProducts(prods);
       await usePosCartStore.getState().restoreFromDraft(prods);
     } finally {
-      setIsLoading(false);
+      if (reqId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void refreshCatalog();
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, [refreshCatalog]);
 
   const filteredProducts = useMemo(() => {

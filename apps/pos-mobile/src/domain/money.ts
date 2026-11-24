@@ -21,6 +21,8 @@ export const WALLET_ENTRY_TYPES = {
 
 export type WalletEntryType = (typeof WALLET_ENTRY_TYPES)[keyof typeof WALLET_ENTRY_TYPES];
 
+export const DEFAULT_CURRENCY_SYMBOL = '₱';
+
 /**
  * Half-up rounding to 2 decimal places, resilient to IEEE-754 drift.
  */
@@ -31,6 +33,13 @@ export function roundMoney(amount: number): number {
   const sign = amount < 0 ? -1 : 1;
   const scaled = Math.floor(Math.abs(amount) * 100 + 0.5 + 1e-9);
   return (sign * scaled) / 100;
+}
+
+/**
+ * Formats a numeric monetary amount with a currency symbol and 2 decimal places.
+ */
+export function formatMoney(amount: number, currencySymbol = DEFAULT_CURRENCY_SYMBOL): string {
+  return `${currencySymbol}${roundMoney(amount).toFixed(2)}`;
 }
 
 /**

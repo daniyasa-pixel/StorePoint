@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Button, Card, Chip, Input, Label, Spinner, TextField } from 'heroui-native';
+import { Button, Card, Chip, Input, Label, Spinner, TextField, useToast } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
 import { PinPadEntry } from '@/components/PinPadEntry';
 import { getRepositories } from '@/db/repositories';
@@ -14,6 +14,7 @@ type ResetStep = 1 | 2 | 3;
 
 export default function PinResetRoute() {
   const router = useRouter();
+  const { toast } = useToast();
   const [step, setStep] = useState<ResetStep>(1);
   const [username, setUsername] = useState('admin');
   const [currentPin, setCurrentPin] = useState('');
@@ -56,6 +57,11 @@ export default function PinResetRoute() {
       }
 
       await repos.users.updatePinHash(username.trim(), hashPin(newPin), true);
+      toast.show({
+        label: 'PIN updated',
+        description: 'Your 4-digit PIN has been reset.',
+        variant: 'success',
+      });
       router.back();
     } finally {
       setIsSubmitting(false);

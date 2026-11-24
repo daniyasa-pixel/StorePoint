@@ -1,11 +1,9 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
-import Animated from 'react-native-reanimated';
 import { Button, Card, Chip, PressableFeedback, SearchField } from 'heroui-native';
 import type { Category, Product } from '@/db/types';
 import { resolveScanSearchCopy } from '@/layout/adaptiveLayout';
 import { useWindowLayout } from '@/layout/useWindowLayout';
-import { staggerFadeUp } from '@/theme/motion';
 
 interface PosCatalogPaneProps {
   readonly categories: readonly Category[];
@@ -19,7 +17,9 @@ interface PosCatalogPaneProps {
   readonly onOpenScanner: () => void;
 }
 
-export function PosCatalogPane({
+const catalogKeyExtractor = (item: Product) => String(item.id);
+
+export const PosCatalogPane = React.memo(function PosCatalogPane({
   categories,
   products,
   selectedCategoryId,
@@ -33,6 +33,51 @@ export function PosCatalogPane({
   const { width, isExpanded } = useWindowLayout();
   const searchCopy = resolveScanSearchCopy(width, false);
   const numColumns = isExpanded ? 3 : 2;
+
+  const renderProduct = useCallback(
+    ({ item }: { item: Product }) => {
+      const lowStock = item.trackInventory && item.stockCount <= 5;
+      const outOfStock = item.trackInventory && item.stockCount <= 0;
+      return (
+        <View className="flex-1">
+          <PressableFeedback
+            className="flex-1"
+            isDisabled={outOfStock}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.name}, ${currencySymbol}${item.price.toFixed(2)}, ${
+              item.trackInventory ? `${item.stockCount} ${item.baseUom} in stock` : 'Service'
+            }`}
+            onPress={() => onSelectProduct(item)}
+          >
+            <Card className="flex-1 p-3 gap-2">
+              <View className="flex-row items-start justify-between gap-2">
+                <Text
+                  className="text-foreground text-sm font-semibold flex-1"
+                  numberOfLines={2}
+                >
+                  {item.name}
+                </Text>
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  color={outOfStock ? 'danger' : lowStock ? 'warning' : 'success'}
+                >
+                  <Chip.Label>
+                    {item.trackInventory ? `${item.stockCount} ${item.baseUom}` : 'Service'}
+                  </Chip.Label>
+                </Chip>
+              </View>
+              <Text className="text-accent text-base font-bold">
+                {currencySymbol}
+                {item.price.toFixed(2)}
+              </Text>
+            </Card>
+          </PressableFeedback>
+        </View>
+      );
+    },
+    [currencySymbol, onSelectProduct],
+  );
 
   return (
     <View className="flex-1 gap-3">
@@ -78,7 +123,11 @@ export function PosCatalogPane({
         key={numColumns}
         data={products}
         numColumns={numColumns}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={catalogKeyExtractor}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        removeClippedSubviews
         columnWrapperClassName="gap-3"
         contentContainerClassName="gap-3 pb-6"
         ListEmptyComponent={
@@ -89,44 +138,8 @@ export function PosCatalogPane({
             </Card.Description>
           </Card>
         }
-        renderItem={({ item, index }) => {
-          const lowStock = item.trackInventory && item.stockCount <= 5;
-          const outOfStock = item.trackInventory && item.stockCount <= 0;
-          return (
-            <Animated.View entering={staggerFadeUp(index)} className="flex-1">
-              <PressableFeedback
-                className="flex-1"
-                isDisabled={outOfStock}
-                onPress={() => onSelectProduct(item)}
-              >
-                <Card className="flex-1 p-3 gap-2">
-                  <View className="flex-row items-start justify-between gap-2">
-                    <Text
-                      className="text-foreground text-sm font-semibold flex-1"
-                      numberOfLines={2}
-                    >
-                      {item.name}
-                    </Text>
-                    <Chip
-                      size="sm"
-                      variant="soft"
-                      color={outOfStock ? 'danger' : lowStock ? 'warning' : 'success'}
-                    >
-                      <Chip.Label>
-                        {item.trackInventory ? `${item.stockCount} ${item.baseUom}` : 'Service'}
-                      </Chip.Label>
-                    </Chip>
-                  </View>
-                  <Text className="text-accent text-base font-bold">
-                    {currencySymbol}
-                    {item.price.toFixed(2)}
-                  </Text>
-                </Card>
-              </PressableFeedback>
-            </Animated.View>
-          );
-        }}
+        renderItem={renderProduct}
       />
     </View>
   );
-}
+});

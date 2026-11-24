@@ -53,10 +53,14 @@ export function ShiftLifecycleDialog({
 
   const handleOpenShift = async () => {
     setError(null);
+    const floatVal = Number(startingFloat.trim());
+    if (!startingFloat.trim() || !Number.isFinite(floatVal) || floatVal < 0) {
+      setError('Starting cash float must be a valid non-negative number.');
+      return;
+    }
     setIsSaving(true);
     try {
       const repos = await getRepositories();
-      const floatVal = Number.parseFloat(startingFloat) || 0;
       const session = await repos.shifts.openShift(
         activeUser?.username ?? 'cashier',
         floatVal,

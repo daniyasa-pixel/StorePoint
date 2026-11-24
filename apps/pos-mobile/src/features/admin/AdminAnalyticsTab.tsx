@@ -15,6 +15,7 @@ export function AdminAnalyticsTab() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     void (async () => {
       try {
         const repos = await getRepositories();
@@ -23,13 +24,21 @@ export function AdminAnalyticsTab() {
           repos.catalog.getProducts(false),
           repos.storeConfig.getConfig(),
         ]);
+        if (!active) return;
         setTxs(recent);
         setProducts(allProds);
         setConfig(cfg);
+      } catch {
+        // Ignore load errors when analytics view fails to query local DB
       } finally {
-        setIsLoading(false);
+        if (active) {
+          setIsLoading(false);
+        }
       }
     })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   if (isLoading) {

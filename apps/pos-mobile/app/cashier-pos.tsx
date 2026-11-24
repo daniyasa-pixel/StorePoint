@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Alert as RNAlert, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Alert, Button, Chip, Tabs } from 'heroui-native';
+import { Alert, Button, Chip, Tabs, useToast } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
 import { APP_ROUTES } from '@/constants/routes';
 import { getRepositories } from '@/db/repositories';
@@ -29,6 +29,7 @@ import { enterFadeDown, exitFadeUp, layoutTransition } from '@/theme/motion';
 
 export default function CashierPosRoute() {
   const router = useRouter();
+  const { toast } = useToast();
   const { width } = useWindowLayout();
   const windowLayout = getWindowLayout(width);
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
@@ -36,7 +37,7 @@ export default function CashierPosRoute() {
   const currencySymbol = useAppBootstrapStore((s) => s.currencySymbol);
   const logout = useAppBootstrapStore((s) => s.logout);
 
-  const lines = usePosCartStore((s) => s.lines);
+  const lineCount = usePosCartStore((s) => s.lines.length);
   const addProduct = usePosCartStore((s) => s.addProduct);
   const restoredNoticeCount = usePosCartStore((s) => s.restoredNoticeCount);
   const acknowledgeRestoreNotice = usePosCartStore((s) => s.acknowledgeRestoreNotice);
@@ -57,6 +58,7 @@ export default function CashierPosRoute() {
   const [showDigital, setShowDigital] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<CheckoutReceipt | null>(null);
+  const [posError, setPosError] = useState<string | null>(null);
 
   useEffect(() => {
     void getRepositories()
@@ -65,19 +67,61 @@ export default function CashierPosRoute() {
   }, [activeUser?.username]);
 
   const handleSelectProduct = async (product: Product) => {
-    const repos = await getRepositories();
-    const variants = await repos.catalog.getVariantsForProduct(product.id);
-    const options = buildUomOptionsForProduct(product, variants);
-    if (options.length > 1) {
-      setVariantTarget({ product, options });
-    } else {
-      addProduct(product, options[0]);
+    setPosError(null);
+    try {
+      const repos = await getRepositories();
+      const variants = await repos.catalog.getVariantsForProduct(product.id);
+      const options = buildUomOptionsForProduct(product, variants);
+      if (options.length > 1) {
+        setVariantTarget({ product, options });
+      } else {
+        addProduct(product, options[0]);
+        toast.show({
+          label: `Added ${product.name}`,
+          variant: 'default',
+          duration: 1500,
+        });
+      }
+    } catch (err) {
+      setPosError(err instanceof Error ? err.message : `Failed to load options for ${product.name}.`);
     }
   };
 
-  const handleLogout = () => {
+  const handleBarcodeScanned = async (code: string) => {
+    setPosError(null);
+    try {
+      const repos = await getRepositories();
+      const found = await repos.catalog.findProductByBarcode(code);
+      if (found) {
+        await handleSelectProduct(found);
+      } else {
+        const message = `No product found for barcode "${code}".`;
+        setPosError(message);
+        toast.show({
+          label: 'Barcode not found',
+          description: message,
+          variant: 'warning',
+        });
+      }
+    } catch (err) {
+      setPosError(err instanceof Error ? err.message : 'Barcode lookup failed.');
+    }
+  };
+
+  const performLogout = () => {
     logout();
     router.replace(APP_ROUTES.LOGIN);
+  };
+
+  const handleLogout = () => {
+    if (lineCount > 0) {
+      RNAlert.alert('Logout', 'You have items in the cart. Logout anyway?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Logout', style: 'destructive', onPress: performLogout },
+      ]);
+      return;
+    }
+    performLogout();
   };
 
   const catalogPane = (
@@ -151,6 +195,24 @@ export default function CashierPosRoute() {
       </View>
 
       <View className="flex-1 p-4 gap-3">
+        {posError ? (
+          <Animated.View
+            entering={enterFadeDown}
+            exiting={exitFadeUp}
+            layout={layoutTransition}
+          >
+            <Alert status="danger">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Description>{posError}</Alert.Description>
+              </Alert.Content>
+              <Button variant="ghost" size="sm" onPress={() => setPosError(null)}>
+                <Button.Label>Dismiss</Button.Label>
+              </Button>
+            </Alert>
+          </Animated.View>
+        ) : null}
+
         {restoredNoticeCount > 0 ? (
           <Animated.View
             entering={enterFadeDown}
@@ -184,7 +246,7 @@ export default function CashierPosRoute() {
                 <Tabs.Label>Catalog</Tabs.Label>
               </Tabs.Trigger>
               <Tabs.Trigger value="cart" className="flex-1">
-                <Tabs.Label>Cart ({lines.length})</Tabs.Label>
+                <Tabs.Label>Cart ({lineCount})</Tabs.Label>
               </Tabs.Trigger>
             </Tabs.List>
             <Tabs.Content value="catalog" className="flex-1">
@@ -201,7 +263,14 @@ export default function CashierPosRoute() {
         product={variantTarget?.product ?? null}
         options={variantTarget?.options ?? []}
         currencySymbol={currencySymbol}
-        onSelect={(p, opt) => addProduct(p, opt)}
+        onSelect={(p, opt) => {
+          addProduct(p, opt);
+          toast.show({
+            label: `Added ${p.name} (${opt.name})`,
+            variant: 'default',
+            duration: 1500,
+          });
+        }}
         onClose={() => setVariantTarget(null)}
       />
 
@@ -263,13 +332,7 @@ export default function CashierPosRoute() {
         isOpen={showScanner}
         onOpenChange={setShowScanner}
         onBarcodeScanned={(code) => {
-          void getRepositories()
-            .then((r) => r.catalog.findProductByBarcode(code))
-            .then((found) => {
-              if (found) {
-                void handleSelectProduct(found);
-              }
-            });
+          void handleBarcodeScanned(code);
         }}
       />
     </SafeAreaView>
