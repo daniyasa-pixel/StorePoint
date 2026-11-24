@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
-import { Button, Card, Chip, PressableFeedback, SearchField } from 'heroui-native';
+import { Button, Card, Chip, SearchField } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
 import type { Category, Product } from '@/db/types';
 import { resolveScanSearchCopy } from '@/layout/adaptiveLayout';
 import { useWindowLayout } from '@/layout/useWindowLayout';
@@ -30,9 +31,8 @@ export const PosCatalogPane = React.memo(function PosCatalogPane({
   onSelectProduct,
   onOpenScanner,
 }: PosCatalogPaneProps) {
-  const { width, isExpanded } = useWindowLayout();
+  const { width, catalogColumns } = useWindowLayout();
   const searchCopy = resolveScanSearchCopy(width, false);
-  const numColumns = isExpanded ? 3 : 2;
 
   const renderProduct = useCallback(
     ({ item }: { item: Product }) => {
@@ -40,7 +40,8 @@ export const PosCatalogPane = React.memo(function PosCatalogPane({
       const outOfStock = item.trackInventory && item.stockCount <= 0;
       return (
         <View className="flex-1">
-          <PressableFeedback
+          <TactilePressable
+            feedbackVariant="stretch"
             className="flex-1"
             isDisabled={outOfStock}
             accessibilityRole="button"
@@ -72,7 +73,7 @@ export const PosCatalogPane = React.memo(function PosCatalogPane({
                 {item.price.toFixed(2)}
               </Text>
             </Card>
-          </PressableFeedback>
+          </TactilePressable>
         </View>
       );
     },
@@ -100,29 +101,39 @@ export const PosCatalogPane = React.memo(function PosCatalogPane({
         className="shrink-0 grow-0"
         contentContainerClassName="flex-row gap-2 py-1"
       >
-        <Chip
-          color={selectedCategoryId === null ? 'accent' : 'default'}
-          variant={selectedCategoryId === null ? 'primary' : 'soft'}
+        <TactilePressable
+          feedbackVariant="spring"
+          accessibilityLabel="All categories"
           onPress={() => onSelectCategory(null)}
         >
-          <Chip.Label>All</Chip.Label>
-        </Chip>
-        {categories.map((cat) => (
           <Chip
+            color={selectedCategoryId === null ? 'accent' : 'default'}
+            variant={selectedCategoryId === null ? 'primary' : 'soft'}
+          >
+            <Chip.Label>All</Chip.Label>
+          </Chip>
+        </TactilePressable>
+        {categories.map((cat) => (
+          <TactilePressable
             key={cat.id}
-            color={selectedCategoryId === cat.id ? 'accent' : 'default'}
-            variant={selectedCategoryId === cat.id ? 'primary' : 'soft'}
+            feedbackVariant="spring"
+            accessibilityLabel={cat.name}
             onPress={() => onSelectCategory(cat.id)}
           >
-            <Chip.Label>{cat.name}</Chip.Label>
-          </Chip>
+            <Chip
+              color={selectedCategoryId === cat.id ? 'accent' : 'default'}
+              variant={selectedCategoryId === cat.id ? 'primary' : 'soft'}
+            >
+              <Chip.Label>{cat.name}</Chip.Label>
+            </Chip>
+          </TactilePressable>
         ))}
       </ScrollView>
 
       <FlatList
-        key={numColumns}
+        key={catalogColumns}
         data={products}
-        numColumns={numColumns}
+        numColumns={catalogColumns}
         keyExtractor={catalogKeyExtractor}
         initialNumToRender={12}
         maxToRenderPerBatch={10}

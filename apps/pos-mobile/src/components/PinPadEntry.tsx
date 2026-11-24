@@ -1,13 +1,14 @@
 import React, { useEffect } from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import { Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { Button, Surface } from 'heroui-native';
-import { isCompactLayout } from '@/layout/adaptiveLayout';
+import { Surface } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { PIN_LENGTH } from '@/security/securityHelper';
 import { enterFade, enterPop, exitFade, layoutTransition } from '@/theme/motion';
 
@@ -40,8 +41,9 @@ export function PinPadEntry({
   errorMessage,
   helperText,
 }: PinPadEntryProps) {
-  const { width } = useWindowDimensions();
-  const isCompact = isCompactLayout(width);
+  const { isCompact, isShortHeight, sizeClass } = useWindowLayout();
+  const isDense = isShortHeight || sizeClass === 'SmallPhone';
+  const keyHeightClass = isDense ? 'h-11' : isCompact ? 'h-13' : 'h-14';
   const shakeX = useSharedValue(0);
 
   useEffect(() => {
@@ -124,25 +126,32 @@ export function PinPadEntry({
         <Text className="text-muted text-xs text-center">{helperText}</Text>
       ) : null}
 
-      <View className="gap-2.5">
+      <View className={isDense ? 'gap-2' : 'gap-2.5'}>
         {KEYPAD_ROWS.map((row, rowIdx) => (
-          <View key={rowIdx} className="flex-row gap-2.5">
+          <View key={rowIdx} className={isDense ? 'flex-row gap-2' : 'flex-row gap-2.5'}>
             {row.map((key) => {
               const isAction = key === 'CLR' || key === '⌫';
               const keyLabel =
                 key === 'CLR' ? 'Clear PIN' : key === '⌫' ? 'Backspace' : `Digit ${key}`;
               return (
-                <Button
+                <TactilePressable
                   key={key}
-                  variant={isAction ? 'tertiary' : 'secondary'}
-                  size="lg"
+                  feedbackVariant="stretch"
                   isDisabled={isDisabled}
                   accessibilityLabel={keyLabel}
-                  className={`flex-1 ${isCompact ? 'h-13' : 'h-14'}`}
+                  accessibilityRole="button"
+                  className="flex-1"
                   onPress={() => handleKeyPress(key)}
                 >
-                  <Button.Label className="text-lg font-semibold">{key}</Button.Label>
-                </Button>
+                  <Surface
+                    variant={isAction ? 'tertiary' : 'secondary'}
+                    className={`w-full ${keyHeightClass} rounded-xl items-center justify-center border border-border/60 ${
+                      isDisabled ? 'opacity-50' : ''
+                    }`}
+                  >
+                    <Text className="text-foreground text-lg font-semibold">{key}</Text>
+                  </Surface>
+                </TactilePressable>
               );
             })}
           </View>

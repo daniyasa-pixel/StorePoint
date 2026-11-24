@@ -5,17 +5,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Button, Tabs } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
+import { TactilePressable } from '@/components/TactilePressable';
 import { APP_ROUTES } from '@/constants/routes';
 import { InventoryPriceCheckerTab } from '@/features/inventory/InventoryPriceCheckerTab';
 import { InventoryQuickShareTab } from '@/features/inventory/InventoryQuickShareTab';
 import { InventoryStocktakeTab } from '@/features/inventory/InventoryStocktakeTab';
 import { BulkProductionDialog } from '@/features/production/BulkProductionDialog';
 import { exportAndShareBackupSnapshot } from '@/backup/backupEngine';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { enterFade } from '@/theme/motion';
 
 export default function InventoryPortalRoute() {
   const router = useRouter();
+  const { containerPaddingClass } = useWindowLayout();
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const storeName = useAppBootstrapStore((s) => s.storeName);
   const logout = useAppBootstrapStore((s) => s.logout);
@@ -37,17 +40,25 @@ export default function InventoryPortalRoute() {
         onBack={isAdmin ? () => router.back() : undefined}
         rightActions={
           <>
-            <Button variant="secondary" size="sm" onPress={() => setShowProduction(true)}>
-              <Button.Label>Repack BOM</Button.Label>
-            </Button>
-            <Button variant="danger-soft" size="sm" onPress={handleLogout}>
-              <Button.Label>Logout</Button.Label>
-            </Button>
+            <TactilePressable feedbackVariant="spring" onPress={() => setShowProduction(true)}>
+              <View pointerEvents="none">
+                <Button variant="secondary" size="sm">
+                  <Button.Label>Repack BOM</Button.Label>
+                </Button>
+              </View>
+            </TactilePressable>
+            <TactilePressable feedbackVariant="spring" onPress={handleLogout}>
+              <View pointerEvents="none">
+                <Button variant="danger-soft" size="sm">
+                  <Button.Label>Logout</Button.Label>
+                </Button>
+              </View>
+            </TactilePressable>
           </>
         }
       />
 
-      <View className="flex-1 p-4">
+      <View className={`flex-1 ${containerPaddingClass}`}>
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1 gap-3">
           <Tabs.List className="w-full">
             <Tabs.Indicator />

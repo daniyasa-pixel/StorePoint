@@ -2,11 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Alert, Button, Card, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
 import type { Category } from '@/db/types';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function AdminCategoriesTab() {
+  const { containerPaddingClass, dialogMaxWidthClass } = useWindowLayout();
   const [categories, setCategories] = useState<Category[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
@@ -49,12 +52,16 @@ export function AdminCategoriesTab() {
   };
 
   return (
-    <View className="flex-1 gap-3">
+    <View className={`flex-1 gap-3 ${containerPaddingClass}`}>
       <View className="flex-row justify-between items-center">
         <Text className="text-foreground text-base font-bold">Categories ({categories.length})</Text>
-        <Button variant="primary" size="sm" onPress={() => setShowAdd(true)}>
-          <Button.Label>+ Category</Button.Label>
-        </Button>
+        <TactilePressable feedbackVariant="stretch" onPress={() => setShowAdd(true)}>
+          <View pointerEvents="none">
+            <Button variant="primary" size="sm">
+              <Button.Label>+ Category</Button.Label>
+            </Button>
+          </View>
+        </TactilePressable>
       </View>
 
       <FlatList
@@ -81,7 +88,7 @@ export function AdminCategoriesTab() {
       <Dialog isOpen={showAdd} onOpenChange={setShowAdd}>
         <Dialog.Portal>
           <Dialog.Overlay />
-          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+          <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
             <Dialog.Title>New Category</Dialog.Title>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
               {error ? (
@@ -102,9 +109,17 @@ export function AdminCategoriesTab() {
               <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <Button variant="primary" isDisabled={isSaving} onPress={() => void handleSave()}>
-                <Button.Label>{isSaving ? 'Creating...' : 'Create'}</Button.Label>
-              </Button>
+              <TactilePressable
+                feedbackVariant="stretch"
+                isDisabled={isSaving}
+                onPress={() => void handleSave()}
+              >
+                <View pointerEvents="none">
+                  <Button variant="primary" isDisabled={isSaving}>
+                    <Button.Label>{isSaving ? 'Creating...' : 'Create'}</Button.Label>
+                  </Button>
+                </View>
+              </TactilePressable>
             </View>
           </Dialog.Content>
         </Dialog.Portal>

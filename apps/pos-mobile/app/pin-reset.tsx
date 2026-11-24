@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Button, Card, Chip, Input, Label, Spinner, TextField, useToast } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
 import { PinPadEntry } from '@/components/PinPadEntry';
+import { TactilePressable } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { hashPin, isValidPin, isWeakPin, pinPolicyHint, verifyPin } from '@/security/securityHelper';
 import { enterSlideRight, exitSlideLeft } from '@/theme/motion';
 
@@ -15,6 +17,7 @@ type ResetStep = 1 | 2 | 3;
 export default function PinResetRoute() {
   const router = useRouter();
   const { toast } = useToast();
+  const { containerPaddingClass, dialogMaxWidthClass } = useWindowLayout();
   const [step, setStep] = useState<ResetStep>(1);
   const [username, setUsername] = useState('admin');
   const [currentPin, setCurrentPin] = useState('');
@@ -89,10 +92,10 @@ export default function PinResetRoute() {
         className="flex-1"
       >
         <ScrollView
-          contentContainerClassName="flex-grow justify-center p-5"
+          contentContainerClassName={`flex-grow justify-center ${containerPaddingClass}`}
           keyboardShouldPersistTaps="handled"
         >
-          <Card className="w-full max-w-md self-center">
+          <Card className={`w-full ${dialogMaxWidthClass} self-center`}>
             <Card.Header>
               <Card.Title>
                 {step === 1
@@ -142,15 +145,23 @@ export default function PinResetRoute() {
                   <Button.Label>Back</Button.Label>
                 </Button>
               ) : null}
-              <Button
-                variant="primary"
+              <TactilePressable
+                feedbackVariant="stretch"
                 className="flex-1"
                 isDisabled={isSubmitting || activePin.length < 4}
                 onPress={handleAdvance}
               >
-                {isSubmitting ? <Spinner size="sm" /> : null}
-                <Button.Label>{step === 3 ? 'Save New PIN' : 'Continue'}</Button.Label>
-              </Button>
+                <View pointerEvents="none">
+                  <Button
+                    variant="primary"
+                    className="w-full"
+                    isDisabled={isSubmitting || activePin.length < 4}
+                  >
+                    {isSubmitting ? <Spinner size="sm" /> : null}
+                    <Button.Label>{step === 3 ? 'Save New PIN' : 'Continue'}</Button.Label>
+                  </Button>
+                </View>
+              </TactilePressable>
             </Card.Footer>
           </Card>
         </ScrollView>

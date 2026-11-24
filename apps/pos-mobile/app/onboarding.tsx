@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Button, Card, Chip, PressableFeedback } from 'heroui-native';
+import { Button, Card, Chip } from 'heroui-native';
 import { StorePointBrandBadge } from '@/components/StorePointBrandBadge';
+import { TactilePressable } from '@/components/TactilePressable';
 import { APP_ROUTES } from '@/constants/routes';
-import { getWindowLayout } from '@/layout/adaptiveLayout';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { sessionStateCache } from '@/storage/sessionStateCache';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { enterSlideRight, exitSlideLeft, layoutTransition } from '@/theme/motion';
@@ -34,8 +35,7 @@ const SLIDES = [
 
 export default function OnboardingRoute() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const isExpanded = getWindowLayout(width) === 'Expanded';
+  const { containerPaddingClass, dialogMaxWidthClass, isShortHeight } = useWindowLayout();
   const [slideIndex, setSlideIndex] = useState(0);
   const current = SLIDES[slideIndex] ?? SLIDES[0];
 
@@ -47,10 +47,10 @@ export default function OnboardingRoute() {
 
   return (
     <SafeAreaView className="bg-background flex-1">
-      <ScrollView contentContainerClassName="flex-grow justify-center p-6">
-        <View className={`w-full ${isExpanded ? 'max-w-2xl' : 'max-w-lg'} self-center gap-6`}>
+      <ScrollView contentContainerClassName={`flex-grow justify-center ${containerPaddingClass}`}>
+        <View className={`w-full ${dialogMaxWidthClass} self-center ${isShortHeight ? 'gap-4' : 'gap-6'}`}>
           <View className="items-center gap-3">
-            <StorePointBrandBadge size="lg" />
+            <StorePointBrandBadge size={isShortHeight ? 'md' : 'lg'} />
             <Animated.View
               key={slideIndex}
               entering={enterSlideRight}
@@ -71,8 +71,9 @@ export default function OnboardingRoute() {
 
           <View className="flex-row justify-center gap-2">
             {SLIDES.map((_, idx) => (
-              <PressableFeedback
+              <TactilePressable
                 key={idx}
+                feedbackVariant="spring"
                 onPress={() => setSlideIndex(idx)}
                 accessibilityRole="button"
                 accessibilityLabel={`Go to slide ${idx + 1}`}
@@ -84,25 +85,36 @@ export default function OnboardingRoute() {
                     idx === slideIndex ? 'w-8 bg-accent' : 'w-2 bg-border'
                   }`}
                 />
-              </PressableFeedback>
+              </TactilePressable>
             ))}
           </View>
 
           <Card>
             <Card.Body className="gap-3">
               {slideIndex < SLIDES.length - 1 ? (
-                <Button
-                  variant="primary"
-                  size="lg"
+                <TactilePressable
+                  feedbackVariant="stretch"
                   className="w-full"
                   onPress={() => setSlideIndex((i) => i + 1)}
                 >
-                  <Button.Label>Next</Button.Label>
-                </Button>
+                  <View pointerEvents="none">
+                    <Button variant="primary" size="lg" className="w-full">
+                      <Button.Label>Next</Button.Label>
+                    </Button>
+                  </View>
+                </TactilePressable>
               ) : (
-                <Button variant="primary" size="lg" className="w-full" onPress={handleFinish}>
-                  <Button.Label>Start Store Setup</Button.Label>
-                </Button>
+                <TactilePressable
+                  feedbackVariant="stretch"
+                  className="w-full"
+                  onPress={handleFinish}
+                >
+                  <View pointerEvents="none">
+                    <Button variant="primary" size="lg" className="w-full">
+                      <Button.Label>Start Store Setup</Button.Label>
+                    </Button>
+                  </View>
+                </TactilePressable>
               )}
               <Button variant="ghost" size="sm" className="w-full" onPress={handleFinish}>
                 <Button.Label>Skip Intro</Button.Label>

@@ -14,6 +14,7 @@ import {
   useToast,
 } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
+import { TactilePressable } from '@/components/TactilePressable';
 import { APP_ROUTES } from '@/constants/routes';
 import { AdminAboutTab } from '@/features/admin/AdminAboutTab';
 import { AdminAnalyticsTab } from '@/features/admin/AdminAnalyticsTab';
@@ -62,7 +63,7 @@ const COMPACT_MORE_IDS: readonly AdminTabId[] = ['categories', 'calendar', 'secu
 export default function AdminDashboardRoute() {
   const router = useRouter();
   const { toast } = useToast();
-  const { isCompact, layout } = useWindowLayout();
+  const { isCompact, layout, containerPaddingClass } = useWindowLayout();
   const [activeTab, setActiveTab] = useState<AdminTabId>('products');
   const [showProduction, setShowProduction] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -178,7 +179,7 @@ export default function AdminDashboardRoute() {
         </Surface>
       ) : null}
 
-      <View className="flex-1 p-4 gap-3">
+      <View className={`flex-1 ${containerPaddingClass} gap-3`}>
         {exportError ? (
           <Alert status="danger">
             <Alert.Indicator />
@@ -203,25 +204,41 @@ export default function AdminDashboardRoute() {
               const tab = ADMIN_TABS.find((t) => t.id === id)!;
               const selected = activeTab === id;
               return (
-                <Button
+                <TactilePressable
                   key={id}
-                  variant={selected ? 'primary' : 'ghost'}
-                  size="sm"
+                  feedbackVariant="spring"
                   className="flex-1"
                   onPress={() => setActiveTab(id)}
+                  accessibilityLabel={tab.label}
                 >
-                  <Button.Label numberOfLines={1}>{tab.shortLabel}</Button.Label>
-                </Button>
+                  <View pointerEvents="none">
+                    <Button
+                      variant={selected ? 'primary' : 'ghost'}
+                      size="sm"
+                      className="w-full"
+                    >
+                      <Button.Label numberOfLines={1}>{tab.shortLabel}</Button.Label>
+                    </Button>
+                  </View>
+                </TactilePressable>
               );
             })}
-            <Button
-              variant={COMPACT_MORE_IDS.includes(activeTab) ? 'primary' : 'ghost'}
-              size="sm"
+            <TactilePressable
+              feedbackVariant="spring"
               className="flex-1"
               onPress={() => moreSheetRef.current?.present()}
+              accessibilityLabel="More admin sections"
             >
-              <Button.Label numberOfLines={1}>More</Button.Label>
-            </Button>
+              <View pointerEvents="none">
+                <Button
+                  variant={COMPACT_MORE_IDS.includes(activeTab) ? 'primary' : 'ghost'}
+                  size="sm"
+                  className="w-full"
+                >
+                  <Button.Label numberOfLines={1}>More</Button.Label>
+                </Button>
+              </View>
+            </TactilePressable>
           </View>
         </Surface>
       ) : null}

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Alert, Button, Chip, Tabs, useToast } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
+import { TactilePressable } from '@/components/TactilePressable';
 import { APP_ROUTES } from '@/constants/routes';
 import { getRepositories } from '@/db/repositories';
 import type { CheckoutReceipt } from '@/db/repositories/checkoutRepository';
@@ -21,7 +22,6 @@ import { DrawerCashInOutDialog } from '@/features/shifts/DrawerCashInOutDialog';
 import { ReturnRefundDialog } from '@/features/shifts/ReturnRefundDialog';
 import { ShiftLifecycleDialog } from '@/features/shifts/ShiftLifecycleDialog';
 import { BarcodeScannerModal } from '@/hardware/BarcodeScannerModal';
-import { getWindowLayout } from '@/layout/adaptiveLayout';
 import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { usePosCartStore } from '@/store/posCartStore';
@@ -30,8 +30,7 @@ import { enterFadeDown, exitFadeUp, layoutTransition } from '@/theme/motion';
 export default function CashierPosRoute() {
   const router = useRouter();
   const { toast } = useToast();
-  const { width } = useWindowLayout();
-  const windowLayout = getWindowLayout(width);
+  const { useSplitPane, catalogFlex, cartFlex, containerPaddingClass } = useWindowLayout();
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const storeName = useAppBootstrapStore((s) => s.storeName);
   const currencySymbol = useAppBootstrapStore((s) => s.currencySymbol);
@@ -174,27 +173,50 @@ export default function CashierPosRoute() {
 
       <View className="px-4 pt-2">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="flex-row gap-2">
-          <Chip
-            size="sm"
-            color={activeSession ? 'success' : 'warning'}
-            variant="soft"
+          <TactilePressable
+            feedbackVariant="stretch"
+            accessibilityLabel={activeSession ? 'Close Shift' : 'Open Shift'}
             onPress={() => setShowShift(true)}
           >
-            <Chip.Label>{activeSession ? 'Close Shift' : 'Open Shift'}</Chip.Label>
-          </Chip>
-          <Chip size="sm" color="default" variant="soft" onPress={() => setShowDrawer(true)}>
-            <Chip.Label>Cash In/Out</Chip.Label>
-          </Chip>
-          <Chip size="sm" color="default" variant="soft" onPress={() => setShowReturns(true)}>
-            <Chip.Label>Returns</Chip.Label>
-          </Chip>
-          <Chip size="sm" color="accent" variant="soft" onPress={() => setShowDigital(true)}>
-            <Chip.Label>Digital / Load</Chip.Label>
-          </Chip>
+            <Chip
+              size="sm"
+              color={activeSession ? 'success' : 'warning'}
+              variant="soft"
+            >
+              <Chip.Label>{activeSession ? 'Close Shift' : 'Open Shift'}</Chip.Label>
+            </Chip>
+          </TactilePressable>
+          <TactilePressable
+            feedbackVariant="stretch"
+            accessibilityLabel="Cash In/Out"
+            onPress={() => setShowDrawer(true)}
+          >
+            <Chip size="sm" color="default" variant="soft">
+              <Chip.Label>Cash In/Out</Chip.Label>
+            </Chip>
+          </TactilePressable>
+          <TactilePressable
+            feedbackVariant="stretch"
+            accessibilityLabel="Returns"
+            onPress={() => setShowReturns(true)}
+          >
+            <Chip size="sm" color="default" variant="soft">
+              <Chip.Label>Returns</Chip.Label>
+            </Chip>
+          </TactilePressable>
+          <TactilePressable
+            feedbackVariant="stretch"
+            accessibilityLabel="Digital / Load"
+            onPress={() => setShowDigital(true)}
+          >
+            <Chip size="sm" color="accent" variant="soft">
+              <Chip.Label>Digital / Load</Chip.Label>
+            </Chip>
+          </TactilePressable>
         </ScrollView>
       </View>
 
-      <View className="flex-1 p-4 gap-3">
+      <View className={`flex-1 ${containerPaddingClass} gap-3`}>
         {posError ? (
           <Animated.View
             entering={enterFadeDown}
@@ -231,12 +253,10 @@ export default function CashierPosRoute() {
           </Animated.View>
         ) : null}
 
-        {windowLayout !== 'Compact' ? (
+        {useSplitPane ? (
           <View className="flex-1 flex-row gap-4">
-            <View className={windowLayout === 'Expanded' ? 'flex-[1.5]' : 'flex-[1.2]'}>
-              {catalogPane}
-            </View>
-            <View className="flex-1">{cartPane}</View>
+            <View style={{ flex: catalogFlex }}>{catalogPane}</View>
+            <View style={{ flex: cartFlex }}>{cartPane}</View>
           </View>
         ) : (
           <Tabs value={portraitTab} onValueChange={setPortraitTab} className="flex-1 gap-3">

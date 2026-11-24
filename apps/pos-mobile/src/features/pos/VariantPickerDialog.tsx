@@ -1,7 +1,9 @@
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Button, Dialog, Separator } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
 import type { Product, UomOption } from '@/db/types';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 
 interface VariantPickerDialogProps {
   readonly product: Product | null;
@@ -18,11 +20,13 @@ export function VariantPickerDialog({
   onSelect,
   onClose,
 }: VariantPickerDialogProps) {
+  const { dialogMaxWidthClass } = useWindowLayout();
+
   return (
     <Dialog isOpen={product !== null} onOpenChange={(open) => (!open ? onClose() : undefined)}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+        <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
           <Dialog.Title>{product?.name ?? 'Select Unit'}</Dialog.Title>
           <Dialog.Description>Choose packaging unit / UOM multiplier:</Dialog.Description>
           <ScrollView
@@ -32,25 +36,30 @@ export function VariantPickerDialog({
           >
             {product
               ? options.map((opt) => (
-                  <Button
+                  <TactilePressable
                     key={`${opt.name}-${opt.multiplier}`}
-                    variant="secondary"
+                    feedbackVariant="stretch"
                     className="w-full"
+                    accessibilityLabel={`${opt.name} times ${opt.multiplier}, ${currencySymbol}${opt.price.toFixed(2)}`}
                     onPress={() => {
                       onSelect(product, opt);
                       onClose();
                     }}
                   >
-                    <View className="flex-1 flex-row items-center justify-between gap-2">
-                      <Text className="text-foreground text-sm font-medium" numberOfLines={1}>
-                        {opt.name} (×{opt.multiplier})
-                      </Text>
-                      <Text className="text-accent text-sm font-bold">
-                        {currencySymbol}
-                        {opt.price.toFixed(2)}
-                      </Text>
+                    <View pointerEvents="none">
+                      <Button variant="secondary" className="w-full">
+                        <View className="flex-1 flex-row items-center justify-between gap-2">
+                          <Text className="text-foreground text-sm font-medium" numberOfLines={1}>
+                            {opt.name} (×{opt.multiplier})
+                          </Text>
+                          <Text className="text-accent text-sm font-bold">
+                            {currencySymbol}
+                            {opt.price.toFixed(2)}
+                          </Text>
+                        </View>
+                      </Button>
                     </View>
-                  </Button>
+                  </TactilePressable>
                 ))
               : null}
           </ScrollView>

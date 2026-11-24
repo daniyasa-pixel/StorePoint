@@ -2,12 +2,15 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Alert, Button, Card, Chip, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
 import type { PaymentSchedule } from '@/db/types';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function AdminCalendarTab() {
+  const { containerPaddingClass, dialogMaxWidthClass } = useWindowLayout();
   const currency = useAppBootstrapStore((s) => s.currencySymbol);
   const [schedules, setSchedules] = useState<PaymentSchedule[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -84,12 +87,16 @@ export function AdminCalendarTab() {
   };
 
   return (
-    <View className="flex-1 gap-3">
+    <View className={`flex-1 gap-3 ${containerPaddingClass}`}>
       <View className="flex-row justify-between items-center">
         <Text className="text-foreground text-base font-bold">Payment Calendar</Text>
-        <Button variant="primary" size="sm" onPress={() => setShowAdd(true)}>
-          <Button.Label>+ Schedule Bill</Button.Label>
-        </Button>
+        <TactilePressable feedbackVariant="stretch" onPress={() => setShowAdd(true)}>
+          <View pointerEvents="none">
+            <Button variant="primary" size="sm">
+              <Button.Label>+ Schedule Bill</Button.Label>
+            </Button>
+          </View>
+        </TactilePressable>
       </View>
 
       {error ? (
@@ -121,14 +128,21 @@ export function AdminCalendarTab() {
                   {item.amount.toFixed(2)}
                 </Text>
               </View>
-              <Chip
-                size="sm"
-                variant="soft"
-                color={item.isPaid ? 'success' : 'warning'}
-                onPress={togglingId === null ? () => void togglePaid(item) : undefined}
+              <TactilePressable
+                feedbackVariant="spring"
+                isDisabled={togglingId !== null}
+                onPress={() => void togglePaid(item)}
               >
-                <Chip.Label>{togglingId === item.id ? '...' : item.isPaid ? 'Paid' : 'Mark Paid'}</Chip.Label>
-              </Chip>
+                <View pointerEvents="none">
+                  <Chip
+                    size="sm"
+                    variant="soft"
+                    color={item.isPaid ? 'success' : 'warning'}
+                  >
+                    <Chip.Label>{togglingId === item.id ? '...' : item.isPaid ? 'Paid' : 'Mark Paid'}</Chip.Label>
+                  </Chip>
+                </View>
+              </TactilePressable>
             </Surface>
           </Animated.View>
         )}
@@ -137,7 +151,7 @@ export function AdminCalendarTab() {
       <Dialog isOpen={showAdd} onOpenChange={setShowAdd}>
         <Dialog.Portal>
           <Dialog.Overlay />
-          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+          <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
             <Dialog.Title>Schedule Payment</Dialog.Title>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
               {dialogError ? (
@@ -166,9 +180,17 @@ export function AdminCalendarTab() {
               <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <Button variant="primary" isDisabled={isSaving} onPress={() => void handleSave()}>
-                <Button.Label>{isSaving ? 'Saving...' : 'Save'}</Button.Label>
-              </Button>
+              <TactilePressable
+                feedbackVariant="stretch"
+                isDisabled={isSaving}
+                onPress={() => void handleSave()}
+              >
+                <View pointerEvents="none">
+                  <Button variant="primary" isDisabled={isSaving}>
+                    <Button.Label>{isSaving ? 'Saving...' : 'Save'}</Button.Label>
+                  </Button>
+                </View>
+              </TactilePressable>
             </View>
           </Dialog.Content>
         </Dialog.Portal>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Alert, Button, Chip, Dialog, Input, Label, Separator, Spinner, TextField } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
 import type { CheckoutReceipt } from '@/db/repositories/checkoutRepository';
 import { formatMoney } from '@/domain/money';
@@ -9,6 +10,7 @@ import {
   computeCheckoutTotals,
   type DiscountType,
 } from '@/domain/posCheckoutCoordinator';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { sessionStateCache } from '@/storage/sessionStateCache';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { usePosCartStore } from '@/store/posCartStore';
@@ -32,6 +34,7 @@ export function PaymentCheckoutDialog({
   vatRate,
   onCompleted,
 }: PaymentCheckoutDialogProps) {
+  const { dialogMaxWidthClass } = useWindowLayout();
   const lines = usePosCartStore((s) => s.lines);
   const orderDiscountType = usePosCartStore((s) => s.orderDiscountType);
   const orderDiscountValue = usePosCartStore((s) => s.orderDiscountValue);
@@ -103,7 +106,7 @@ export function PaymentCheckoutDialog({
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+        <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
           <Dialog.Title>Checkout Settlement</Dialog.Title>
           <Dialog.Description>
             Net Total: {formatMoney(totals.netTotal, currencySymbol)} (VAT{' '}
@@ -175,30 +178,42 @@ export function PaymentCheckoutDialog({
                     />
                   </TextField>
                   <View className="flex-row gap-2">
-                    <Button
-                      variant="tertiary"
-                      size="sm"
+                    <TactilePressable
+                      feedbackVariant="spring"
                       className="flex-1"
+                      accessibilityLabel="Exact cash amount"
                       onPress={() => setCashTendered(totals.netTotal.toFixed(2))}
                     >
-                      <Button.Label>Exact</Button.Label>
-                    </Button>
-                    <Button
-                      variant="tertiary"
-                      size="sm"
+                      <View pointerEvents="none">
+                        <Button variant="tertiary" size="sm" className="w-full">
+                          <Button.Label>Exact</Button.Label>
+                        </Button>
+                      </View>
+                    </TactilePressable>
+                    <TactilePressable
+                      feedbackVariant="spring"
                       className="flex-1"
+                      accessibilityLabel={`Tender ${currencySymbol}500`}
                       onPress={() => setCashTendered('500')}
                     >
-                      <Button.Label>{currencySymbol}500</Button.Label>
-                    </Button>
-                    <Button
-                      variant="tertiary"
-                      size="sm"
+                      <View pointerEvents="none">
+                        <Button variant="tertiary" size="sm" className="w-full">
+                          <Button.Label>{currencySymbol}500</Button.Label>
+                        </Button>
+                      </View>
+                    </TactilePressable>
+                    <TactilePressable
+                      feedbackVariant="spring"
                       className="flex-1"
+                      accessibilityLabel={`Tender ${currencySymbol}1000`}
                       onPress={() => setCashTendered('1000')}
                     >
-                      <Button.Label>{currencySymbol}1000</Button.Label>
-                    </Button>
+                      <View pointerEvents="none">
+                        <Button variant="tertiary" size="sm" className="w-full">
+                          <Button.Label>{currencySymbol}1000</Button.Label>
+                        </Button>
+                      </View>
+                    </TactilePressable>
                   </View>
                   <Text className="text-success text-sm font-bold">
                     Change: {formatMoney(change, currencySymbol)}

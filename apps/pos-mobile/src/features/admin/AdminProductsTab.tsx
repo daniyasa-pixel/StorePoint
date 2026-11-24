@@ -15,13 +15,16 @@ import {
   TextField,
   useToast,
 } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
 import type { Category, Product } from '@/db/types';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function AdminProductsTab() {
   const { toast } = useToast();
+  const { containerPaddingClass, dialogMaxWidthClass } = useWindowLayout();
   const currency = useAppBootstrapStore((s) => s.currencySymbol);
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const [products, setProducts] = useState<Product[]>([]);
@@ -171,7 +174,7 @@ export function AdminProductsTab() {
   }, [products, debouncedQuery]);
 
   return (
-    <View className="flex-1 gap-3">
+    <View className={`flex-1 gap-3 ${containerPaddingClass}`}>
       <View className="flex-row items-center gap-2">
         <SearchField value={query} onChange={setQuery} className="flex-1">
           <SearchField.Group>
@@ -180,9 +183,13 @@ export function AdminProductsTab() {
             <SearchField.ClearButton />
           </SearchField.Group>
         </SearchField>
-        <Button variant="primary" onPress={() => setShowAdd(true)}>
-          <Button.Label>+ Product</Button.Label>
-        </Button>
+        <TactilePressable feedbackVariant="stretch" onPress={() => setShowAdd(true)}>
+          <View pointerEvents="none">
+            <Button variant="primary">
+              <Button.Label>+ Product</Button.Label>
+            </Button>
+          </View>
+        </TactilePressable>
       </View>
 
       {error ? (
@@ -226,14 +233,21 @@ export function AdminProductsTab() {
               >
                 <Chip.Label>{item.stockCount} {item.baseUom}</Chip.Label>
               </Chip>
-              <Button
-                variant="secondary"
-                size="sm"
+              <TactilePressable
+                feedbackVariant="spring"
                 isDisabled={restockingId !== null}
                 onPress={() => void handleQuickRestock(item)}
               >
-                <Button.Label>{restockingId === item.id ? '...' : '+10'}</Button.Label>
-              </Button>
+                <View pointerEvents="none">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    isDisabled={restockingId !== null}
+                  >
+                    <Button.Label>{restockingId === item.id ? '...' : '+10'}</Button.Label>
+                  </Button>
+                </View>
+              </TactilePressable>
             </Surface>
           </Animated.View>
         )}
@@ -242,7 +256,7 @@ export function AdminProductsTab() {
       <Dialog isOpen={showAdd} onOpenChange={setShowAdd}>
         <Dialog.Portal>
           <Dialog.Overlay />
-          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+          <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
             <Dialog.Title>Add Product</Dialog.Title>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
               {dialogError ? (
@@ -283,9 +297,17 @@ export function AdminProductsTab() {
               <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <Button variant="primary" isDisabled={isSaving} onPress={() => void handleSave()}>
-                <Button.Label>{isSaving ? 'Saving...' : 'Save Product'}</Button.Label>
-              </Button>
+              <TactilePressable
+                feedbackVariant="stretch"
+                isDisabled={isSaving}
+                onPress={() => void handleSave()}
+              >
+                <View pointerEvents="none">
+                  <Button variant="primary" isDisabled={isSaving}>
+                    <Button.Label>{isSaving ? 'Saving...' : 'Save Product'}</Button.Label>
+                  </Button>
+                </View>
+              </TactilePressable>
             </View>
           </Dialog.Content>
         </Dialog.Portal>

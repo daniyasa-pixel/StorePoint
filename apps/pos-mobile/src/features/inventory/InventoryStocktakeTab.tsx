@@ -2,13 +2,16 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Alert, Button, Input, Surface, useToast } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
 import type { Product } from '@/db/types';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function InventoryStocktakeTab() {
   const { toast } = useToast();
+  const { containerPaddingClass } = useWindowLayout();
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const [products, setProducts] = useState<Product[]>([]);
   const [counts, setCounts] = useState<Record<number, string>>({});
@@ -76,7 +79,7 @@ export function InventoryStocktakeTab() {
   };
 
   return (
-    <View className="flex-1 gap-3">
+    <View className={`flex-1 gap-3 ${containerPaddingClass}`}>
       {feedback ? (
         <Alert status={feedback.status}>
           <Alert.Indicator />
@@ -110,14 +113,21 @@ export function InventoryStocktakeTab() {
                   placeholder={String(item.stockCount)}
                 />
               </View>
-              <Button
-                variant="secondary"
-                size="sm"
+              <TactilePressable
+                feedbackVariant="stretch"
                 isDisabled={applyingId !== null}
                 onPress={() => void handleApplyVariance(item)}
               >
-                <Button.Label>{applyingId === item.id ? '...' : 'Apply'}</Button.Label>
-              </Button>
+                <View pointerEvents="none">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    isDisabled={applyingId !== null}
+                  >
+                    <Button.Label>{applyingId === item.id ? '...' : 'Apply'}</Button.Label>
+                  </Button>
+                </View>
+              </TactilePressable>
             </Surface>
           </Animated.View>
         )}

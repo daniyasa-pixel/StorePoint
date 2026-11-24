@@ -4,10 +4,12 @@ import Animated from 'react-native-reanimated';
 import { Card, Chip, SearchField, Surface } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { Product } from '@/db/types';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 export function InventoryPriceCheckerTab() {
+  const { containerPaddingClass } = useWindowLayout();
   const currency = useAppBootstrapStore((s) => s.currencySymbol);
   const [products, setProducts] = useState<Product[]>([]);
   const [query, setQuery] = useState('');
@@ -35,7 +37,7 @@ export function InventoryPriceCheckerTab() {
   }, [products, debouncedQuery]);
 
   return (
-    <View className="flex-1 gap-3">
+    <View className={`flex-1 gap-3 ${containerPaddingClass}`}>
       <SearchField value={query} onChange={setQuery}>
         <SearchField.Group>
           <SearchField.SearchIcon />

@@ -3,6 +3,7 @@ import { Alert as RNAlert, KeyboardAvoidingView, Platform, ScrollView, Text, Vie
 import { Alert, Button, Dialog, Input, Label, Separator, Surface, TextField, useToast } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { ParkedTransaction, ParkedTransactionItem, Product } from '@/db/types';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { usePosCartStore } from '@/store/posCartStore';
 
 interface ParkedOrdersDialogProps {
@@ -17,6 +18,7 @@ export function ParkedOrdersDialog({
   products,
 }: ParkedOrdersDialogProps) {
   const { toast } = useToast();
+  const { dialogMaxWidthClass } = useWindowLayout();
   const lines = usePosCartStore((s) => s.lines);
   const clearCart = usePosCartStore((s) => s.clearCart);
   const addProduct = usePosCartStore((s) => s.addProduct);
@@ -125,7 +127,7 @@ export function ParkedOrdersDialog({
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+        <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
           <Dialog.Title>Hold / Parked Orders</Dialog.Title>
 
           <KeyboardAvoidingView

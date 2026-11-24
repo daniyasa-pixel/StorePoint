@@ -14,15 +14,18 @@ import {
   Switch,
   TextField,
 } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
 import type { UserRole } from '@/constants/routes';
 import { getRepositories } from '@/db/repositories';
 import type { User } from '@/db/types';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { hashPin, isValidPin, isWeakPin, pinPolicyHint } from '@/security/securityHelper';
 import { layoutTransition, staggerFadeUp } from '@/theme/motion';
 
 const ROLES: readonly UserRole[] = ['CASHIER', 'INVENTORY', 'ADMIN'];
 
 export function AdminUsersTab() {
+  const { containerPaddingClass, dialogMaxWidthClass } = useWindowLayout();
   const [users, setUsers] = useState<User[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [username, setUsername] = useState('');
@@ -91,12 +94,16 @@ export function AdminUsersTab() {
   };
 
   return (
-    <View className="flex-1 gap-3">
+    <View className={`flex-1 gap-3 ${containerPaddingClass}`}>
       <View className="flex-row justify-between items-center">
         <Text className="text-foreground text-base font-bold">Staff Accounts ({users.length})</Text>
-        <Button variant="primary" size="sm" onPress={() => setShowAdd(true)}>
-          <Button.Label>+ Staff</Button.Label>
-        </Button>
+        <TactilePressable feedbackVariant="stretch" onPress={() => setShowAdd(true)}>
+          <View pointerEvents="none">
+            <Button variant="primary" size="sm">
+              <Button.Label>+ Staff</Button.Label>
+            </Button>
+          </View>
+        </TactilePressable>
       </View>
 
       {tabError ? (
@@ -147,7 +154,7 @@ export function AdminUsersTab() {
       <Dialog isOpen={showAdd} onOpenChange={setShowAdd}>
         <Dialog.Portal>
           <Dialog.Overlay />
-          <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+          <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
             <Dialog.Title>Create Staff Account</Dialog.Title>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3">
               {error ? (
@@ -190,9 +197,17 @@ export function AdminUsersTab() {
               <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <Button variant="primary" isDisabled={isSaving} onPress={() => void handleSave()}>
-                <Button.Label>{isSaving ? 'Creating...' : 'Create Account'}</Button.Label>
-              </Button>
+              <TactilePressable
+                feedbackVariant="stretch"
+                isDisabled={isSaving}
+                onPress={() => void handleSave()}
+              >
+                <View pointerEvents="none">
+                  <Button variant="primary" isDisabled={isSaving}>
+                    <Button.Label>{isSaving ? 'Creating...' : 'Create Account'}</Button.Label>
+                  </Button>
+                </View>
+              </TactilePressable>
             </View>
           </Dialog.Content>
         </Dialog.Portal>

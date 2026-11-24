@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Alert, Button, Chip, Dialog, Separator, Spinner, Surface, Switch } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
 import type { Transaction, TransactionItem } from '@/db/types';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { enterFadeUp, enterSlideRight, exitFadeUp, exitSlideLeft } from '@/theme/motion';
 
@@ -22,6 +24,7 @@ export function ReturnRefundDialog({
   currencySymbol,
   onRefundCompleted,
 }: ReturnRefundDialogProps) {
+  const { dialogMaxWidthClass } = useWindowLayout();
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const [recentTxs, setRecentTxs] = useState<Transaction[]>([]);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -90,7 +93,7 @@ export function ReturnRefundDialog({
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+        <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
           <Dialog.Title>Returns & Refunds</Dialog.Title>
 
           {error ? (
@@ -120,24 +123,33 @@ export function ReturnRefundDialog({
                   <Text className="text-muted text-xs text-center py-4">No recent sales found.</Text>
                 ) : (
                   recentTxs.map((tx) => (
-                    <Surface
+                    <TactilePressable
                       key={tx.id}
-                      variant="secondary"
-                      className="rounded-xl p-3 flex-row items-center justify-between gap-2"
+                      feedbackVariant="stretch"
+                      className="w-full"
+                      accessibilityLabel={`Select receipt #${tx.id}, ${currencySymbol}${tx.totalAmount.toFixed(2)}`}
+                      onPress={() => void handleSelectTx(tx)}
                     >
-                      <View className="flex-1 min-w-0">
-                        <Text className="text-foreground text-sm font-semibold" numberOfLines={1}>
-                          Receipt #{tx.id} • {currencySymbol}
-                          {tx.totalAmount.toFixed(2)}
-                        </Text>
-                        <Text className="text-muted text-xs" numberOfLines={1}>
-                          {tx.paymentMethod} • {tx.status}
-                        </Text>
-                      </View>
-                      <Button variant="secondary" size="sm" onPress={() => void handleSelectTx(tx)}>
-                        <Button.Label>Select</Button.Label>
-                      </Button>
-                    </Surface>
+                      <Surface
+                        variant="secondary"
+                        className="rounded-xl p-3 flex-row items-center justify-between gap-2"
+                      >
+                        <View className="flex-1 min-w-0">
+                          <Text className="text-foreground text-sm font-semibold" numberOfLines={1}>
+                            Receipt #{tx.id} • {currencySymbol}
+                            {tx.totalAmount.toFixed(2)}
+                          </Text>
+                          <Text className="text-muted text-xs" numberOfLines={1}>
+                            {tx.paymentMethod} • {tx.status}
+                          </Text>
+                        </View>
+                        <View pointerEvents="none">
+                          <Button variant="secondary" size="sm">
+                            <Button.Label>Select</Button.Label>
+                          </Button>
+                        </View>
+                      </Surface>
+                    </TactilePressable>
                   ))
                 )}
               </ScrollView>

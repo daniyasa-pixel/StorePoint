@@ -1,11 +1,12 @@
 import { useWindowDimensions } from 'react-native';
 import {
   getAdaptiveDrawerWidth,
-  getWindowLayout,
+  getAdaptiveLayoutMetrics,
+  type AdaptiveLayoutMetrics,
   type WindowLayout,
 } from './adaptiveLayout';
 
-export interface WindowLayoutMetrics {
+export interface WindowLayoutMetrics extends Omit<AdaptiveLayoutMetrics, 'windowLayout'> {
   readonly width: number;
   readonly height: number;
   readonly layout: WindowLayout;
@@ -18,7 +19,8 @@ export interface WindowLayoutMetrics {
 
 export function useWindowLayout(): WindowLayoutMetrics {
   const { width, height } = useWindowDimensions();
-  const layout = getWindowLayout(width);
+  const metrics = getAdaptiveLayoutMetrics(width, height);
+  const layout = metrics.windowLayout;
 
   return {
     width,
@@ -27,7 +29,17 @@ export function useWindowLayout(): WindowLayoutMetrics {
     isCompact: layout === 'Compact',
     isMedium: layout === 'Medium',
     isExpanded: layout === 'Expanded',
-    isLandscape: width > height,
+    isLandscape: metrics.orientation === 'landscape',
     drawerWidth: getAdaptiveDrawerWidth(width),
+    sizeClass: metrics.sizeClass,
+    orientation: metrics.orientation,
+    isShortHeight: metrics.isShortHeight,
+    useSplitPane: metrics.useSplitPane,
+    catalogColumns: metrics.catalogColumns,
+    kpiColumns: metrics.kpiColumns,
+    catalogFlex: metrics.catalogFlex,
+    cartFlex: metrics.cartFlex,
+    containerPaddingClass: metrics.containerPaddingClass,
+    dialogMaxWidthClass: metrics.dialogMaxWidthClass,
   };
 }

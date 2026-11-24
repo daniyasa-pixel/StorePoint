@@ -17,6 +17,7 @@ import {
 import { getRepositories } from '@/db/repositories';
 import type { Product } from '@/db/types';
 import { analyzeCostAndMargin, computeDerivedUnitCost } from '@/domain/productionBomCoordinator';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { enterFadeUp, exitFadeUp } from '@/theme/motion';
 
@@ -32,6 +33,7 @@ export function BulkProductionDialog({
   onCompleted,
 }: BulkProductionDialogProps) {
   const { toast } = useToast();
+  const { dialogMaxWidthClass } = useWindowLayout();
   const currency = useAppBootstrapStore((s) => s.currencySymbol);
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const [products, setProducts] = useState<Product[]>([]);
@@ -138,7 +140,7 @@ export function BulkProductionDialog({
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+        <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
           <Dialog.Title>Bulk Repackaging & BOM Production</Dialog.Title>
 
           <KeyboardAvoidingView

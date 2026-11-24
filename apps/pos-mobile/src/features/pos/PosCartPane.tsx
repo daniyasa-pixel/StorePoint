@@ -1,11 +1,17 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { Alert, FlatList, Text, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+} from 'react-native-reanimated';
 import { Button, Card, Checkbox, Chip, Separator, Surface } from 'heroui-native';
+import { TactilePressable } from '@/components/TactilePressable';
 import { formatMoney } from '@/domain/money';
 import { computeCheckoutTotals } from '@/domain/posCheckoutCoordinator';
 import { type PosCartLine, usePosCartStore } from '@/store/posCartStore';
-import { enterSlideRight, exitSlideLeft, layoutTransition } from '@/theme/motion';
+import { enterSlideRight, exitSlideLeft, layoutTransition, MOTION_SPRINGS } from '@/theme/motion';
 
 interface PosCartPaneProps {
   readonly currencySymbol: string;
@@ -52,6 +58,18 @@ export function PosCartPane({
     [activeLines, orderDiscountType, orderDiscountValue, vatRate],
   );
 
+  const totalScale = useSharedValue(1);
+  useEffect(() => {
+    totalScale.value = withSequence(
+      withSpring(1.08, MOTION_SPRINGS.tactile),
+      withSpring(1, MOTION_SPRINGS.bouncy),
+    );
+  }, [totals.netTotal, totalScale]);
+
+  const totalAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: totalScale.value }],
+  }));
+
   const renderCartItem = useCallback(
     ({ item }: { item: PosCartLine }) => {
       const unitNet = Math.max(0, item.selectedPrice - item.itemDiscount);
@@ -77,25 +95,31 @@ export function PosCartPane({
               </Text>
             </View>
             <View className="flex-row items-center gap-1.5">
-              <Button
-                variant="tertiary"
-                size="sm"
+              <TactilePressable
+                feedbackVariant="spring"
                 accessibilityLabel={`Decrease quantity of ${item.product.name}`}
                 onPress={() => updateQuantity(item.product.id, item.uomName, -1)}
               >
-                <Button.Label>−</Button.Label>
-              </Button>
+                <View pointerEvents="none">
+                  <Button variant="tertiary" size="sm">
+                    <Button.Label>−</Button.Label>
+                  </Button>
+                </View>
+              </TactilePressable>
               <Text className="text-foreground text-sm font-bold min-w-6 text-center">
                 {item.quantity}
               </Text>
-              <Button
-                variant="tertiary"
-                size="sm"
+              <TactilePressable
+                feedbackVariant="spring"
                 accessibilityLabel={`Increase quantity of ${item.product.name}`}
                 onPress={() => updateQuantity(item.product.id, item.uomName, 1)}
               >
-                <Button.Label>+</Button.Label>
-              </Button>
+                <View pointerEvents="none">
+                  <Button variant="tertiary" size="sm">
+                    <Button.Label>+</Button.Label>
+                  </Button>
+                </View>
+              </TactilePressable>
             </View>
             <Text className="text-foreground text-sm font-bold min-w-16 text-right">
               {formatMoney(lineTotal, currencySymbol)}
@@ -173,21 +197,33 @@ export function PosCartPane({
         </View>
         <View className="flex-row justify-between pt-1">
           <Text className="text-foreground text-base font-bold">Total Due</Text>
-          <Text className="text-accent text-lg font-bold">
+          <Animated.Text
+            className="text-accent text-lg font-bold"
+            style={totalAnimatedStyle}
+          >
             {formatMoney(totals.netTotal, currencySymbol)}
-          </Text>
+          </Animated.Text>
         </View>
       </View>
 
-      <Button
-        variant="primary"
-        size="lg"
+      <TactilePressable
+        feedbackVariant="stretch"
         className="w-full"
         isDisabled={activeLines.length === 0}
+        accessibilityLabel={`Charge ${formatMoney(totals.netTotal, currencySymbol)}`}
         onPress={onOpenPayment}
       >
-        <Button.Label>Charge {formatMoney(totals.netTotal, currencySymbol)}</Button.Label>
-      </Button>
+        <View pointerEvents="none">
+          <Button
+            variant="primary"
+            size="lg"
+            className="w-full"
+            isDisabled={activeLines.length === 0}
+          >
+            <Button.Label>Charge {formatMoney(totals.netTotal, currencySymbol)}</Button.Label>
+          </Button>
+        </View>
+      </TactilePressable>
     </Card>
   );
 }

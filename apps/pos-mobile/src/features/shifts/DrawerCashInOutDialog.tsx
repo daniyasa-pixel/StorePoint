@@ -4,6 +4,7 @@ import Animated from 'react-native-reanimated';
 import { Alert, Button, Chip, Dialog, Input, Label, Separator, Spinner, TextField } from 'heroui-native';
 import { getRepositories } from '@/db/repositories';
 import type { CashierSession } from '@/db/types';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { enterFadeUp, exitFadeUp } from '@/theme/motion';
 
@@ -20,6 +21,7 @@ export function DrawerCashInOutDialog({
   activeSession,
   currencySymbol,
 }: DrawerCashInOutDialogProps) {
+  const { dialogMaxWidthClass } = useWindowLayout();
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const [direction, setDirection] = useState<'CASH_IN' | 'PAYOUT'>('PAYOUT');
   const [amount, setAmount] = useState('');
@@ -67,7 +69,7 @@ export function DrawerCashInOutDialog({
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+        <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
           <Dialog.Title>Cash Drawer In / Out</Dialog.Title>
 
           <KeyboardAvoidingView

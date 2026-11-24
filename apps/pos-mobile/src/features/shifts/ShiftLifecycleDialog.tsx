@@ -9,6 +9,7 @@ import {
   reconcileShiftDrawer,
   type DenominationCount,
 } from '@/domain/cashDrawerCoordinator';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { enterFadeUp, exitFadeUp } from '@/theme/motion';
 
@@ -37,6 +38,7 @@ export function ShiftLifecycleDialog({
   currencySymbol,
   onSessionChanged,
 }: ShiftLifecycleDialogProps) {
+  const { dialogMaxWidthClass } = useWindowLayout();
   const activeUser = useAppBootstrapStore((s) => s.activeUser);
   const [startingFloat, setStartingFloat] = useState('500.00');
   const [denoms, setDenoms] = useState<DenominationCount>(EMPTY_DENOMS);
@@ -139,7 +141,7 @@ export function ShiftLifecycleDialog({
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+        <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
           <Dialog.Title>
             {activeSession ? `Close Shift #${activeSession.id}` : 'Open Cashier Shift'}
           </Dialog.Title>

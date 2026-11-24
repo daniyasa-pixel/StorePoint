@@ -18,9 +18,11 @@ import {
 } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
 import { PinPadEntry } from '@/components/PinPadEntry';
+import { TactilePressable } from '@/components/TactilePressable';
 import { APP_ROUTES } from '@/constants/routes';
 import { getRepositories } from '@/db/repositories';
 import { DEFAULT_CURRENCY_SYMBOL } from '@/domain/money';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 import { hashPin, isValidPin, isWeakPin, pinPolicyHint } from '@/security/securityHelper';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import {
@@ -35,6 +37,7 @@ const CURRENCIES = [DEFAULT_CURRENCY_SYMBOL, '$', '€', '£', '¥'] as const;
 
 export default function SetupRoute() {
   const router = useRouter();
+  const { containerPaddingClass, dialogMaxWidthClass, isShortHeight } = useWindowLayout();
   const [step, setStep] = useState<1 | 2>(1);
   const [storeName, setStoreName] = useState('');
   const [currencySymbol, setCurrencySymbol] = useState<string>(DEFAULT_CURRENCY_SYMBOL);
@@ -138,10 +141,10 @@ export default function SetupRoute() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1"
       >
-        <ScrollView contentContainerClassName="p-5 pb-10" keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerClassName={`${containerPaddingClass} pb-10`} keyboardShouldPersistTaps="handled">
           <Animated.View
             layout={layoutTransition}
-            className="w-full max-w-xl self-center gap-4"
+            className={`w-full ${dialogMaxWidthClass} self-center ${isShortHeight ? 'gap-3' : 'gap-4'}`}
           >
             {error ? (
               <Animated.View entering={enterFadeUp} exiting={exitFadeUp}>
@@ -218,9 +221,17 @@ export default function SetupRoute() {
                     </Surface>
                   </Card.Body>
                   <Card.Footer className="pt-4">
-                    <Button variant="primary" size="lg" className="w-full" onPress={handleNextStep}>
-                      <Button.Label>Next: Admin Security</Button.Label>
-                    </Button>
+                    <TactilePressable
+                      feedbackVariant="stretch"
+                      className="w-full"
+                      onPress={handleNextStep}
+                    >
+                      <View pointerEvents="none">
+                        <Button variant="primary" size="lg" className="w-full">
+                          <Button.Label>Next: Admin Security</Button.Label>
+                        </Button>
+                      </View>
+                    </TactilePressable>
                   </Card.Footer>
                 </Card>
               ) : (
@@ -254,15 +265,23 @@ export default function SetupRoute() {
                     <Button variant="secondary" onPress={() => setStep(1)} isDisabled={isSaving}>
                       <Button.Label>Back</Button.Label>
                     </Button>
-                    <Button
-                      variant="primary"
+                    <TactilePressable
+                      feedbackVariant="stretch"
                       className="flex-1"
-                      onPress={handleCompleteSetup}
                       isDisabled={isSaving || adminPin.length < 4}
+                      onPress={handleCompleteSetup}
                     >
-                      {isSaving ? <Spinner size="sm" /> : null}
-                      <Button.Label>{isSaving ? 'Saving...' : 'Complete Setup'}</Button.Label>
-                    </Button>
+                      <View pointerEvents="none">
+                        <Button
+                          variant="primary"
+                          className="w-full"
+                          isDisabled={isSaving || adminPin.length < 4}
+                        >
+                          {isSaving ? <Spinner size="sm" /> : null}
+                          <Button.Label>{isSaving ? 'Saving...' : 'Complete Setup'}</Button.Label>
+                        </Button>
+                      </View>
+                    </TactilePressable>
                   </Card.Footer>
                 </Card>
               )}

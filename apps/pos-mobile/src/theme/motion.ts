@@ -25,6 +25,8 @@ export const MOTION_SPRINGS = {
   snappy: { damping: 20, stiffness: 280, mass: 0.8 },
   gentle: { damping: 22, stiffness: 200, mass: 0.9 },
   bouncy: { damping: 14, stiffness: 320, mass: 0.7 },
+  tactile: { damping: 16, stiffness: 320, mass: 0.7 },
+  stretch: { damping: 12, stiffness: 360, mass: 0.65 },
 } as const;
 
 export const layoutTransition = LinearTransition.springify()

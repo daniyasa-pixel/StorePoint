@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { Button, Dialog, Separator } from 'heroui-native';
 import type { CheckoutReceipt } from '@/db/repositories/checkoutRepository';
 import { formatMoney } from '@/domain/money';
+import { useWindowLayout } from '@/layout/useWindowLayout';
 
 interface ReceiptPreviewDialogProps {
   readonly receipt: CheckoutReceipt | null;
@@ -19,11 +20,13 @@ export function ReceiptPreviewDialog({
   onClose,
   onPrint,
 }: ReceiptPreviewDialogProps) {
+  const { dialogMaxWidthClass } = useWindowLayout();
+
   return (
     <Dialog isOpen={receipt !== null} onOpenChange={(open) => (!open ? onClose() : undefined)}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content className="p-5 gap-3 max-w-md w-full self-center mx-4 max-h-[90%]">
+        <Dialog.Content className={`p-5 gap-3 ${dialogMaxWidthClass} w-full self-center mx-4 max-h-[90%]`}>
           <Dialog.Title>Receipt #{receipt?.transaction.id}</Dialog.Title>
           <Dialog.Description>
             {storeName} • {receipt?.transaction.paymentMethod}
