@@ -10,10 +10,12 @@ module.exports = {
   transformIgnorePatterns: ['node_modules/(?!(@noble/hashes)/)'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^uniwind$': '<rootDir>/src/__mocks__/uniwind.ts',
   },
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
     '!src/**/__tests__/**',
+    '!src/**/__mocks__/**',
   ],
 };

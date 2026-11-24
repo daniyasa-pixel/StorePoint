@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Linking, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Button, Card, Chip, Spinner } from 'heroui-native';
 import { PinPadEntry } from '@/components/PinPadEntry';
 import { StorePointBrandBadge } from '@/components/StorePointBrandBadge';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton, TactilePressable } from '@/components/TactilePressable';
+import { ThemeModeToggle } from '@/components/ThemeModeToggle';
 import { APP_ROUTES, resolveHomeRouteForRole } from '@/constants/routes';
 import { KioskEmergencyUnlockDialog } from '@/features/auth/KioskEmergencyUnlockDialog';
 import { useAuthFlow } from '@/features/auth/useAuthFlow';
+import { useBackNavigationGuard } from '@/layout/useBackNavigationGuard';
 import { useWindowLayout } from '@/layout/useWindowLayout';
+import { sessionStateCache } from '@/storage/sessionStateCache';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { enterFadeDown, enterFadeUp, layoutTransition } from '@/theme/motion';
 
@@ -25,15 +28,24 @@ export default function LoginRoute() {
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [adminPhone, setAdminPhone] = useState('');
 
   const [logoTapCount, setLogoTapCount] = useState(0);
   const [showEmergencyUnlock, setShowEmergencyUnlock] = useState(false);
+
+  useBackNavigationGuard({ requireDoubleBackToExit: true });
 
   useEffect(() => {
     if (!selectedUsername && users.length > 0 && users[0]) {
       setSelectedUsername(users[0].username);
     }
   }, [selectedUsername, users]);
+
+  useEffect(() => {
+    void sessionStateCache.getAdminContact().then((contact) => {
+      setAdminPhone(contact.phone.trim());
+    });
+  }, []);
 
   const handleLogoTap = () => {
     const next = logoTapCount + 1;
@@ -87,36 +99,44 @@ export default function LoginRoute() {
     router.replace(resolveHomeRouteForRole(outcome.user.role));
   };
 
+  const handleCallAdmin = () => {
+    if (!adminPhone) return;
+    void Linking.openURL(`tel:${adminPhone}`);
+  };
+
   const staffSelector =
     users.length > 0 ? (
       <View className="flex-row flex-wrap gap-2 justify-center">
-        {users.map((u) => (
-          <TactilePressable
-            key={u.username}
-            feedbackVariant="spring"
-            onPress={() => {
-              setSelectedUsername(u.username);
-              setPin('');
-              setError(null);
-            }}
-          >
-            <View pointerEvents="none">
-              <Chip
-                color={selectedUsername === u.username ? 'accent' : 'default'}
-                variant={selectedUsername === u.username ? 'primary' : 'soft'}
-              >
-                <Chip.Label>
-                  {u.username} ({u.role})
-                </Chip.Label>
-              </Chip>
-            </View>
-          </TactilePressable>
-        ))}
+        {users.map((u) => {
+          const isSelected = selectedUsername === u.username;
+          return (
+            <Chip
+              key={u.username}
+              color={isSelected ? 'accent' : 'default'}
+              variant={isSelected ? 'primary' : 'soft'}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
+              onPress={() => {
+                setSelectedUsername(u.username);
+                setPin('');
+                setError(null);
+              }}
+            >
+              <Chip.Label>
+                {u.username} ({u.role})
+              </Chip.Label>
+            </Chip>
+          );
+        })}
       </View>
     ) : null;
 
   return (
     <SafeAreaView className="bg-background flex-1">
+      <View className="w-full flex-row items-center justify-end px-4 pt-2">
+        <ThemeModeToggle />
+      </View>
+
       <ScrollView contentContainerClassName={`flex-grow justify-center ${containerPaddingClass}`}>
         <View
           className={
@@ -165,33 +185,39 @@ export default function LoginRoute() {
                   ) : null}
 
                   {biometricAvailability === 'AVAILABLE' ? (
-                    <TactilePressable
+                    <TactileButton
                       feedbackVariant="stretch"
-                      className="w-full"
+                      variant="secondary"
+                      size="md"
+                      fullWidth
                       isDisabled={isSubmitting}
-                      onPress={handleBiometric}
+                      onPress={() => void handleBiometric()}
                     >
-                      <View pointerEvents="none">
-                        <Button
-                          variant="secondary"
-                          size="md"
-                          className="w-full"
-                          isDisabled={isSubmitting}
-                        >
-                          <Button.Label>Sign In with Fingerprint / Biometrics</Button.Label>
-                        </Button>
-                      </View>
-                    </TactilePressable>
+                      <Button.Label>Sign In with Fingerprint / Biometrics</Button.Label>
+                    </TactileButton>
                   ) : null}
                 </Animated.View>
               </Card.Body>
-              <Card.Footer className="flex-row justify-between pt-3">
-                <Button variant="ghost" size="sm" onPress={() => router.push(APP_ROUTES.PIN_RESET)}>
+              <Card.Footer className="flex-row flex-wrap items-center justify-between gap-2 pt-3">
+                <TactileButton
+                  variant="ghost"
+                  size="sm"
+                  onPress={() => router.push(APP_ROUTES.PIN_RESET)}
+                >
                   <Button.Label>Reset PIN</Button.Label>
-                </Button>
-                <Button variant="ghost" size="sm" onPress={() => router.push(APP_ROUTES.ABOUT)}>
+                </TactileButton>
+                {adminPhone ? (
+                  <TactileButton variant="ghost" size="sm" onPress={handleCallAdmin}>
+                    <Button.Label>Call Admin</Button.Label>
+                  </TactileButton>
+                ) : null}
+                <TactileButton
+                  variant="ghost"
+                  size="sm"
+                  onPress={() => router.push(APP_ROUTES.ABOUT)}
+                >
                   <Button.Label>About</Button.Label>
-                </Button>
+                </TactileButton>
               </Card.Footer>
             </Card>
           </Animated.View>

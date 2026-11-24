@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Alert, Button, Card, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
 import type { Category } from '@/db/types';
 import { useWindowLayout } from '@/layout/useWindowLayout';
@@ -55,13 +55,14 @@ export function AdminCategoriesTab() {
     <View className={`flex-1 gap-3 ${containerPaddingClass}`}>
       <View className="flex-row justify-between items-center">
         <Text className="text-foreground text-base font-bold">Categories ({categories.length})</Text>
-        <TactilePressable feedbackVariant="stretch" onPress={() => setShowAdd(true)}>
-          <View pointerEvents="none">
-            <Button variant="primary" size="sm">
-              <Button.Label>+ Category</Button.Label>
-            </Button>
-          </View>
-        </TactilePressable>
+        <TactileButton
+          feedbackVariant="stretch"
+          variant="primary"
+          size="sm"
+          onPress={() => setShowAdd(true)}
+        >
+          <Button.Label>+ Category</Button.Label>
+        </TactileButton>
       </View>
 
       <FlatList
@@ -109,17 +110,14 @@ export function AdminCategoriesTab() {
               <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <TactilePressable
+              <TactileButton
                 feedbackVariant="stretch"
+                variant="primary"
                 isDisabled={isSaving}
                 onPress={() => void handleSave()}
               >
-                <View pointerEvents="none">
-                  <Button variant="primary" isDisabled={isSaving}>
-                    <Button.Label>{isSaving ? 'Creating...' : 'Create'}</Button.Label>
-                  </Button>
-                </View>
-              </TactilePressable>
+                <Button.Label>{isSaving ? 'Creating...' : 'Create'}</Button.Label>
+              </TactileButton>
             </View>
           </Dialog.Content>
         </Dialog.Portal>

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Alert, Button, Chip, Dialog, Input, Label, Separator, Spinner, TextField } from 'heroui-native';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
 import type { CheckoutReceipt } from '@/db/repositories/checkoutRepository';
 import { formatMoney } from '@/domain/money';
@@ -178,42 +178,39 @@ export function PaymentCheckoutDialog({
                     />
                   </TextField>
                   <View className="flex-row gap-2">
-                    <TactilePressable
+                    <TactileButton
                       feedbackVariant="spring"
-                      className="flex-1"
+                      variant="tertiary"
+                      size="sm"
+                      fullWidth
+                      containerClassName="flex-1"
                       accessibilityLabel="Exact cash amount"
                       onPress={() => setCashTendered(totals.netTotal.toFixed(2))}
                     >
-                      <View pointerEvents="none">
-                        <Button variant="tertiary" size="sm" className="w-full">
-                          <Button.Label>Exact</Button.Label>
-                        </Button>
-                      </View>
-                    </TactilePressable>
-                    <TactilePressable
+                      <Button.Label>Exact</Button.Label>
+                    </TactileButton>
+                    <TactileButton
                       feedbackVariant="spring"
-                      className="flex-1"
+                      variant="tertiary"
+                      size="sm"
+                      fullWidth
+                      containerClassName="flex-1"
                       accessibilityLabel={`Tender ${currencySymbol}500`}
                       onPress={() => setCashTendered('500')}
                     >
-                      <View pointerEvents="none">
-                        <Button variant="tertiary" size="sm" className="w-full">
-                          <Button.Label>{currencySymbol}500</Button.Label>
-                        </Button>
-                      </View>
-                    </TactilePressable>
-                    <TactilePressable
+                      <Button.Label>{currencySymbol}500</Button.Label>
+                    </TactileButton>
+                    <TactileButton
                       feedbackVariant="spring"
-                      className="flex-1"
+                      variant="tertiary"
+                      size="sm"
+                      fullWidth
+                      containerClassName="flex-1"
                       accessibilityLabel={`Tender ${currencySymbol}1000`}
                       onPress={() => setCashTendered('1000')}
                     >
-                      <View pointerEvents="none">
-                        <Button variant="tertiary" size="sm" className="w-full">
-                          <Button.Label>{currencySymbol}1000</Button.Label>
-                        </Button>
-                      </View>
-                    </TactilePressable>
+                      <Button.Label>{currencySymbol}1000</Button.Label>
+                    </TactileButton>
                   </View>
                   <Text className="text-success text-sm font-bold">
                     Change: {formatMoney(change, currencySymbol)}

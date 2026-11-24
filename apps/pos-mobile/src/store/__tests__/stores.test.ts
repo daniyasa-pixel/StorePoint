@@ -3,10 +3,14 @@ jest.mock('@/storage/sessionStateCache', () => ({
     saveCartDraft: jest.fn().mockResolvedValue(undefined),
     loadCartDraft: jest.fn().mockResolvedValue([]),
     clearCartDraft: jest.fn().mockResolvedValue(undefined),
+    setThemeMode: jest.fn().mockResolvedValue(undefined),
+    getThemeMode: jest.fn().mockResolvedValue('system'),
   },
 }));
 
+import { Uniwind } from 'uniwind';
 import type { Product, UomOption } from '@/db/types';
+import { sessionStateCache } from '@/storage/sessionStateCache';
 import { useAppBootstrapStore, type ActiveSessionUser } from '../appBootstrapStore';
 import { usePosCartStore } from '../posCartStore';
 
@@ -192,9 +196,11 @@ describe('useAppBootstrapStore', () => {
     activeUser: null,
     isKioskModeActive: false,
     isAlwaysOnEnabled: false,
+    themeMode: 'system' as const,
   };
 
   beforeEach(() => {
+    jest.clearAllMocks();
     useAppBootstrapStore.setState(initialState);
   });
 
@@ -254,5 +260,18 @@ describe('useAppBootstrapStore', () => {
 
     // Assert
     expect(useAppBootstrapStore.getState().activeUser).toBeNull();
+  });
+
+  it('updates themeMode, syncs Uniwind.setTheme, and persists via sessionStateCache', () => {
+    // Arrange
+    expect(useAppBootstrapStore.getState().themeMode).toBe('system');
+
+    // Act
+    useAppBootstrapStore.getState().setThemeMode('dark');
+
+    // Assert
+    expect(useAppBootstrapStore.getState().themeMode).toBe('dark');
+    expect(Uniwind.setTheme).toHaveBeenCalledWith('dark');
+    expect(sessionStateCache.setThemeMode).toHaveBeenCalledWith('dark');
   });
 });

@@ -14,7 +14,7 @@ import {
   Switch,
   TextField,
 } from 'heroui-native';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton } from '@/components/TactilePressable';
 import type { UserRole } from '@/constants/routes';
 import { getRepositories } from '@/db/repositories';
 import type { User } from '@/db/types';
@@ -97,13 +97,14 @@ export function AdminUsersTab() {
     <View className={`flex-1 gap-3 ${containerPaddingClass}`}>
       <View className="flex-row justify-between items-center">
         <Text className="text-foreground text-base font-bold">Staff Accounts ({users.length})</Text>
-        <TactilePressable feedbackVariant="stretch" onPress={() => setShowAdd(true)}>
-          <View pointerEvents="none">
-            <Button variant="primary" size="sm">
-              <Button.Label>+ Staff</Button.Label>
-            </Button>
-          </View>
-        </TactilePressable>
+        <TactileButton
+          feedbackVariant="stretch"
+          variant="primary"
+          size="sm"
+          onPress={() => setShowAdd(true)}
+        >
+          <Button.Label>+ Staff</Button.Label>
+        </TactileButton>
       </View>
 
       {tabError ? (
@@ -197,17 +198,14 @@ export function AdminUsersTab() {
               <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <TactilePressable
+              <TactileButton
                 feedbackVariant="stretch"
+                variant="primary"
                 isDisabled={isSaving}
                 onPress={() => void handleSave()}
               >
-                <View pointerEvents="none">
-                  <Button variant="primary" isDisabled={isSaving}>
-                    <Button.Label>{isSaving ? 'Creating...' : 'Create Account'}</Button.Label>
-                  </Button>
-                </View>
-              </TactilePressable>
+                <Button.Label>{isSaving ? 'Creating...' : 'Create Account'}</Button.Label>
+              </TactileButton>
             </View>
           </Dialog.Content>
         </Dialog.Portal>

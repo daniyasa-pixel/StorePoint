@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Alert, Button, Card, Chip, Dialog, Input, Label, Separator, Surface, TextField } from 'heroui-native';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
 import type { PaymentSchedule } from '@/db/types';
 import { useWindowLayout } from '@/layout/useWindowLayout';
@@ -90,13 +90,14 @@ export function AdminCalendarTab() {
     <View className={`flex-1 gap-3 ${containerPaddingClass}`}>
       <View className="flex-row justify-between items-center">
         <Text className="text-foreground text-base font-bold">Payment Calendar</Text>
-        <TactilePressable feedbackVariant="stretch" onPress={() => setShowAdd(true)}>
-          <View pointerEvents="none">
-            <Button variant="primary" size="sm">
-              <Button.Label>+ Schedule Bill</Button.Label>
-            </Button>
-          </View>
-        </TactilePressable>
+        <TactileButton
+          feedbackVariant="stretch"
+          variant="primary"
+          size="sm"
+          onPress={() => setShowAdd(true)}
+        >
+          <Button.Label>+ Schedule Bill</Button.Label>
+        </TactileButton>
       </View>
 
       {error ? (
@@ -128,21 +129,17 @@ export function AdminCalendarTab() {
                   {item.amount.toFixed(2)}
                 </Text>
               </View>
-              <TactilePressable
-                feedbackVariant="spring"
-                isDisabled={togglingId !== null}
+              <Chip
+                size="sm"
+                variant="soft"
+                color={item.isPaid ? 'success' : 'warning'}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: togglingId !== null, selected: item.isPaid }}
+                disabled={togglingId !== null}
                 onPress={() => void togglePaid(item)}
               >
-                <View pointerEvents="none">
-                  <Chip
-                    size="sm"
-                    variant="soft"
-                    color={item.isPaid ? 'success' : 'warning'}
-                  >
-                    <Chip.Label>{togglingId === item.id ? '...' : item.isPaid ? 'Paid' : 'Mark Paid'}</Chip.Label>
-                  </Chip>
-                </View>
-              </TactilePressable>
+                <Chip.Label>{togglingId === item.id ? '...' : item.isPaid ? 'Paid' : 'Mark Paid'}</Chip.Label>
+              </Chip>
             </Surface>
           </Animated.View>
         )}
@@ -180,17 +177,14 @@ export function AdminCalendarTab() {
               <Button variant="secondary" isDisabled={isSaving} onPress={() => setShowAdd(false)}>
                 <Button.Label>Cancel</Button.Label>
               </Button>
-              <TactilePressable
+              <TactileButton
                 feedbackVariant="stretch"
+                variant="primary"
                 isDisabled={isSaving}
                 onPress={() => void handleSave()}
               >
-                <View pointerEvents="none">
-                  <Button variant="primary" isDisabled={isSaving}>
-                    <Button.Label>{isSaving ? 'Saving...' : 'Save'}</Button.Label>
-                  </Button>
-                </View>
-              </TactilePressable>
+                <Button.Label>{isSaving ? 'Saving...' : 'Save'}</Button.Label>
+              </TactileButton>
             </View>
           </Dialog.Content>
         </Dialog.Portal>

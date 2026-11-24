@@ -115,4 +115,39 @@ describe('sessionStateCache', () => {
       expect(afterFalse).toBe(false);
     });
   });
+
+  describe('theme mode persistence', () => {
+    it('defaults to system when unset or invalid and persists light/dark/system', async () => {
+      // Arrange & Act
+      const initial = await sessionStateCache.getThemeMode();
+      await sessionStateCache.setThemeMode('dark');
+      const afterDark = await sessionStateCache.getThemeMode();
+      await sessionStateCache.setThemeMode('light');
+      const afterLight = await sessionStateCache.getThemeMode();
+      mockStorage.set('sp_theme_mode', 'unexpected-value');
+      const afterInvalid = await sessionStateCache.getThemeMode();
+
+      // Assert
+      expect(initial).toBe('system');
+      expect(afterDark).toBe('dark');
+      expect(afterLight).toBe('light');
+      expect(afterInvalid).toBe('system');
+    });
+  });
+
+  describe('admin contact persistence', () => {
+    it('saves trimmed admin contact info and falls back safely when unset or malformed', async () => {
+      // Arrange & Act
+      const initial = await sessionStateCache.getAdminContact();
+      await sessionStateCache.saveAdminContact('  Maria Santos  ', '  +63 917 555 0199  ');
+      const saved = await sessionStateCache.getAdminContact();
+      mockStorage.set('sp_admin_contact', '{corrupt-json');
+      const corrupted = await sessionStateCache.getAdminContact();
+
+      // Assert
+      expect(initial).toEqual({ name: '', phone: '' });
+      expect(saved).toEqual({ name: 'Maria Santos', phone: '+63 917 555 0199' });
+      expect(corrupted).toEqual({ name: '', phone: '' });
+    });
+  });
 });

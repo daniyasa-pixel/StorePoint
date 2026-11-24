@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Alert, Button, Input, Surface, useToast } from 'heroui-native';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
 import type { Product } from '@/db/types';
 import { useWindowLayout } from '@/layout/useWindowLayout';
@@ -113,21 +113,15 @@ export function InventoryStocktakeTab() {
                   placeholder={String(item.stockCount)}
                 />
               </View>
-              <TactilePressable
+              <TactileButton
                 feedbackVariant="stretch"
+                variant="secondary"
+                size="sm"
                 isDisabled={applyingId !== null}
                 onPress={() => void handleApplyVariance(item)}
               >
-                <View pointerEvents="none">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    isDisabled={applyingId !== null}
-                  >
-                    <Button.Label>{applyingId === item.id ? '...' : 'Apply'}</Button.Label>
-                  </Button>
-                </View>
-              </TactilePressable>
+                <Button.Label>{applyingId === item.id ? '...' : 'Apply'}</Button.Label>
+              </TactileButton>
             </Surface>
           </Animated.View>
         )}

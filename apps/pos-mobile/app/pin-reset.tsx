@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Button, Card, Chip, Input, Label, Spinner, TextField, useToast } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
 import { PinPadEntry } from '@/components/PinPadEntry';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton } from '@/components/TactilePressable';
 import { getRepositories } from '@/db/repositories';
+import { useBackNavigationGuard } from '@/layout/useBackNavigationGuard';
 import { useWindowLayout } from '@/layout/useWindowLayout';
 import { hashPin, isValidPin, isWeakPin, pinPolicyHint, verifyPin } from '@/security/securityHelper';
 import { enterSlideRight, exitSlideLeft } from '@/theme/motion';
@@ -25,6 +26,18 @@ export default function PinResetRoute() {
   const [confirmPin, setConfirmPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleBackNavigation = useCallback((): boolean => {
+    setError(null);
+    if (step > 1) {
+      setStep((prev) => (prev - 1) as ResetStep);
+      return true;
+    }
+    router.back();
+    return true;
+  }, [router, step]);
+
+  useBackNavigationGuard({ onBack: handleBackNavigation });
 
   const handleAdvance = async () => {
     if (isSubmitting) return;
@@ -79,7 +92,7 @@ export default function PinResetRoute() {
       <AppTopBar
         title="4-Digit PIN Migration"
         subtitle={`Step ${step} of 3`}
-        onBack={() => router.back()}
+        onBack={handleBackNavigation}
         rightActions={
           <Chip color="accent" variant="soft" size="sm">
             <Chip.Label>{step}/3</Chip.Label>
@@ -137,31 +150,25 @@ export default function PinResetRoute() {
             </Card.Body>
             <Card.Footer className="flex-row justify-between gap-2 pt-4">
               {step > 1 ? (
-                <Button
+                <TactileButton
                   variant="secondary"
                   isDisabled={isSubmitting}
                   onPress={() => setStep((s) => (s - 1) as ResetStep)}
                 >
                   <Button.Label>Back</Button.Label>
-                </Button>
+                </TactileButton>
               ) : null}
-              <TactilePressable
+              <TactileButton
                 feedbackVariant="stretch"
-                className="flex-1"
+                variant="primary"
+                containerClassName="flex-1"
+                fullWidth
                 isDisabled={isSubmitting || activePin.length < 4}
-                onPress={handleAdvance}
+                onPress={() => void handleAdvance()}
               >
-                <View pointerEvents="none">
-                  <Button
-                    variant="primary"
-                    className="w-full"
-                    isDisabled={isSubmitting || activePin.length < 4}
-                  >
-                    {isSubmitting ? <Spinner size="sm" /> : null}
-                    <Button.Label>{step === 3 ? 'Save New PIN' : 'Continue'}</Button.Label>
-                  </Button>
-                </View>
-              </TactilePressable>
+                {isSubmitting ? <Spinner size="sm" /> : null}
+                <Button.Label>{step === 3 ? 'Save New PIN' : 'Continue'}</Button.Label>
+              </TactileButton>
             </Card.Footer>
           </Card>
         </ScrollView>

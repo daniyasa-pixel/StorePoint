@@ -7,7 +7,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { Button, Card, Checkbox, Chip, Separator, Surface } from 'heroui-native';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton } from '@/components/TactilePressable';
 import { formatMoney } from '@/domain/money';
 import { computeCheckoutTotals } from '@/domain/posCheckoutCoordinator';
 import { type PosCartLine, usePosCartStore } from '@/store/posCartStore';
@@ -95,31 +95,27 @@ export function PosCartPane({
               </Text>
             </View>
             <View className="flex-row items-center gap-1.5">
-              <TactilePressable
+              <TactileButton
                 feedbackVariant="spring"
+                variant="tertiary"
+                size="sm"
                 accessibilityLabel={`Decrease quantity of ${item.product.name}`}
                 onPress={() => updateQuantity(item.product.id, item.uomName, -1)}
               >
-                <View pointerEvents="none">
-                  <Button variant="tertiary" size="sm">
-                    <Button.Label>−</Button.Label>
-                  </Button>
-                </View>
-              </TactilePressable>
+                <Button.Label>−</Button.Label>
+              </TactileButton>
               <Text className="text-foreground text-sm font-bold min-w-6 text-center">
                 {item.quantity}
               </Text>
-              <TactilePressable
+              <TactileButton
                 feedbackVariant="spring"
+                variant="tertiary"
+                size="sm"
                 accessibilityLabel={`Increase quantity of ${item.product.name}`}
                 onPress={() => updateQuantity(item.product.id, item.uomName, 1)}
               >
-                <View pointerEvents="none">
-                  <Button variant="tertiary" size="sm">
-                    <Button.Label>+</Button.Label>
-                  </Button>
-                </View>
-              </TactilePressable>
+                <Button.Label>+</Button.Label>
+              </TactileButton>
             </View>
             <Text className="text-foreground text-sm font-bold min-w-16 text-right">
               {formatMoney(lineTotal, currencySymbol)}
@@ -206,24 +202,17 @@ export function PosCartPane({
         </View>
       </View>
 
-      <TactilePressable
+      <TactileButton
         feedbackVariant="stretch"
-        className="w-full"
+        variant="primary"
+        size="lg"
+        fullWidth
         isDisabled={activeLines.length === 0}
         accessibilityLabel={`Charge ${formatMoney(totals.netTotal, currencySymbol)}`}
         onPress={onOpenPayment}
       >
-        <View pointerEvents="none">
-          <Button
-            variant="primary"
-            size="lg"
-            className="w-full"
-            isDisabled={activeLines.length === 0}
-          >
-            <Button.Label>Charge {formatMoney(totals.netTotal, currencySymbol)}</Button.Label>
-          </Button>
-        </View>
-      </TactilePressable>
+        <Button.Label>Charge {formatMoney(totals.netTotal, currencySymbol)}</Button.Label>
+      </TactileButton>
     </Card>
   );
 }

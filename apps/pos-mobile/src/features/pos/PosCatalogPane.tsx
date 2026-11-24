@@ -101,32 +101,28 @@ export const PosCatalogPane = React.memo(function PosCatalogPane({
         className="shrink-0 grow-0"
         contentContainerClassName="flex-row gap-2 py-1"
       >
-        <TactilePressable
-          feedbackVariant="spring"
+        <Chip
+          color={selectedCategoryId === null ? 'accent' : 'default'}
+          variant={selectedCategoryId === null ? 'primary' : 'soft'}
+          accessibilityRole="button"
+          accessibilityState={{ selected: selectedCategoryId === null }}
           accessibilityLabel="All categories"
           onPress={() => onSelectCategory(null)}
         >
-          <Chip
-            color={selectedCategoryId === null ? 'accent' : 'default'}
-            variant={selectedCategoryId === null ? 'primary' : 'soft'}
-          >
-            <Chip.Label>All</Chip.Label>
-          </Chip>
-        </TactilePressable>
+          <Chip.Label>All</Chip.Label>
+        </Chip>
         {categories.map((cat) => (
-          <TactilePressable
+          <Chip
             key={cat.id}
-            feedbackVariant="spring"
+            color={selectedCategoryId === cat.id ? 'accent' : 'default'}
+            variant={selectedCategoryId === cat.id ? 'primary' : 'soft'}
+            accessibilityRole="button"
+            accessibilityState={{ selected: selectedCategoryId === cat.id }}
             accessibilityLabel={cat.name}
             onPress={() => onSelectCategory(cat.id)}
           >
-            <Chip
-              color={selectedCategoryId === cat.id ? 'accent' : 'default'}
-              variant={selectedCategoryId === cat.id ? 'primary' : 'soft'}
-            >
-              <Chip.Label>{cat.name}</Chip.Label>
-            </Chip>
-          </TactilePressable>
+            <Chip.Label>{cat.name}</Chip.Label>
+          </Chip>
         ))}
       </ScrollView>
 

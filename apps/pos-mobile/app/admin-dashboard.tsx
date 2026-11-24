@@ -14,7 +14,7 @@ import {
   useToast,
 } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton } from '@/components/TactilePressable';
 import { APP_ROUTES } from '@/constants/routes';
 import { AdminAboutTab } from '@/features/admin/AdminAboutTab';
 import { AdminAnalyticsTab } from '@/features/admin/AdminAnalyticsTab';
@@ -27,6 +27,7 @@ import { BulkProductionDialog } from '@/features/production/BulkProductionDialog
 import { SuppliersAndPurchasesTab } from '@/features/suppliers/SuppliersAndPurchasesTab';
 import { exportAndShareBackupSnapshot } from '@/backup/backupEngine';
 import { exportAuditReportPdf } from '@/reports/pdfReportExporter';
+import { useBackNavigationGuard } from '@/layout/useBackNavigationGuard';
 import { useWindowLayout } from '@/layout/useWindowLayout';
 import { enterFade } from '@/theme/motion';
 
@@ -64,12 +65,37 @@ export default function AdminDashboardRoute() {
   const router = useRouter();
   const { toast } = useToast();
   const { isCompact, layout, containerPaddingClass } = useWindowLayout();
-  const [activeTab, setActiveTab] = useState<AdminTabId>('products');
+  const [activeTab, setActiveTab] = useState<AdminTabId>('analytics');
+  const [showMoreSheet, setShowMoreSheet] = useState(false);
   const [showProduction, setShowProduction] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const moreSheetRef = useRef<BottomSheetRef>(null);
 
-  const activeSpec = ADMIN_TABS.find((t) => t.id === activeTab) ?? ADMIN_TABS[1]!;
+  const activeSpec = ADMIN_TABS.find((t) => t.id === activeTab) ?? ADMIN_TABS[0]!;
+
+  useBackNavigationGuard({
+    requireDoubleBackToExit: true,
+    onBack: () => {
+      if (showMoreSheet) {
+        setShowMoreSheet(false);
+        void moreSheetRef.current?.dismiss();
+        return true;
+      }
+      if (showProduction) {
+        setShowProduction(false);
+        return true;
+      }
+      if (activeTab !== 'analytics') {
+        setActiveTab('analytics');
+        return true;
+      }
+      if (router.canGoBack()) {
+        router.back();
+        return true;
+      }
+      return false;
+    },
+  });
 
   const handleExportBackup = async () => {
     setExportError(null);
@@ -204,46 +230,43 @@ export default function AdminDashboardRoute() {
               const tab = ADMIN_TABS.find((t) => t.id === id)!;
               const selected = activeTab === id;
               return (
-                <TactilePressable
+                <TactileButton
                   key={id}
                   feedbackVariant="spring"
-                  className="flex-1"
+                  variant={selected ? 'primary' : 'ghost'}
+                  size="sm"
+                  fullWidth
+                  containerClassName="flex-1"
                   onPress={() => setActiveTab(id)}
                   accessibilityLabel={tab.label}
                 >
-                  <View pointerEvents="none">
-                    <Button
-                      variant={selected ? 'primary' : 'ghost'}
-                      size="sm"
-                      className="w-full"
-                    >
-                      <Button.Label numberOfLines={1}>{tab.shortLabel}</Button.Label>
-                    </Button>
-                  </View>
-                </TactilePressable>
+                  <Button.Label numberOfLines={1}>{tab.shortLabel}</Button.Label>
+                </TactileButton>
               );
             })}
-            <TactilePressable
+            <TactileButton
               feedbackVariant="spring"
-              className="flex-1"
-              onPress={() => moreSheetRef.current?.present()}
+              variant={COMPACT_MORE_IDS.includes(activeTab) ? 'primary' : 'ghost'}
+              size="sm"
+              fullWidth
+              containerClassName="flex-1"
+              onPress={() => {
+                setShowMoreSheet(true);
+                void moreSheetRef.current?.present();
+              }}
               accessibilityLabel="More admin sections"
             >
-              <View pointerEvents="none">
-                <Button
-                  variant={COMPACT_MORE_IDS.includes(activeTab) ? 'primary' : 'ghost'}
-                  size="sm"
-                  className="w-full"
-                >
-                  <Button.Label numberOfLines={1}>More</Button.Label>
-                </Button>
-              </View>
-            </TactilePressable>
+              <Button.Label numberOfLines={1}>More</Button.Label>
+            </TactileButton>
           </View>
         </Surface>
       ) : null}
 
-      <BottomSheet ref={moreSheetRef}>
+      <BottomSheet
+        ref={moreSheetRef}
+        onWillPresent={() => setShowMoreSheet(true)}
+        onDidDismiss={() => setShowMoreSheet(false)}
+      >
         <BottomSheet.Content className="p-4 gap-3">
           <BottomSheet.Header>
             <BottomSheet.Title>More Admin Sections</BottomSheet.Title>
@@ -252,17 +275,18 @@ export default function AdminDashboardRoute() {
             {COMPACT_MORE_IDS.map((id) => {
               const tab = ADMIN_TABS.find((t) => t.id === id)!;
               return (
-                <Button
+                <TactileButton
                   key={id}
                   variant={activeTab === id ? 'primary' : 'secondary'}
-                  className="w-full"
+                  fullWidth
                   onPress={() => {
                     setActiveTab(id);
-                    moreSheetRef.current?.dismiss();
+                    setShowMoreSheet(false);
+                    void moreSheetRef.current?.dismiss();
                   }}
                 >
                   <Button.Label>{tab.label}</Button.Label>
-                </Button>
+                </TactileButton>
               );
             })}
           </BottomSheet.Body>

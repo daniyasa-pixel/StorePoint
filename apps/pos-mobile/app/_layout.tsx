@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Alert, Button, HeroUINativeProvider } from 'heroui-native';
+import { useUniwind } from 'uniwind';
 import { DatabaseLoadingView } from '@/components/DatabaseLoadingView';
 import { getRepositories } from '@/db/repositories';
 import { useKioskDisplayController } from '@/hardware/useKioskDisplayController';
@@ -16,6 +17,7 @@ export default function RootLayout() {
   const isDatabaseReady = useAppBootstrapStore((state) => state.isDatabaseReady);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const { theme } = useUniwind();
   useKioskDisplayController();
 
   useEffect(() => {
@@ -24,14 +26,16 @@ export default function RootLayout() {
     (async () => {
       setBootstrapError(null);
       try {
-        const [repos, onboardingDone] = await Promise.all([
+        const [repos, onboardingDone, savedThemeMode] = await Promise.all([
           getRepositories(),
           sessionStateCache.isOnboardingCompleted(),
+          sessionStateCache.getThemeMode(),
         ]);
         const config = await repos.storeConfig.getConfig();
         if (!active) return;
 
         const store = useAppBootstrapStore.getState();
+        store.setThemeMode(savedThemeMode);
         if (onboardingDone) {
           store.completeOnboarding();
         }
@@ -64,7 +68,7 @@ export default function RootLayout() {
             },
           }}
         >
-          <StatusBar style="auto" />
+          <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
           <View style={{ flex: 1 }}>
             <Stack
               screenOptions={{

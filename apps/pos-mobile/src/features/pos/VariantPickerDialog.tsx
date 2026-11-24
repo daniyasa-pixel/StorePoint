@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Button, Dialog, Separator } from 'heroui-native';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton } from '@/components/TactilePressable';
 import type { Product, UomOption } from '@/db/types';
 import { useWindowLayout } from '@/layout/useWindowLayout';
 
@@ -36,37 +36,34 @@ export function VariantPickerDialog({
           >
             {product
               ? options.map((opt) => (
-                  <TactilePressable
+                  <TactileButton
                     key={`${opt.name}-${opt.multiplier}`}
                     feedbackVariant="stretch"
-                    className="w-full"
+                    variant="secondary"
+                    fullWidth
                     accessibilityLabel={`${opt.name} times ${opt.multiplier}, ${currencySymbol}${opt.price.toFixed(2)}`}
                     onPress={() => {
                       onSelect(product, opt);
                       onClose();
                     }}
                   >
-                    <View pointerEvents="none">
-                      <Button variant="secondary" className="w-full">
-                        <View className="flex-1 flex-row items-center justify-between gap-2">
-                          <Text className="text-foreground text-sm font-medium" numberOfLines={1}>
-                            {opt.name} (×{opt.multiplier})
-                          </Text>
-                          <Text className="text-accent text-sm font-bold">
-                            {currencySymbol}
-                            {opt.price.toFixed(2)}
-                          </Text>
-                        </View>
-                      </Button>
+                    <View className="flex-1 flex-row items-center justify-between gap-2">
+                      <Text className="text-foreground text-sm font-medium" numberOfLines={1}>
+                        {opt.name} (×{opt.multiplier})
+                      </Text>
+                      <Text className="text-accent text-sm font-bold">
+                        {currencySymbol}
+                        {opt.price.toFixed(2)}
+                      </Text>
                     </View>
-                  </TactilePressable>
+                  </TactileButton>
                 ))
               : null}
           </ScrollView>
           <Separator />
-          <Button variant="ghost" onPress={onClose}>
+          <TactileButton variant="ghost" onPress={onClose}>
             <Button.Label>Cancel</Button.Label>
-          </Button>
+          </TactileButton>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog>

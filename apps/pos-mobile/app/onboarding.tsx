@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Button, Card, Chip } from 'heroui-native';
 import { StorePointBrandBadge } from '@/components/StorePointBrandBadge';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton, TactilePressable } from '@/components/TactilePressable';
+import { ThemeModeToggle } from '@/components/ThemeModeToggle';
 import { APP_ROUTES } from '@/constants/routes';
+import { useBackNavigationGuard } from '@/layout/useBackNavigationGuard';
 import { useWindowLayout } from '@/layout/useWindowLayout';
 import { sessionStateCache } from '@/storage/sessionStateCache';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
@@ -39,6 +41,19 @@ export default function OnboardingRoute() {
   const [slideIndex, setSlideIndex] = useState(0);
   const current = SLIDES[slideIndex] ?? SLIDES[0];
 
+  const handleBackSlide = useCallback((): boolean => {
+    if (slideIndex > 0) {
+      setSlideIndex((prev) => Math.max(0, prev - 1));
+      return true;
+    }
+    return false;
+  }, [slideIndex]);
+
+  useBackNavigationGuard({
+    onBack: handleBackSlide,
+    requireDoubleBackToExit: slideIndex === 0,
+  });
+
   const handleFinish = async () => {
     await sessionStateCache.setOnboardingCompleted(true);
     useAppBootstrapStore.getState().completeOnboarding();
@@ -47,8 +62,14 @@ export default function OnboardingRoute() {
 
   return (
     <SafeAreaView className="bg-background flex-1">
+      <View className="w-full flex-row items-center justify-end px-4 pt-2">
+        <ThemeModeToggle />
+      </View>
+
       <ScrollView contentContainerClassName={`flex-grow justify-center ${containerPaddingClass}`}>
-        <View className={`w-full ${dialogMaxWidthClass} self-center ${isShortHeight ? 'gap-4' : 'gap-6'}`}>
+        <View
+          className={`w-full ${dialogMaxWidthClass} self-center ${isShortHeight ? 'gap-4' : 'gap-6'}`}
+        >
           <View className="items-center gap-3">
             <StorePointBrandBadge size={isShortHeight ? 'md' : 'lg'} />
             <Animated.View
@@ -92,33 +113,34 @@ export default function OnboardingRoute() {
           <Card>
             <Card.Body className="gap-3">
               {slideIndex < SLIDES.length - 1 ? (
-                <TactilePressable
+                <TactileButton
                   feedbackVariant="stretch"
-                  className="w-full"
+                  variant="primary"
+                  size="lg"
+                  fullWidth
                   onPress={() => setSlideIndex((i) => i + 1)}
                 >
-                  <View pointerEvents="none">
-                    <Button variant="primary" size="lg" className="w-full">
-                      <Button.Label>Next</Button.Label>
-                    </Button>
-                  </View>
-                </TactilePressable>
+                  <Button.Label>Next</Button.Label>
+                </TactileButton>
               ) : (
-                <TactilePressable
+                <TactileButton
                   feedbackVariant="stretch"
-                  className="w-full"
-                  onPress={handleFinish}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  onPress={() => void handleFinish()}
                 >
-                  <View pointerEvents="none">
-                    <Button variant="primary" size="lg" className="w-full">
-                      <Button.Label>Start Store Setup</Button.Label>
-                    </Button>
-                  </View>
-                </TactilePressable>
+                  <Button.Label>Start Store Setup</Button.Label>
+                </TactileButton>
               )}
-              <Button variant="ghost" size="sm" className="w-full" onPress={handleFinish}>
+              <TactileButton
+                variant="ghost"
+                size="sm"
+                fullWidth
+                onPress={() => void handleFinish()}
+              >
                 <Button.Label>Skip Intro</Button.Label>
-              </Button>
+              </TactileButton>
             </Card.Body>
           </Card>
         </View>

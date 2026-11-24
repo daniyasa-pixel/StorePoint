@@ -5,11 +5,14 @@ import { Button, Separator, Surface } from 'heroui-native';
 import { isCompactLayout } from '@/layout/adaptiveLayout';
 import { enterFade, exitFade, layoutTransition } from '@/theme/motion';
 import { StorePointBrandBadge } from './StorePointBrandBadge';
+import { TactileButton } from './TactilePressable';
+import { ThemeModeToggle } from './ThemeModeToggle';
 
-interface AppTopBarProps {
+export interface AppTopBarProps {
   readonly title: string;
   readonly subtitle?: string;
   readonly showBrandBadge?: boolean;
+  readonly showThemeToggle?: boolean;
   readonly leftAction?: ReactNode;
   readonly rightActions?: ReactNode;
   readonly onBack?: () => void;
@@ -19,6 +22,7 @@ export function AppTopBar({
   title,
   subtitle,
   showBrandBadge = true,
+  showThemeToggle = true,
   leftAction,
   rightActions,
   onBack,
@@ -26,6 +30,7 @@ export function AppTopBar({
   const { width } = useWindowDimensions();
   const isCompact = isCompactLayout(width);
   const shouldShowBadge = showBrandBadge && !(isCompact && onBack && rightActions);
+  const hasRightArea = showThemeToggle || Boolean(rightActions);
 
   return (
     <Surface variant="default" className="w-full">
@@ -36,16 +41,16 @@ export function AppTopBar({
       >
         <View className="flex-row items-center gap-2.5 flex-1 min-w-0">
           {onBack ? (
-            <Button
+            <TactileButton
               variant="ghost"
               size="sm"
               isIconOnly={isCompact}
               accessibilityLabel="Go back"
-              className="shrink-0"
+              containerClassName="shrink-0"
               onPress={onBack}
             >
               <Button.Label>{isCompact ? '←' : '← Back'}</Button.Label>
-            </Button>
+            </TactileButton>
           ) : (
             leftAction
           )}
@@ -70,8 +75,11 @@ export function AppTopBar({
             ) : null}
           </Animated.View>
         </View>
-        {rightActions ? (
-          <View className="flex-row items-center gap-1.5 shrink-0">{rightActions}</View>
+        {hasRightArea ? (
+          <View className="flex-row items-center gap-1.5 shrink-0">
+            {showThemeToggle ? <ThemeModeToggle compact /> : null}
+            {rightActions}
+          </View>
         ) : null}
       </View>
       <Separator />

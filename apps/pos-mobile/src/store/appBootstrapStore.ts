@@ -1,6 +1,8 @@
+import { Uniwind } from 'uniwind';
 import { create } from 'zustand';
 import type { UserRole } from '@/constants/routes';
 import { DEFAULT_CURRENCY_SYMBOL } from '@/domain/money';
+import { sessionStateCache, type ThemeMode } from '@/storage/sessionStateCache';
 
 export interface ActiveSessionUser {
   readonly id: number;
@@ -19,6 +21,7 @@ export interface AppBootstrapState {
   readonly activeUser: ActiveSessionUser | null;
   readonly isKioskModeActive: boolean;
   readonly isAlwaysOnEnabled: boolean;
+  readonly themeMode: ThemeMode;
 
   setDatabaseReady: (ready: boolean) => void;
   completeOnboarding: () => void;
@@ -26,6 +29,7 @@ export interface AppBootstrapState {
   setActiveUser: (user: ActiveSessionUser | null) => void;
   setKioskModeActive: (active: boolean) => void;
   setAlwaysOnEnabled: (enabled: boolean) => void;
+  setThemeMode: (mode: ThemeMode) => void;
   logout: () => void;
 }
 
@@ -38,6 +42,7 @@ export const useAppBootstrapStore = create<AppBootstrapState>((set) => ({
   activeUser: null,
   isKioskModeActive: false,
   isAlwaysOnEnabled: false,
+  themeMode: 'system',
 
   setDatabaseReady: (ready) => set({ isDatabaseReady: ready }),
   completeOnboarding: () => set({ isOnboardingCompleted: true }),
@@ -50,5 +55,10 @@ export const useAppBootstrapStore = create<AppBootstrapState>((set) => ({
   setActiveUser: (user) => set({ activeUser: user }),
   setKioskModeActive: (active) => set({ isKioskModeActive: active }),
   setAlwaysOnEnabled: (enabled) => set({ isAlwaysOnEnabled: enabled }),
+  setThemeMode: (mode) => {
+    set({ themeMode: mode });
+    Uniwind.setTheme(mode);
+    void sessionStateCache.setThemeMode(mode);
+  },
   logout: () => set({ activeUser: null }),
 }));

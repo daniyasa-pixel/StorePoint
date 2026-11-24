@@ -143,11 +143,9 @@ export function ReturnRefundDialog({
                             {tx.paymentMethod} • {tx.status}
                           </Text>
                         </View>
-                        <View pointerEvents="none">
-                          <Button variant="secondary" size="sm">
-                            <Button.Label>Select</Button.Label>
-                          </Button>
-                        </View>
+                        <Chip size="sm" variant="soft" color="accent">
+                          <Chip.Label>Select</Chip.Label>
+                        </Chip>
                       </Surface>
                     </TactilePressable>
                   ))

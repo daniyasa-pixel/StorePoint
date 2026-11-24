@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Alert, Button, Chip, Tabs, useToast } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
-import { TactilePressable } from '@/components/TactilePressable';
+import { TactileButton } from '@/components/TactilePressable';
 import { APP_ROUTES } from '@/constants/routes';
 import { getRepositories } from '@/db/repositories';
 import type { CheckoutReceipt } from '@/db/repositories/checkoutRepository';
@@ -22,6 +22,8 @@ import { DrawerCashInOutDialog } from '@/features/shifts/DrawerCashInOutDialog';
 import { ReturnRefundDialog } from '@/features/shifts/ReturnRefundDialog';
 import { ShiftLifecycleDialog } from '@/features/shifts/ShiftLifecycleDialog';
 import { BarcodeScannerModal } from '@/hardware/BarcodeScannerModal';
+import { buildEscPosReceiptBytes } from '@/hardware/escPosFormatter';
+import { useBackNavigationGuard } from '@/layout/useBackNavigationGuard';
 import { useWindowLayout } from '@/layout/useWindowLayout';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { usePosCartStore } from '@/store/posCartStore';
@@ -44,26 +46,96 @@ export default function CashierPosRoute() {
   const catalog = usePosCatalog();
 
   const [activeSession, setActiveSession] = useState<CashierSession | null>(null);
-  const [portraitTab, setPortraitTab] = useState('catalog');
-  const [variantTarget, setVariantTarget] = useState<{
+  const [vatRate, setVatRate] = useState(12.0);
+  const [mobileTab, setMobileTab] = useState('catalog');
+  const [variantProduct, setVariantProduct] = useState<{
     product: Product;
     options: UomOption[];
   } | null>(null);
-  const [showPayment, setShowPayment] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
   const [showParked, setShowParked] = useState(false);
-  const [showShift, setShowShift] = useState(false);
-  const [showDrawer, setShowDrawer] = useState(false);
+  const [showShiftDialog, setShowShiftDialog] = useState(false);
+  const [showCashInOut, setShowCashInOut] = useState(false);
   const [showReturns, setShowReturns] = useState(false);
   const [showDigital, setShowDigital] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
-  const [lastReceipt, setLastReceipt] = useState<CheckoutReceipt | null>(null);
+  const [completedReceipt, setCompletedReceipt] = useState<CheckoutReceipt | null>(null);
   const [posError, setPosError] = useState<string | null>(null);
 
   useEffect(() => {
-    void getRepositories()
-      .then((repos) => repos.shifts.getActiveSession(activeUser?.username))
-      .then(setActiveSession);
+    void getRepositories().then(async (repos) => {
+      const [session, config] = await Promise.all([
+        repos.shifts.getActiveSession(activeUser?.username),
+        repos.storeConfig.getConfig(),
+      ]);
+      setActiveSession(session);
+      if (config && Number.isFinite(config.taxPercentage)) {
+        setVatRate(config.taxPercentage);
+      }
+    });
   }, [activeUser?.username]);
+
+  useBackNavigationGuard({
+    requireDoubleBackToExit: true,
+    onBack: () => {
+      if (showScanner) {
+        setShowScanner(false);
+        return true;
+      }
+      if (completedReceipt) {
+        setCompletedReceipt(null);
+        return true;
+      }
+      if (showCheckout) {
+        setShowCheckout(false);
+        return true;
+      }
+      if (variantProduct) {
+        setVariantProduct(null);
+        return true;
+      }
+      if (showParked) {
+        setShowParked(false);
+        return true;
+      }
+      if (showReturns) {
+        setShowReturns(false);
+        return true;
+      }
+      if (showDigital) {
+        setShowDigital(false);
+        return true;
+      }
+      if (showCashInOut) {
+        setShowCashInOut(false);
+        return true;
+      }
+      if (showShiftDialog) {
+        setShowShiftDialog(false);
+        return true;
+      }
+      if (!useSplitPane && mobileTab === 'cart') {
+        setMobileTab('catalog');
+        return true;
+      }
+      return false;
+    },
+  });
+
+  const handlePrintReceipt = (receipt: CheckoutReceipt) => {
+    const payload = buildEscPosReceiptBytes(
+      receipt,
+      storeName,
+      currencySymbol,
+      58,
+      receipt.transaction.paymentMethod === 'CASH',
+    );
+    toast.show({
+      label: 'No Bluetooth printer paired',
+      description: `ESC/POS payload ready (${payload.byteLength} bytes). Pair a 58mm/80mm thermal printer in Android Bluetooth settings.`,
+      variant: 'warning',
+    });
+  };
 
   const handleSelectProduct = async (product: Product) => {
     setPosError(null);
@@ -72,7 +144,7 @@ export default function CashierPosRoute() {
       const variants = await repos.catalog.getVariantsForProduct(product.id);
       const options = buildUomOptionsForProduct(product, variants);
       if (options.length > 1) {
-        setVariantTarget({ product, options });
+        setVariantProduct({ product, options });
       } else {
         addProduct(product, options[0]);
         toast.show({
@@ -142,8 +214,8 @@ export default function CashierPosRoute() {
   const cartPane = (
     <PosCartPane
       currencySymbol={currencySymbol}
-      vatRate={12.0}
-      onOpenPayment={() => setShowPayment(true)}
+      vatRate={vatRate}
+      onOpenPayment={() => setShowCheckout(true)}
       onOpenParked={() => setShowParked(true)}
     />
   );
@@ -156,63 +228,63 @@ export default function CashierPosRoute() {
         rightActions={
           <>
             {activeUser?.role === 'ADMIN' ? (
-              <Button
+              <TactileButton
                 variant="secondary"
                 size="sm"
                 onPress={() => router.push(APP_ROUTES.ADMIN_DASHBOARD)}
               >
                 <Button.Label>Admin</Button.Label>
-              </Button>
+              </TactileButton>
             ) : null}
-            <Button variant="danger-soft" size="sm" onPress={handleLogout}>
+            <TactileButton variant="danger-soft" size="sm" onPress={handleLogout}>
               <Button.Label>Logout</Button.Label>
-            </Button>
+            </TactileButton>
           </>
         }
       />
 
       <View className="px-4 pt-2">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="flex-row gap-2">
-          <TactilePressable
-            feedbackVariant="stretch"
+          <Chip
+            size="sm"
+            color={activeSession ? 'success' : 'warning'}
+            variant="soft"
+            accessibilityRole="button"
             accessibilityLabel={activeSession ? 'Close Shift' : 'Open Shift'}
-            onPress={() => setShowShift(true)}
+            onPress={() => setShowShiftDialog(true)}
           >
-            <Chip
-              size="sm"
-              color={activeSession ? 'success' : 'warning'}
-              variant="soft"
-            >
-              <Chip.Label>{activeSession ? 'Close Shift' : 'Open Shift'}</Chip.Label>
-            </Chip>
-          </TactilePressable>
-          <TactilePressable
-            feedbackVariant="stretch"
+            <Chip.Label>{activeSession ? 'Close Shift' : 'Open Shift'}</Chip.Label>
+          </Chip>
+          <Chip
+            size="sm"
+            color="default"
+            variant="soft"
+            accessibilityRole="button"
             accessibilityLabel="Cash In/Out"
-            onPress={() => setShowDrawer(true)}
+            onPress={() => setShowCashInOut(true)}
           >
-            <Chip size="sm" color="default" variant="soft">
-              <Chip.Label>Cash In/Out</Chip.Label>
-            </Chip>
-          </TactilePressable>
-          <TactilePressable
-            feedbackVariant="stretch"
+            <Chip.Label>Cash In/Out</Chip.Label>
+          </Chip>
+          <Chip
+            size="sm"
+            color="default"
+            variant="soft"
+            accessibilityRole="button"
             accessibilityLabel="Returns"
             onPress={() => setShowReturns(true)}
           >
-            <Chip size="sm" color="default" variant="soft">
-              <Chip.Label>Returns</Chip.Label>
-            </Chip>
-          </TactilePressable>
-          <TactilePressable
-            feedbackVariant="stretch"
+            <Chip.Label>Returns</Chip.Label>
+          </Chip>
+          <Chip
+            size="sm"
+            color="accent"
+            variant="soft"
+            accessibilityRole="button"
             accessibilityLabel="Digital / Load"
             onPress={() => setShowDigital(true)}
           >
-            <Chip size="sm" color="accent" variant="soft">
-              <Chip.Label>Digital / Load</Chip.Label>
-            </Chip>
-          </TactilePressable>
+            <Chip.Label>Digital / Load</Chip.Label>
+          </Chip>
         </ScrollView>
       </View>
 
@@ -259,7 +331,7 @@ export default function CashierPosRoute() {
             <View style={{ flex: cartFlex }}>{cartPane}</View>
           </View>
         ) : (
-          <Tabs value={portraitTab} onValueChange={setPortraitTab} className="flex-1 gap-3">
+          <Tabs value={mobileTab} onValueChange={setMobileTab} className="flex-1 gap-3">
             <Tabs.List className="w-full">
               <Tabs.Indicator />
               <Tabs.Trigger value="catalog" className="flex-1">
@@ -280,8 +352,8 @@ export default function CashierPosRoute() {
       </View>
 
       <VariantPickerDialog
-        product={variantTarget?.product ?? null}
-        options={variantTarget?.options ?? []}
+        product={variantProduct?.product ?? null}
+        options={variantProduct?.options ?? []}
         currencySymbol={currencySymbol}
         onSelect={(p, opt) => {
           addProduct(p, opt);
@@ -291,16 +363,16 @@ export default function CashierPosRoute() {
             duration: 1500,
           });
         }}
-        onClose={() => setVariantTarget(null)}
+        onClose={() => setVariantProduct(null)}
       />
 
       <PaymentCheckoutDialog
-        isOpen={showPayment}
-        onOpenChange={setShowPayment}
+        isOpen={showCheckout}
+        onOpenChange={setShowCheckout}
         currencySymbol={currencySymbol}
-        vatRate={12.0}
+        vatRate={vatRate}
         onCompleted={(receipt) => {
-          setLastReceipt(receipt);
+          setCompletedReceipt(receipt);
           void catalog.refreshCatalog();
         }}
       />
@@ -312,23 +384,24 @@ export default function CashierPosRoute() {
       />
 
       <ReceiptPreviewDialog
-        receipt={lastReceipt}
+        receipt={completedReceipt}
         storeName={storeName}
         currencySymbol={currencySymbol}
-        onClose={() => setLastReceipt(null)}
+        onClose={() => setCompletedReceipt(null)}
+        onPrint={handlePrintReceipt}
       />
 
       <ShiftLifecycleDialog
-        isOpen={showShift}
-        onOpenChange={setShowShift}
+        isOpen={showShiftDialog}
+        onOpenChange={setShowShiftDialog}
         activeSession={activeSession}
         currencySymbol={currencySymbol}
         onSessionChanged={setActiveSession}
       />
 
       <DrawerCashInOutDialog
-        isOpen={showDrawer}
-        onOpenChange={setShowDrawer}
+        isOpen={showCashInOut}
+        onOpenChange={setShowCashInOut}
         activeSession={activeSession}
         currencySymbol={currencySymbol}
       />

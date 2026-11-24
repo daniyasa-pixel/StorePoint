@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { Alert, Card, Chip, Separator, Spinner } from 'heroui-native';
 import { AppTopBar } from '@/components/AppTopBar';
 import { APP_VERSION } from '@/constants/appInfo';
 import { checkDatabaseHealth, type DatabaseHealthReport } from '@/db/database';
+import { useBackNavigationGuard } from '@/layout/useBackNavigationGuard';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
 import { enterFadeUp } from '@/theme/motion';
 
@@ -14,6 +15,13 @@ export default function AboutRoute() {
   const router = useRouter();
   const storeName = useAppBootstrapStore((s) => s.storeName);
   const [health, setHealth] = useState<DatabaseHealthReport | null>(null);
+
+  const handleBack = useCallback((): boolean => {
+    router.back();
+    return true;
+  }, [router]);
+
+  useBackNavigationGuard({ onBack: handleBack });
 
   useEffect(() => {
     void checkDatabaseHealth().then(setHealth);
