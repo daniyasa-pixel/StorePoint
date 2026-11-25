@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Alert, Button, Card, Chip, Spinner, useToast } from 'heroui-native';
@@ -28,7 +27,6 @@ import { useWindowLayout } from '@/layout/useWindowLayout';
 import { hashPin, isValidPin, isWeakPin, pinPolicyHint } from '@/security/securityHelper';
 import { sessionStateCache } from '@/storage/sessionStateCache';
 import { useAppBootstrapStore } from '@/store/appBootstrapStore';
-import { enterFadeUp, enterSlideRight, exitFadeUp, exitSlideLeft, layoutTransition } from '@/theme/motion';
 
 export default function SetupRoute() {
   const router = useRouter();
@@ -228,7 +226,7 @@ export default function SetupRoute() {
   };
 
   return (
-    <SafeAreaView className="bg-background flex-1">
+    <SafeAreaView style={{ flex: 1 }} className="bg-background">
       <AppTopBar
         title="Store Setup"
         subtitle={`Step ${step} of 2 — ${step === 1 ? 'Profile & Money' : 'Security & Admin'}`}
@@ -240,10 +238,9 @@ export default function SetupRoute() {
         }
       />
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1">
-        <ScrollView contentContainerClassName={`${containerPaddingClass} pb-10`} keyboardShouldPersistTaps="handled">
-          <Animated.View
-            layout={layoutTransition}
+      <View style={{ flex: 1 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} contentContainerClassName={`${containerPaddingClass} pb-10`} keyboardShouldPersistTaps="handled">
+          <View
             className={`w-full ${dialogMaxWidthClass} self-center ${isShortHeight ? 'gap-3' : 'gap-4'}`}
           >
             <View className="items-center gap-2 pt-1">
@@ -286,7 +283,7 @@ export default function SetupRoute() {
             </View>
 
             {backupSummary ? (
-              <Animated.View entering={enterFadeUp} exiting={exitFadeUp}>
+              <View>
                 <Card className="border border-accent/50">
                   <Card.Header>
                     <Card.Title>Previous Backup Found</Card.Title>
@@ -305,11 +302,11 @@ export default function SetupRoute() {
                     </TactileButton>
                   </Card.Footer>
                 </Card>
-              </Animated.View>
+              </View>
             ) : null}
 
             {error ? (
-              <Animated.View entering={enterFadeUp} exiting={exitFadeUp}>
+              <View>
                 <Alert status="danger">
                   <Alert.Indicator />
                   <Alert.Content>
@@ -317,10 +314,10 @@ export default function SetupRoute() {
                     <Alert.Description>{error}</Alert.Description>
                   </Alert.Content>
                 </Alert>
-              </Animated.View>
+              </View>
             ) : null}
 
-            <Animated.View key={step} entering={enterSlideRight} exiting={exitSlideLeft}>
+            <View key={step}>
               {step === 1 ? (
                 <SetupStepOneProfile
                   values={profile}
@@ -336,10 +333,10 @@ export default function SetupRoute() {
                   onComplete={() => void handleCompleteSetup()}
                 />
               )}
-            </Animated.View>
-          </Animated.View>
+            </View>
+          </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
